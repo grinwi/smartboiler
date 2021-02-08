@@ -1,0 +1,28 @@
+version: "3"
+services:
+  influxdb:
+    image: influxdb
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb:/var/lib/influxdb
+  sensor:
+    image: sensor
+    links:
+      - influxdb
+  control:
+    image: control
+    links:
+      - influxdb
+  dashboard:
+    image: grafana/grafana
+    links:
+      - sensor
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana:/var/lib/grafana
+
+volumes:
+  influxdb:
+  grafana:
