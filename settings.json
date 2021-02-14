@@ -1,0 +1,6 @@
+{
+    "settings":
+    {"socket_url" : "192.168.1.144",
+    "db_name" : "formankovi",
+    "measurement" : "senzory_bojler"}
+  }

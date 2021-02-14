@@ -8,10 +8,16 @@ services:
       - influxdb:/var/lib/influxdb
   sensor:
     image: sensor
+    build: 
+      context: "."
+      dockerfile: sensor/Dockerfile
     links:
       - influxdb
   control:
     image: control
+    build:
+      context: "."
+      dockerfile: control/Dockerfile
     links:
       - influxdb
   dashboard:

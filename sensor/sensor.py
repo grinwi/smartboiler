@@ -3,25 +3,23 @@ import requests
 
 import datetime
 import time
+import json
 
 import math
 import pprint
 import os
 import signal
 import sys
+from settings_loader import SettingsLoader
+
 
 client = None
-dbname = 'formankovi'
-measurement = 'senzory_bojler'
-
-url_request = "192.168.1.144"
-
 
 def db_exists():
     '''returns True if the database exists'''
     dbs = client.get_list_database()
     for db in dbs:
-        if db['name'] == dbname:
+        if db['name'] == db_name:
             return True
     return False
 
@@ -51,10 +49,10 @@ def connect_db(host, port, reset):
     if not db_exists():
         create = True
         print('creating database...')
-        client.create_database(dbname)
+        client.create_database(db_name)
     else:
         print('database already exists')
-    client.switch_database(dbname)
+    client.switch_database(db_name)
     if not create and reset:
         client.delete_series(measurement=measurement)
 
@@ -67,7 +65,7 @@ def measure(nmeas):
 
     while True:
         try:
-            http = requests.get("http://" + url_request + "/status")
+            http = requests.get("http://" + socket_url + "/status")
             bad_request_sleeping_time = 10
         except:
             print("unable to get request")
@@ -108,11 +106,23 @@ def get_entries():
     # we decide not to use the x tag
     return list(results[(measurement, None)])
 
+def load_settings(file_name):
+    try:
+        with open(file_name) as json_file:
+            data = json.load(json_file)
+    except:
+        print("Error loading settings")
+        return None
+    
+    return data["settings"]
+
+
     
 if __name__ == '__main__':
     import sys
     
     from optparse import OptionParser
+
     parser = OptionParser('%prog [OPTIONS] <host> <port>')
     parser.add_option(
         '-r', '--reset', dest='reset',
@@ -126,13 +136,30 @@ if __name__ == '__main__':
         help='reset database',
         default=0
         )
-    
+  
+    parser.add_option(
+        '-f', '--settings_file', dest='settings_file',
+        type='string', 
+        default=None
+        )
     options, args = parser.parse_args()
-    if len(args)!=2:
+
+    settings_file = options.settings_file
+    if len(args)< 2:
         parser.print_usage()
-        print('please specify two arguments')
+        print('please specify two or more arguments')
         sys.exit(1)
+        
     host, port = args
+
+
+    SettingsLoader = SettingsLoader(settings_file)
+    settings = SettingsLoader.load_settings()        
+
+    socket_url = settings['socket_url']
+    db_name = settings['db_name']
+    measurement = settings['measurement']
+
     connect_db(host, port, options.reset)
     def signal_handler(sig, frame):
         print()
