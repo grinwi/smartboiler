@@ -17,7 +17,6 @@ class EventChecker:
 
     def __init__(self):
 
-     
         SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
 
         sleeping_time = 1800

@@ -11,6 +11,9 @@ import os
 import signal
 import sys
 from settings_loader import SettingsLoader
+from event_checker import EventChecker
+
+EvntChecker = EventChecker()
 
 
 client = None
@@ -63,6 +66,7 @@ def measure(nmeas):
     '''
     bad_request_sleeping_time = 20
 
+
     while True:
         try:
             http = requests.get("http://" + socket_url + "/status")
@@ -74,29 +78,33 @@ def measure(nmeas):
             time.sleep(bad_request_sleeping_time)
             continue  
         if http.status_code == 200:
-            data = http.json()
+            try:
+                data = http.json()
 
-            power = data['meters'][0]["power"]
-            temperature_1 = data['ext_temperature']['0']['tC']
-            temperature_2 = data['ext_temperature']['1']['tC']
-            current_time = datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
+                power = data['meters'][0]["power"]
+                temperature_1 = data['ext_temperature']['0']['tC']
+                temperature_2 = data['ext_temperature']['1']['tC']
+                current_time = datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
 
-            data_to_db_json = [
-                {
-                    "measurement": measurement,
-                    "time": current_time,
-                    
-                    "fields": {
-                        "power": power,
-                        "tmp1": temperature_1, 
-                        "tmp2": temperature_2,
-                        "turned": data['relays'][0]['ison']
+                data_to_db_json = [
+                    {
+                        "measurement": measurement,
+                        "time": current_time,
+                        
+                        "fields": {
+                            "power": power,
+                            "tmp1": temperature_1, 
+                            "tmp2": temperature_2,
+                            "turned": data['relays'][0]['ison'],
+                            "in_event" : EvntChecker.check_event()
+                        }
                     }
-                }
-            ]
+                ]
 
-                    
-            client.write_points(data_to_db_json)
+                        
+                client.write_points(data_to_db_json)
+            except:
+                print("unable to read data or write in db")
            
         time.sleep(20)
 

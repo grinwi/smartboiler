@@ -3,6 +3,16 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+#settings
+settings.json
+
+#arima model
+arima/
+
+#testing folders
+test/
+app/
+
 # C extensions
 *.so
 

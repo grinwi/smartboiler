@@ -13,7 +13,7 @@ class SettingsLoader:
         try:
             with open(self.settings_file_name) as json_file:
                 data = json.load(json_file)
+                return data["settings"]
         except:
             print("Error loading settings")
             return None
-        return data["settings"]

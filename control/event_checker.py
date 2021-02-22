@@ -7,8 +7,8 @@ import os.path
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
-
 from time_handler import TimeHandler
+
 
 # If modifying these scopes, delete the file token.pickle.
 
@@ -16,11 +16,14 @@ from time_handler import TimeHandler
 class EventChecker:
 
     def __init__(self):
+        print("------------------------------------------------------\n")
+        print('initializing of EventChecker\n')
+        print("------------------------------------------------------\n")
 
-     
-        SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
 
-        sleeping_time = 1800
+        self.SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
+        self.TimeHandler = TimeHandler()
+
     def check_event(self):
         """Shows basic usage of the Google Calendar API.
         Prints the start and name of the next 10 events on the user's calendar.
@@ -55,26 +58,20 @@ class EventChecker:
                                             orderBy='startTime').execute()
         event = events_result.get('items', [])
 
-
+        return_value = False
         if not event:
-            return False
+            return return_value
         else:
             for e in event:
 
                 if("#off" in e['summary']):
-                    start = self.date_to_datetime(e['start'].get('dateTime', e['start'].get('date')))
-                    end = self.date_to_datetime( e['end'].get('dateTime', e['end'].get('date')))
+                    start = self.TimeHandler.date_to_datetime(e['start'].get('dateTime', e['start'].get('date')))
+                    end = self.TimeHandler.date_to_datetime( e['end'].get('dateTime', e['end'].get('date')))
                     
-                    return self.is_date_between(start, end)
-                return False
+                    if(self.TimeHandler.is_date_between(start, end)):
+                        return_value = True
+            return return_value
 
-    def date_to_datetime(self, date):
-        return datetime.datetime.strptime(date, "%Y-%m-%dT%H:%M:%S+01:00")
-
-    def is_date_between(self, begin_date, end_date):
-        check_date = datetime.datetime.now()   
-
-        return check_date >= begin_date or check_date <= end_date - datetime.timedelta(hours=3)
 
 if __name__ == '__main__':
     e = EventChecker()

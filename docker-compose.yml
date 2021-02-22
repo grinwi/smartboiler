@@ -20,6 +20,33 @@ services:
       dockerfile: control/Dockerfile
     links:
       - influxdb
+
+  #test:
+  #  image: test
+  #  build: 
+  #    context: "."
+  #    dockerfile: test/Dockerfile
+  #  links:
+  #    - influxdb
+  #arima:
+  #  image: arima
+  #  build: 
+  #    context: "."
+  #    dockerfile: arima/Dockerfile
+  #  links:
+  #    - influxdb
+      
+  peaks:
+    image: peaks
+    build: 
+      context: "."
+      dockerfile: peaks/Dockerfile
+    volumes:
+      - ./settings.json:/mnt/c/Users/grunw/Desktop/BP/dockerized/settings.json
+
+  #  links:
+  #    - influxdb
+      
   dashboard:
     image: grafana/grafana
     links:
