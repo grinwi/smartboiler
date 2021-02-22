@@ -26,7 +26,7 @@ class TimeHandler:
         return datetime.strptime(datetime.now().strftime("%H:%M"), "%H:%M")
 
     def is_date_between(self, begin_date, end_date):
-        check_date = datetime.datetime.now()   
+        check_date = datetime.now()   
 
         return begin_date <= check_date <= (end_date - timedelta(hours = 1))
     

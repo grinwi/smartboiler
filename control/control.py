@@ -189,7 +189,6 @@ class Controller:
         hours_to_start = self._next_heating_time('start')[0]
 
         if(hours_to_start > hours_to_end):
-            print("in heating period")
             return True
         False
 
@@ -219,11 +218,10 @@ class Controller:
         tmp_goal = self._heating_temperature()
 
         if self.EventChecker.check_event():
+            print("naplanovana udalost")
             if is_on:
                 self._turn_socket_off()
             return
-        else:
-            print("no scheduled event")
 
         if (tmp_act < self.tmp_min):
             if not is_on:
@@ -292,9 +290,7 @@ class Controller:
         peak = heating[2]
 
         heat_temp = self.heating_coef * peak
-        print("heattemp:")
-        print(heat_temp)
-
+      
         return heat_temp
   
   
