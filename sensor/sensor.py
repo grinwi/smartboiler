@@ -102,9 +102,12 @@ def measure(nmeas):
                 ]
 
                         
+            except:
+                print("unable to read data")
+            try:
                 client.write_points(data_to_db_json)
             except:
-                print("unable to read data or write in db")
+                print("unable to write data in db")
            
         time.sleep(20)
 

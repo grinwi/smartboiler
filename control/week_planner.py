@@ -21,14 +21,18 @@ class WeekPlanner:
 
             peaks, _ = self._find_ideal_peaks(x)
         
-            results_half = peak_widths(x, peaks, rel_height=0.5)
-
+            results_half = peak_widths(x, peaks, rel_height=0.7)
 
             day_aconsumptions = {}
             for i in range(len(results_half[0])):
-                day_aconsumptions.update({i:{"start":self.TimeHandler.float_to_time(results_half[2][i]), "end":self.TimeHandler.float_to_time(results_half[3][i]), "duration" : results_half[0][i], "peak":round(_['peak_heights'][i],2)}})
+                day_aconsumptions.update({i:{   "start":self.TimeHandler.float_to_time(results_half[2][i]), 
+                                                "end":self.TimeHandler.float_to_time(results_half[3][i]), 
+                                                "duration" : results_half[0][i], 
+                                                "peak":round(_['peak_heights'][i],2)}})
 
             new_week_days_consumptions.update({value:day_aconsumptions})
+
+        print("created new days average")
 
         return new_week_days_consumptions
 
@@ -49,7 +53,8 @@ class WeekPlanner:
         return df_grouped.rename(columns={'level_0': 'day_of_week', 'level_1': 'hour'})
 
     def week_plan(self, data_from_db = None):
-        """Excepts data from DB and returns plan for week based on days of week average.
+
+        """Accepts data from DB and returns plan for week based on days of week average.
         If data wasn't specified, returns last created week plan.
 
         Args:
@@ -58,6 +63,8 @@ class WeekPlanner:
 
         if ((data_from_db is not None)):
             self.week_days_consumptions = self._create_days_average(data_from_db)
+
+        print("created new week plan!")
         
         return self.week_days_consumptions
 

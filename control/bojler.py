@@ -14,16 +14,18 @@ class Bojler:
         self.real_wattage = wattage * 0.98
  
 
-    def time_to_start_heating(self, tmp_change):
+    def time_needed_to_heat_up(self, tmp_change):
         """
             time = (m * c) * d'(tmp) / P * effectivity_coef
         """
         return (self.bojler_heat_cap * tmp_change) / (self.real_wattage )
 
+
     def is_needed_to_heat(self, tmp_act, tmp_goal, time_to_consumption):
         tmp_change = tmp_goal - tmp_act
+        
        
-        if (tmp_change > 0) and (time_to_consumption <= self.time_to_start_heating(tmp_change)):
+        if (tmp_change > 0) and (time_to_consumption <= self.time_needed_to_heat_up(tmp_change)):
             return True
         else:
             return False

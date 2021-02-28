@@ -93,6 +93,8 @@ class Controller:
         self.data_db = self._actualize_data()
         self.last_data_update = datetime.now() 
         self.WeekPlanner = WeekPlanner(self.data_db)
+        self.coef_up_in_current_heating_cycle_changed = False
+        self.coef_down_in_current_heating_cycle_changed = False
 
 
 
@@ -110,18 +112,18 @@ class Controller:
             result = self.InfluxDBClient.query('SELECT * FROM "' + self.db_name + '"."autogen"."' + self.measurement + '" ORDER BY DESC LIMIT 1')
     
             result_list = list(result.get_points(measurement=self.measurement))[0]
-
             
-        
+            time_of_last_entry = self.TimeHandler.date_from_influxdb_to_datetime(result_list["time"])
+
             tmp1 = result_list["tmp1"]
             tmp2 = result_list["tmp2"]
             socket_turned_on = result_list["turned"]
         
-            #print(tmp1, tmp2, socket_turned_on)
-
-
+            if (datetime.now() - time_of_last_entry > timedelta(minutes = 30)):
+                print("too old last entry ({}), need to heat".format(time_of_last_entry))
+                return None
             return (tmp1, tmp2, socket_turned_on)
-
+        
         except:
             print("unable to read from influxDBclient")
             return None
@@ -156,14 +158,14 @@ class Controller:
             print("it wasnt posiible to get new datasets")
             return None
 
-    def _next_heating_time(self, event):
+    def _next_heating_event(self, event):
 
         """Finds how long it takes to next heating.
 
         Returns:
             [type]: [description]
         """
-        actual_time = self.TimeHandler.hour_minutes_now()
+        actual_time = self.TimeHandler.hour_minutes_now() 
 
 
         days_plus = 0
@@ -176,8 +178,10 @@ class Controller:
                 next_time = item[event]
 
                 if (next_time >= actual_time):
+                    time_to_next_heating_event = (next_time - actual_time + timedelta(days = days_plus))  / timedelta(hours=1)
 
-                    return [(next_time - actual_time + timedelta(days = days_plus)) / timedelta(hours=1), item['duration'], item['peak']]
+                    return{"will_occur_in" : time_to_next_heating_event, "duration": item['duration'], "peak": item["peak"], "time" : next_time}
+                    #return [(next_time - actual_time + timedelta(days = days_plus)) / timedelta(hours=1), item['duration'], item['peak']]
 
 
             actual_time = self.TimeHandler.hour_minutes_now().replace(hour=0, minute=0)
@@ -185,16 +189,16 @@ class Controller:
                 
     def _is_in_heating(self):
 
-        hours_to_end = self._next_heating_time('end')[0]
-        hours_to_start = self._next_heating_time('start')[0]
+        hours_to_end = self._next_heating_event('end')["will_occur_in"]
+        hours_to_start = self._next_heating_event('start')["will_occur_in"]
 
         if(hours_to_start > hours_to_end):
             return True
         False
 
     def _check_data(self):
-        if self.last_data_update - datetime.now() > timedelta(days = 7):
-            print(datetime.now())
+        if self.last_data_update - datetime.now() + timedelta(hours = 1) > timedelta(days = 7):
+            print(datetime.now() )
             print("actualizing data")
 
             actualized_data = self._actualize_data() 
@@ -206,7 +210,20 @@ class Controller:
 
         self._check_data()
 
-        tmp_out, tmp_act, is_on = self._last_entry()
+        last_entry = self._last_entry()
+
+        if last_entry is None:
+            self._turn_socket_on()
+            return
+        
+        tmp_out, tmp_act, is_on = last_entry
+
+
+        
+        if(self._is_in_heating()):
+            self.coef_down_in_current_heating_cycle_changed = False
+        else:
+            self.coef_up_in_current_heating_cycle_changed = False
 
 
         #or is in consumption and temperature is below smthing
@@ -214,8 +231,7 @@ class Controller:
         #if(self.is_in_heating and tmp_act < self.consumption_tmp_min):
             #pokud dojdu sem, je potreba zvetsit teplotu ohrevu. pokud to jiz nejde, zvetsit min (pouze jen do nejake hodnoty)
 
-        time_to_consumption = self._next_heating_time('start')[0]
-        tmp_goal = self._heating_temperature()
+
 
         if self.EventChecker.check_event():
             print("naplanovana udalost")
@@ -227,40 +243,72 @@ class Controller:
             if not is_on:
                 self._turn_socket_on()
             return
-        if( self.Bojler.is_needed_to_heat(tmp_act, tmp_goal=tmp_goal, time_to_consumption = time_to_consumption)):
-            if not is_on:
-                self._turn_socket_on()
-            return
+        ##############################################################################
+        
 
-
-        #rozlisovat cas do dalsiho topeni. pokud prave skoncilo, tolik nevadi  
-
-
-        #for current heating   
-        current_heating = self._next_heating_time('end')
-        current_heating_half_duration = current_heating[1] / 2
-        how_long_to_current_heating_end = current_heating[0]
 
         #upravit, zjednodusit
-        if (self._is_in_heating() and tmp_act < self.consumption_tmp_min and  how_long_to_current_heating_end > current_heating_half_duration ):
+        if (self._is_in_heating()):
 
-            print("changing coef to")
-            self.heating_coef *= 1.025
-            print(self.heating_coef)
+            #for current heating   
+            current_heating = self._next_heating_event('end')
+            current_heating_half_duration = current_heating['duration'] / 2
+            how_long_to_current_heating_end = current_heating['will_occur_in']
 
-            if not is_on:
+            if(tmp_act < self.consumption_tmp_min and not socket_turned_on):
+            
+                print("in heating, needed to increase tmp({}°C) above tmp min({}°C)".format(tmp_act, self.consumption_tmp_min))
                 self._turn_socket_on()
-            return    
 
-        if((not self._is_in_heating()) and (tmp_act > (self.consumption_tmp_min + 2) and (how_long_to_current_heating_end < current_heating_half_duration))):
+                if( (how_long_to_current_heating_end > current_heating_half_duration)  and not self.coef_up_in_current_heating_cycle_changed):
+                    self.coef_up_in_current_heating_cycle_changed = True
+                    self.heating_coef *= 1.015
+                    print("changing coef to {}".format(self.heating_coef))
+                    #zmena aby v cyklu nedochazelo stale ke zvysovani, nebot zmena se promitne az po nejake dobe
 
+            #pokud neni treba doohrivat behem heatingu, vypinam
+            else:
+                if is_on:
+                    print("turning off in heating, actual_tmp = {}".format(tmp_act))
 
-            print("changing coef to")
-            self.heating_coef *= 0.975            
-            print(self.heating_coef)
-       
-        if is_on:
-                self._turn_socket_off()
+                    self._turn_socket_off()
+
+            return
+        #not in heating
+        else:
+            #reseni ohrevu pro dalsi spotrebu
+            next_heating =  self._next_heating_event('start')
+            time_to_next_heating = next_heating['will_occur_in']
+            next_heating_goal_temperature = next_heating['peak'] * self.heating_coef
+            print("{}   next heating at {} starts in: {}".format(datetime.now(), next_heating['time'], time_to_next_heating))
+
+            #v tomto pripade je v momente neodberu potreba ohrivat + v pripadech, ze je teplota pod min viz vyse
+            if( self.Bojler.is_needed_to_heat(tmp_act, tmp_goal=next_heating_goal_temperature, time_to_consumption = time_to_next_heating)):
+                print("need to heat up before consumption, time to coms:{}".format(time_to_next_heating))
+                if not is_on:
+                    print("bojler is needed to heat up from {} to {}. turning socket on".format(tmp_act, next_heating_goal_temperature))
+                    self._turn_socket_on()
+
+                return
+
+            #resit cas do dalsiho topeni a chladnuti
+            #podle toho pricitat stupne
+            #idealne ovsem, kdyby po heatingy bylo min
+            #takze mozna netreva resit, jelikoz cil je, aby po spotrebe byla teplota idealne na min
+
+            if ( (tmp_act > (self.consumption_tmp_min + 3)) and not self.coef_down_in_current_heating_cycle_changed):
+                self.coef_down_in_current_heating_cycle_changed = True
+                #rozlisovat kolik casu zbyva do zacatku dalsiho ohrivani a podle toho uspat
+                print("actual tmp is greater than consumption tmp min")
+                self.heating_coef *= 0.985            
+                print("changing coef to {}".format(self.heating_coef))
+                    
+            if is_on:
+                    print("turning off outside of heating, actual_tmp = {}".format(tmp_act))
+                    self._turn_socket_off()
+
+        
+
 
     def _turn_socket_on(self):
         try:
@@ -280,18 +328,7 @@ class Controller:
             print("it was unable to turn off socket")        
 
 
-    def _heating_temperature(self):
-
-        if(self._is_in_heating()):
-            heating = self._next_heating_time('end')
-        else:
-            heating = self._next_heating_time('start')
-
-        peak = heating[2]
-
-        heat_temp = self.heating_coef * peak
-      
-        return heat_temp
+ 
   
   
 
@@ -322,12 +359,14 @@ if __name__ == '__main__':
     c = Controller(settings_file)
 
     while (1):
-        try:
-            c.control()
-        except:
-            print(datetime.now())
-            print("unable to control in this cycle")
-        time.sleep(120)
+        #try:
+        c.control()
+        #except:
+        #    print(datetime.now())
+        #    print("unable to control in this cycle")
+        
+        #c.control()
+        time.sleep(60)
     
 
 
