@@ -23,13 +23,17 @@ class TimeHandler:
         return (calendar.day_name[date.weekday()]) 
 
     def hour_minutes_now(self):
-        now = + timedelta(hours = 1) + datetime.now()
+        now = datetime.now()
         return datetime.strptime(now.strftime("%H:%M"), "%H:%M")
 
+
+    #funkce pro kalendar Google, jez ma data v SEC, nutno pricist hodinu k datetime.now()
     def is_date_between(self, begin_date, end_date):
         check_date = datetime.now() + timedelta(hours = 1)
 
+        #hodinu pred koncem udalosti uz ridit normalne, aby se voda stihla pripadne nahrat
         return begin_date <= check_date <= (end_date - timedelta(hours = 1))
+
     def date_from_influxdb_to_datetime(self, date_from_db):
         return datetime.strptime(date_from_db, "%Y-%m-%dT%H:%M:%SZ")
     def date_to_datetime(self, date):

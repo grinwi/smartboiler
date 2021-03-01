@@ -99,6 +99,7 @@ class Controller:
 
 
     def _last_entry(self):
+        #zde jsou casy v poradku
         """Loads last entru from DB - actual.
 
         Args:
@@ -107,19 +108,19 @@ class Controller:
         Returns:
             [type]: [last entry values]
         """
-        #dodelat kontrolu stari zaznamu. pri prilis starem ohriva
         try:
             result = self.InfluxDBClient.query('SELECT * FROM "' + self.db_name + '"."autogen"."' + self.measurement + '" ORDER BY DESC LIMIT 1')
     
             result_list = list(result.get_points(measurement=self.measurement))[0]
             
             time_of_last_entry = self.TimeHandler.date_from_influxdb_to_datetime(result_list["time"])
-
             tmp1 = result_list["tmp1"]
             tmp2 = result_list["tmp2"]
             socket_turned_on = result_list["turned"]
-        
-            if (datetime.now() - time_of_last_entry > timedelta(minutes = 30)):
+
+            time_now = datetime.now()
+
+            if (time_now - time_of_last_entry > timedelta(minutes = 30)):
                 print("too old last entry ({}), need to heat".format(time_of_last_entry))
                 return None
             return (tmp1, tmp2, socket_turned_on)
@@ -197,7 +198,7 @@ class Controller:
         False
 
     def _check_data(self):
-        if self.last_data_update - datetime.now() + timedelta(hours = 1) > timedelta(days = 7):
+        if self.last_data_update - datetime.now()  > timedelta(days = 7):
             print(datetime.now() )
             print("actualizing data")
 
@@ -208,9 +209,15 @@ class Controller:
 
     def control(self):
 
+
         self._check_data()
 
         last_entry = self._last_entry()
+        if self.EventChecker.check_event():
+            print("naplanovana udalost")
+            self._turn_socket_off()
+            time.sleep(600)
+            return
 
         if last_entry is None:
             self._turn_socket_on()
@@ -233,11 +240,6 @@ class Controller:
 
 
 
-        if self.EventChecker.check_event():
-            print("naplanovana udalost")
-            if is_on:
-                self._turn_socket_off()
-            return
 
         if (tmp_act < self.tmp_min):
             if not is_on:
@@ -255,10 +257,11 @@ class Controller:
             current_heating_half_duration = current_heating['duration'] / 2
             how_long_to_current_heating_end = current_heating['will_occur_in']
 
-            if(tmp_act < self.consumption_tmp_min and not socket_turned_on):
+            if(tmp_act < self.consumption_tmp_min):
             
                 print("in heating, needed to increase tmp({}°C) above tmp min({}°C)".format(tmp_act, self.consumption_tmp_min))
-                self._turn_socket_on()
+                if not is_on:
+                    self._turn_socket_on()
 
                 if( (how_long_to_current_heating_end > current_heating_half_duration)  and not self.coef_up_in_current_heating_cycle_changed):
                     self.coef_up_in_current_heating_cycle_changed = True
@@ -280,7 +283,7 @@ class Controller:
             next_heating =  self._next_heating_event('start')
             time_to_next_heating = next_heating['will_occur_in']
             next_heating_goal_temperature = next_heating['peak'] * self.heating_coef
-            print("{}   next heating at {} starts in: {}".format(datetime.now(), next_heating['time'], time_to_next_heating))
+            #print("{}   next heating at {} starts in: {}".format(datetime.now(), next_heating['time'], time_to_next_heating))
 
             #v tomto pripade je v momente neodberu potreba ohrivat + v pripadech, ze je teplota pod min viz vyse
             if( self.Bojler.is_needed_to_heat(tmp_act, tmp_goal=next_heating_goal_temperature, time_to_consumption = time_to_next_heating)):

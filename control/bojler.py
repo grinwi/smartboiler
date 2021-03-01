@@ -23,8 +23,7 @@ class Bojler:
 
     def is_needed_to_heat(self, tmp_act, tmp_goal, time_to_consumption):
         tmp_change = tmp_goal - tmp_act
-        
-       
+               
         if (tmp_change > 0) and (time_to_consumption <= self.time_needed_to_heat_up(tmp_change)):
             return True
         else:
