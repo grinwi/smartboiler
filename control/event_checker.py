@@ -51,6 +51,7 @@ class EventChecker:
             service = build('calendar', 'v3', credentials=creds)
         except:
             print("couldnt build service")
+            return False
         # Call the Calendar API
         now = datetime.datetime.utcnow().isoformat() + 'Z' # 'Z' indicates UTC time
         events_result = service.events().list(calendarId='primary', timeMin=now,
@@ -67,7 +68,6 @@ class EventChecker:
                 if("#off" in e['summary']):
                     start = self.TimeHandler.date_to_datetime(e['start'].get('dateTime', e['start'].get('date')))
                     end = self.TimeHandler.date_to_datetime( e['end'].get('dateTime', e['end'].get('date')))
-
                     
                     if(self.TimeHandler.is_date_between(start, end)):
                         return_value = True
