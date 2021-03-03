@@ -59,12 +59,11 @@ class EventChecker:
     def next_heat_up_event(self):
         events = self.load_events()
 
-        events = self.load_events()
         if not events:
             return False
         else:
             for e in events:
-                if re.match(re.match('^.*boiler heat up at (\d+) degrees$', e['summary'])[1]):
+                if re.match('^.*boiler heat up at (\d+) degrees$', e['summary']):
                     degree_target = int(re.split('^.*boiler heat up at (\d+) degrees$', e['summary'])[1])
                     start = self.date_to_datetime(e['start'].get('dateTime', e['start'].get('date')))
                     print(e, degree_target)
