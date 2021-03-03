@@ -4,11 +4,12 @@ import datetime
 import time
 import pickle
 import os.path
+import re
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
-from time_handler import TimeHandler
 
+from time_handler import TimeHandler
 
 # If modifying these scopes, delete the file token.pickle.
 
@@ -16,15 +17,12 @@ from time_handler import TimeHandler
 class EventChecker:
 
     def __init__(self):
-        print("------------------------------------------------------\n")
-        print('initializing of EventChecker\n')
-        print("------------------------------------------------------\n")
 
+     
+        SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
 
-        self.SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
-        self.TimeHandler = TimeHandler()
-
-    def check_event(self):
+        sleeping_time = 1800
+    def load_events(self):
         """Shows basic usage of the Google Calendar API.
         Prints the start and name of the next 10 events on the user's calendar.
         """
@@ -51,28 +49,49 @@ class EventChecker:
             service = build('calendar', 'v3', credentials=creds)
         except:
             print("couldnt build service")
-            return False
         # Call the Calendar API
         now = datetime.datetime.utcnow().isoformat() + 'Z' # 'Z' indicates UTC time
         events_result = service.events().list(calendarId='primary', timeMin=now,
                                             maxResults=1, singleEvents=True,
                                             orderBy='startTime').execute()
-        event = events_result.get('items', [])
+        events = events_result.get('items', [])
+        return events
+    def next_heat_up_event(self):
+        events = self.load_events()
 
-        return_value = False
-        if not event:
-            return return_value
+        events = self.load_events()
+        if not events:
+            return False
         else:
-            for e in event:
+            for e in events:
+                if re.match(re.match('^.*boiler heat up at (\d+) degrees$', e['summary'])[1]):
+                    degree_target = int(re.split('^.*boiler heat up at (\d+) degrees$', e['summary'])[1])
+                    start = self.date_to_datetime(e['start'].get('dateTime', e['start'].get('date')))
+                    print(e, degree_target)
+                    
+                return False
+
+    def check_off_event(self):
+        events = self.load_events()
+        if not events:
+            return False
+        else:
+            for e in events:
 
                 if("#off" in e['summary']):
-                    start = self.TimeHandler.date_to_datetime(e['start'].get('dateTime', e['start'].get('date')))
-                    end = self.TimeHandler.date_to_datetime( e['end'].get('dateTime', e['end'].get('date')))
+                    start = self.date_to_datetime(e['start'].get('dateTime', e['start'].get('date')))
+                    end = self.date_to_datetime( e['end'].get('dateTime', e['end'].get('date')))
                     
-                    if(self.TimeHandler.is_date_between(start, end)):
-                        return_value = True
-            return return_value
+                    return self.is_date_between(start, end)
+                return False
 
+    def date_to_datetime(self, date):
+        return datetime.datetime.strptime(date, "%Y-%m-%dT%H:%M:%S+01:00")
+
+    def is_date_between(self, begin_date, end_date):
+        check_date = datetime.datetime.now()   
+
+        return check_date >= begin_date or check_date <= end_date - datetime.timedelta(hours=3)
 
 if __name__ == '__main__':
     e = EventChecker()
