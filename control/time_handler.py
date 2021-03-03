@@ -23,7 +23,7 @@ class TimeHandler:
         return (calendar.day_name[date.weekday()]) 
 
     def hour_minutes_now(self):
-        now = + timedelta(hours = 1) + datetime.now()
+        now = datetime.now() + timedelta(hours = 1)
         return datetime.strptime(now.strftime("%H:%M"), "%H:%M")
 
     def is_date_between(self, begin_date, end_date):
