@@ -58,17 +58,20 @@ class EventChecker:
         return events
     def next_heat_up_event(self):
         events = self.load_events()
+        return_dict = {"time_to_event": None, "degree_target": None}
 
-        if not events:
-            return False
-        else:
+        if events:
             for e in events:
                 if re.match('^.*boiler heat up at (\d+) degrees$', e['summary']):
                     degree_target = int(re.split('^.*boiler heat up at (\d+) degrees$', e['summary'])[1])
                     start = self.date_to_datetime(e['start'].get('dateTime', e['start'].get('date')))
-                    print(e, degree_target)
-                    
-                return False
+
+                    time_to_event  = datetime.datetime.now() - datetime.timedelta(hours= 1) - start
+                    return_dict['time_to_event'] = time_to_event
+                    return_dict['degree_target'] = degree_target
+                    break
+            print(return_dict)
+            return return_dict
 
     def check_off_event(self):
         events = self.load_events()
@@ -82,7 +85,7 @@ class EventChecker:
                     end = self.date_to_datetime( e['end'].get('dateTime', e['end'].get('date')))
                     
                     return self.is_date_between(start, end)
-                return False
+            return False
 
     def date_to_datetime(self, date):
         return datetime.datetime.strptime(date, "%Y-%m-%dT%H:%M:%S+01:00")
