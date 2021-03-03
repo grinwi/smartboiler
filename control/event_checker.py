@@ -67,10 +67,9 @@ class EventChecker:
                     start = self.date_to_datetime(e['start'].get('dateTime', e['start'].get('date')))
 
                     time_to_event  = datetime.datetime.now() - datetime.timedelta(hours= 1) - start
-                    return_dict['time_to_event'] = time_to_event
+                    return_dict['hours_to_event'] = time_to_event / datetime.timedelta(hours=1)
                     return_dict['degree_target'] = degree_target
                     break
-            print(return_dict)
             return return_dict
 
     def check_off_event(self):

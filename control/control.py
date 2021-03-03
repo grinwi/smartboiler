@@ -214,16 +214,15 @@ class Controller:
 
         last_entry = self._last_entry()
 
-        try:
-            self.EventChecker.next_heat_up_event()
-        except:
-            print("unable to find next heatup event")
-                          
+        
+        #print("unable to find next heatup event")
+
         if self.EventChecker.check_off_event():
             print("naplanovana udalost")
             self._turn_socket_off()
             time.sleep(600)
             return
+        next_heat_up_event = self.EventChecker.next_heat_up_event()
 
         if last_entry is None:
             self._turn_socket_on()
@@ -231,21 +230,21 @@ class Controller:
         
         tmp_out, tmp_act, is_on = last_entry
 
+        if next_heat_up_event['hours_to_event'] is not None:
+            if( self.Bojler.is_needed_to_heat(tmp_act, tmp_goal=next_heat_up_event['degree_target'], time_to_consumption = next_heat_up_event['hours_to_event'])):
+                print("planned event to heat up with target {} Celsius occurs in {} hours".format(next_heat_up_event['degree_target'], next_heat_up_event['hours_to_event']))
+                if not is_on:
+                    self._turn_socket_on()
+                return
+                
+
+
 
         
         if(self._is_in_heating()):
             self.coef_down_in_current_heating_cycle_changed = False
         else:
             self.coef_up_in_current_heating_cycle_changed = False
-
-
-        #or is in consumption and temperature is below smthing
-
-        #if(self.is_in_heating and tmp_act < self.consumption_tmp_min):
-            #pokud dojdu sem, je potreba zvetsit teplotu ohrevu. pokud to jiz nejde, zvetsit min (pouze jen do nejake hodnoty)
-
-
-
 
         if (tmp_act < self.tmp_min):
             if not is_on:
