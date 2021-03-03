@@ -213,7 +213,13 @@ class Controller:
         self._check_data()
 
         last_entry = self._last_entry()
-        if self.EventChecker.check_event():
+
+        try:
+            self.EventChecker.next_heat_up_event()
+        except:
+            print("unable to find next heatup event")
+                          
+        if self.EventChecker.check_off_event():
             print("naplanovana udalost")
             self._turn_socket_off()
             time.sleep(600)

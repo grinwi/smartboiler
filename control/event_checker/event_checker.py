@@ -4,6 +4,7 @@ import datetime
 import time
 import pickle
 import os.path
+import re
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
@@ -21,7 +22,7 @@ class EventChecker:
         SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
 
         sleeping_time = 1800
-    def check_event(self):
+    def load_events(self):
         """Shows basic usage of the Google Calendar API.
         Prints the start and name of the next 10 events on the user's calendar.
         """
@@ -53,13 +54,29 @@ class EventChecker:
         events_result = service.events().list(calendarId='primary', timeMin=now,
                                             maxResults=1, singleEvents=True,
                                             orderBy='startTime').execute()
-        event = events_result.get('items', [])
+        events = events_result.get('items', [])
+        return events
+    def next_heat_up_event(self):
+        events = self.load_events()
 
-
-        if not event:
+        events = self.load_events()
+        if not events:
             return False
         else:
-            for e in event:
+            for e in events:
+                if re.match(re.match('^.*boiler heat up at (\d+) degrees$', e['summary'])[1]):
+                    degree_target = int(re.split('^.*boiler heat up at (\d+) degrees$', e['summary'])[1])
+                    start = self.date_to_datetime(e['start'].get('dateTime', e['start'].get('date')))
+                    print(e, degree_target)
+                    
+                return False
+
+    def check_off_event(self):
+        events = self.load_events()
+        if not events:
+            return False
+        else:
+            for e in events:
 
                 if("#off" in e['summary']):
                     start = self.date_to_datetime(e['start'].get('dateTime', e['start'].get('date')))
