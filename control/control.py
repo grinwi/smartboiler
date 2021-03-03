@@ -229,7 +229,6 @@ class Controller:
             return
         
         tmp_out, tmp_act, is_on = last_entry
-
         if next_heat_up_event['hours_to_event'] is not None:
             if( self.Bojler.is_needed_to_heat(tmp_act, tmp_goal=next_heat_up_event['degree_target'], time_to_consumption = next_heat_up_event['hours_to_event'])):
                 print("planned event to heat up with target {} Celsius occurs in {} hours".format(next_heat_up_event['degree_target'], next_heat_up_event['hours_to_event']))
