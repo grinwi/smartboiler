@@ -15,9 +15,15 @@ class WeekPlanner:
         self.week_days_high_tarifs_intervals = self._find_empty_intervals(data)
 
     def _find_empty_intervals(self, data):
-        time_interval = '5min'
+            
+        time_interval_int = 5
+        time_interval = str(time_interval_int) + 'min'
         #grouping data from db by time interval in minutes
-        data = data.to_frame()
+        #data = data.to_frame()
+
+        
+        data = data[data.index > (data.last_valid_index() - timedelta(days=10))]
+
         data = data.groupby(pd.Grouper(freq=time_interval)).aggregate(np.mean)
 
         #grouping data grouped by time interval by dayofweek, hour and minut
@@ -28,20 +34,20 @@ class WeekPlanner:
         start = data.first_valid_index()
         end = data.last_valid_index()
         #new empty dataframe
-        df = pd.DataFrame({'tmp1': -1} ,index=pd.date_range(start, 
+        df = pd.DataFrame({'tmp2': -1} ,index=pd.date_range(start, 
                             end, freq='1min'))
         #grouped by same time interval as dataframe from db and then by day of week, hour and minute
         df = df.groupby(pd.Grouper(freq=time_interval)).aggregate(np.mean)
         df = df.groupby([df.index.dayofweek, df.index.hour, df.index.minute], dropna = False).mean()
 
         #adding of values from db into an empty dataframe
-        df.tmp1 = df_grouped.tmp1
+        df.tmp2 = df_grouped.tmp2
 
 
         week_high_tarifs =  {}
 
         #for each of day of week finds intervals of high tarif
-        for idx, value in enumerate(self.TimeHandler.daysofweek):    
+        for idx in range(7):    
 
             i = 0   #index of interval if the day
 
@@ -59,7 +65,19 @@ class WeekPlanner:
                 if(np.isnan(tmp1)):
                     if (first_none == False):
                         first_none = True
-                        start_of_none = timedelta(hours=(hour + (minute/60)))
+                        start_of_none = timedelta(hours=(hour + (minute/60))) 
+
+                        minute -= time_interval_int
+
+                        if minute < 0:
+                            minute += time_interval_int
+                            hour -= 1 
+                            if hour < 0:
+                                hour += 1
+                                day_of_week = (day_of_week+1) % 7
+                        previous_index = (day_of_week,hour,minute)
+
+                        tmp_before_start = df.loc[previous_index][0]
                     
                 else:
                     if first_none:
@@ -69,12 +87,31 @@ class WeekPlanner:
                         end_of_none = (datetime.min + end_of_none).time()
                         start_of_none = (datetime.min + start_of_none).time()
 
-                        day_high_tarifs.update({i:{"start": start_of_none, "end":end_of_none, "duration":duration}})
+                        minute += time_interval_int
+
+                        if minute >= 60:
+                            minute -= time_interval_int
+                            hour += 1 
+                            if hour > 23:
+                                hour -= 1
+                                day_of_week = (day_of_week-1) % 7
+
+                        next_index = (day_of_week,hour,minute)
+                        tmp_after_end = df.loc[next_index][0]
+
+                        tmp_delta = tmp_before_start - tmp_after_end
+
+                
+
+
+                        day_high_tarifs.update({i:{"start": start_of_none, "end":end_of_none, "duration":duration, "tmp_delta":tmp_delta}})
                         i += 1
                         first_none = False
 
+            #print(day_high_tarifs)
             week_high_tarifs.update({idx:day_high_tarifs})
         return week_high_tarifs
+
 
     def _create_days_average(self, data):
 
@@ -216,7 +253,6 @@ class WeekPlanner:
             day_time_start = time_now
 
 
-        print("time of high tarif : {}".format(time_of_high_tarif))
         return (hours_to_next_heating - time_of_high_tarif) / timedelta(hours=1)
 
     def _empty_intervals(self, data_from_db = None):

@@ -287,8 +287,11 @@ class Controller:
         else:
             #reseni ohrevu pro dalsi spotrebu
             next_heating =  self._next_heating_event('start')
+
             print("next heating in", next_heating['will_occur_in'] )
+
             time_to_next_heating = self.WeekPlanner.duration_of_low_tarif_to_next_heating(next_heating['will_occur_in']) 
+            
             print("time to next heating without high tarifs", time_to_next_heating)
 
             next_heating_goal_temperature = next_heating['peak'] * self.heating_coef
