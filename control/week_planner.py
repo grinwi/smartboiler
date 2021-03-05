@@ -198,7 +198,6 @@ class WeekPlanner:
                 if (next_actual_time_delta >= timedelta(minutes=0)):
                     time_to_next_heating_event = (next_actual_time_delta + timedelta(days = days_plus))  / timedelta(hours=1)
 
-                    print(time_to_next_heating_event)
                     return {"next_high_tarif_in" : time_to_next_heating_event, "tmp_delta" : item['tmp_delta']}
 
             actual_time = actual_time.replace(hour=0, minute=0)

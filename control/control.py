@@ -292,7 +292,6 @@ class Controller:
 
             time_to_next_heating = self.WeekPlanner.duration_of_low_tarif_to_next_heating(next_heating['will_occur_in']) 
 
-            print("time to next heating without high tarifs", time_to_next_heating)
 
             next_heating_goal_temperature = next_heating['peak'] * self.heating_coef
             #print("{}   next heating at {} starts in: {}".format(datetime.now(), next_heating['time'], time_to_next_heating))
