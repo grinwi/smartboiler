@@ -290,7 +290,7 @@ class Controller:
             print("next heating in", next_heating['will_occur_in'] )
             time_to_next_heating = self.WeekPlanner.duration_of_low_tarif_to_next_heating(next_heating['will_occur_in']) 
             print("time to next heating without high tarifs", time_to_next_heating)
-            
+
             next_heating_goal_temperature = next_heating['peak'] * self.heating_coef
             #print("{}   next heating at {} starts in: {}".format(datetime.now(), next_heating['time'], time_to_next_heating))
 
@@ -314,7 +314,17 @@ class Controller:
                 print("actual tmp is greater than consumption tmp min")
                 self.heating_coef *= 0.985            
                 print("changing coef to {}".format(self.heating_coef))
-                    
+
+            #if boiler need to heat tmp act, tmp act + delta, time to next high tarif
+
+            next_high_tarif_interval = self.WeekPlanner.next_high_tarif_interval()
+            if next_high_tarif_interval is not None:
+                tmp_delta = next_high_tarif_interval['tmp_delta']
+                time_to_next_high_tarif_interval = next_high_tarif_interval['next_high_tarif_in']
+                if (self.Bojler.is_needed_to_heat(tmp_act, tmp_goal=tmp_act + tmp_delta, time_to_consumption = time_to_next_high_tarif_interval)):
+                    if not is_on:
+                        print("heating up before in high tarif consumption from {} to {}".format(tmp_act, tmp_act + tmp_delta))
+                    return
             if is_on:
                     print("turning off outside of heating, actual_tmp = {}".format(tmp_act))
                     self._turn_socket_off()

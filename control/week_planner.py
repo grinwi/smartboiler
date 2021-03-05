@@ -139,6 +139,36 @@ class WeekPlanner:
         
         return self.week_days_consumptions
 
+    
+    def next_high_tarif_interval(self):
+
+        actual_time = datetime.now().time()
+
+
+        day_of_week = datetime.now().weekday()
+        days_plus = 0
+
+        while(days_plus < 7):
+        
+            day_high_tarifs_intervals = self.week_days_high_tarifs_intervals[day_of_week]
+
+            for  key, item in   day_high_tarifs_intervals.items():
+                next_time = item['start']
+
+                next_actual_time_delta = datetime.combine(date.min, next_time)- datetime.combine(date.min, actual_time) 
+                
+
+                if (next_actual_time_delta >= timedelta(minutes=0)):
+                    time_to_next_heating_event = (next_actual_time_delta + timedelta(days = days_plus))  / timedelta(hours=1)
+
+                    print(time_to_next_heating_event)
+                    return {"next_high_tarif_in" : time_to_next_heating_event, "tmp_delta" : item['tmp_delta']}
+
+            actual_time = actual_time.replace(hour=0, minute=0)
+            days_plus += 1
+            day_of_week = (day_of_week + 1) % 7
+        return None
+
     def duration_of_low_tarif_to_next_heating(self, hours_to_next_heating):
     #time in hours float
 
