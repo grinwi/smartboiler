@@ -151,6 +151,7 @@ class Controller:
             
             print("got new datasets")
             df = pd.DataFrame(datasets)
+            df.to_pickle("df_form.pkl")
             df = df[df.in_event != True].tmp1
     
             return df
