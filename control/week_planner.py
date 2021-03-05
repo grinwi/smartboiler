@@ -17,7 +17,7 @@ class WeekPlanner:
     def _find_empty_intervals(self, data):
         time_interval = '5min'
         #grouping data from db by time interval in minutes
-        #data = data.to_frame()
+        data = data.to_frame()
         data = data.groupby(pd.Grouper(freq=time_interval)).aggregate(np.mean)
 
         #grouping data grouped by time interval by dayofweek, hour and minut
