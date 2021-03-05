@@ -96,7 +96,7 @@ def measure(nmeas):
                             "tmp1": temperature_1, 
                             "tmp2": temperature_2,
                             "turned": data['relays'][0]['ison'],
-                            "in_event" : EvntChecker.check_event()
+                            "in_event" : EvntChecker.check_off_event()
                         }
                     }
                 ]
