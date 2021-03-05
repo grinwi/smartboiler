@@ -10,10 +10,13 @@ control/credentials.json
 
 #arima model
 arima/
-
+#turning on
+/turning_on
 #testing folders
 test/
 app/
+
+data_zuk.pkl
 
 # C extensions
 *.so
