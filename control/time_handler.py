@@ -22,9 +22,10 @@ class TimeHandler:
             
         return (calendar.day_name[date.weekday()]) 
 
-    def hour_minutes_now(self):
-        now = datetime.now()
-        return datetime.strptime(now.strftime("%H:%M"), "%H:%M")
+    def hour_minutes_now(self, datetime = None):
+        if datetime is None:
+            datetime = datetime.now()
+        return datetime.strptime(datetime.strftime("%H:%M"), "%H:%M")
 
 
     #funkce pro kalendar Google, jez ma data v SEC, nutno pricist hodinu k datetime.now()

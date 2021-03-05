@@ -1,5 +1,7 @@
 from scipy.signal import argrelextrema, find_peaks, peak_widths
+from datetime import datetime, timedelta, date
 from time_handler import TimeHandler
+
 import pandas as pd
 import numpy as np
 class WeekPlanner:
@@ -10,39 +12,70 @@ class WeekPlanner:
         print("------------------------------------------------------\n")        
         self.TimeHandler = TimeHandler()
         self.week_days_consumptions = self._create_days_average(data)
-        self.empty_intervals = self._find_empty_intervals(data)
+        self.week_days_high_tarifs_intervals = self._find_empty_intervals(data)
 
     def _find_empty_intervals(self, data):
-        df_grouped = data.groupby([data.index.hour, data.index.minute]).mean()
-        df_grouped = df_grouped.to_frame()
+        time_interval = '5min'
+        #grouping data from db by time interval in minutes
+        #data = data.to_frame()
+        data = data.groupby(pd.Grouper(freq=time_interval)).aggregate(np.mean)
 
-        df_mask = pd.DataFrame({'tmp1': 1000} ,index=pd.date_range('2018-03-01 00:00:00', 
-                            periods=1440, freq='1min'))
-        df_mask = df_mask.groupby([df_mask.index.hour,df_mask.index.minute], dropna=False).mean()
+        #grouping data grouped by time interval by dayofweek, hour and minut
+        df_grouped = data.groupby([data.index.dayofweek, data.index.hour, data.index.minute], dropna=True).mean()
 
-        df_mask.tmp1 = df_grouped.tmp1
-        df_mapped = df_mask
-        first_none = False
 
-        day_out_of_service_dict = {}
-        i = 0
+        #start and of measuring for creating an emptu dataframe with rows for all times by 5 minuts
+        start = data.first_valid_index()
+        end = data.last_valid_index()
+        #new empty dataframe
+        df = pd.DataFrame({'tmp1': -1} ,index=pd.date_range(start, 
+                            end, freq='1min'))
+        #grouped by same time interval as dataframe from db and then by day of week, hour and minute
+        df = df.groupby(pd.Grouper(freq=time_interval)).aggregate(np.mean)
+        df = df.groupby([df.index.dayofweek, df.index.hour, df.index.minute], dropna = False).mean()
 
-        for index, row in df_mapped.iterrows():
-            if(np.isnan( row['tmp1'])):
-                if (first_none == False):
-                    first_none = True
-                    start_of_none = self.TimeHandler.float_to_time(index[0] + index[1]/60)
+        #adding of values from db into an empty dataframe
+        df.tmp1 = df_grouped.tmp1
+
+
+        week_high_tarifs =  {}
+
+        #for each of day of week finds intervals of high tarif
+        for idx, value in enumerate(self.TimeHandler.daysofweek):    
+
+            i = 0   #index of interval if the day
+
+            day_high_tarifs = {}
+            first_none = False
+            for index, row in df.iloc[df.index.get_level_values(level=0) ==  idx].iterrows():
+
+
+                day_of_week = index[0]
+                hour = index[1]
+                minute = index[2]
+
+                tmp1 = row[0]
+                    
+                if(np.isnan(tmp1)):
+                    if (first_none == False):
+                        first_none = True
+                        start_of_none = timedelta(hours=(hour + (minute/60)))
+                    
                 else:
-                    continue
-            else:
-                if first_none:
-                    end_of_none = self.TimeHandler.float_to_time(index[0] + index[1]/60)
-                    duration = end_of_none - start_of_none
-                    day_out_of_service_dict.update({i:{"start": start_of_none, "end":end_of_none, "duration":duration}})
-                    i += 1
-                    first_none = False
+                    if first_none:
+                        end_of_none = timedelta(hours=(hour + (minute/60)))
+                        duration = (end_of_none - start_of_none)
 
-        return day_out_of_service_dict
+                        end_of_none = (datetime.min + end_of_none).time()
+                        start_of_none = (datetime.min + start_of_none).time()
+
+                        day_high_tarifs.update({i:{"start": start_of_none, "end":end_of_none, "duration":duration}})
+                        i += 1
+                        first_none = False
+
+            week_high_tarifs.update({idx:day_high_tarifs})
+        return week_high_tarifs
+
     def _create_days_average(self, data):
 
 
@@ -99,10 +132,62 @@ class WeekPlanner:
 
         if ((data_from_db is not None)):
             self.week_days_consumptions = self._create_days_average(data_from_db)
+            self.week_days_high_tarifs_intervals = self._find_empty_intervals(data_from_db)
+
 
         print("created new week plan!")
         
         return self.week_days_consumptions
+
+    def duration_of_low_tarif_to_next_heating(self, hours_to_next_heating):
+    #time in hours float
+
+        datetime_now = datetime.now()
+        time_now = datetime_now.time()
+        day_time_start = time_now
+
+        hours_to_next_heating=timedelta(hours=hours_to_next_heating)
+
+        day_of_week = datetime_now.weekday()
+
+        week_high_tarifs_intervals = self.week_days_high_tarifs_intervals
+        
+        time_added = timedelta(hours=0)
+        time_of_high_tarif = timedelta(hours=0)
+
+
+        while((time_added < hours_to_next_heating) and day_of_week < 7):
+            day_high_tarifs_intervals = week_high_tarifs_intervals[day_of_week]
+            if(day_high_tarifs_intervals is not None):
+
+                added_in_day = timedelta(hours=0)
+
+                for j in range(len(day_high_tarifs_intervals)):
+                    actual_interval = day_high_tarifs_intervals[j]
+
+                    if time_now > actual_interval['end']:
+                        continue
+                    
+                    added_in_day += datetime.combine(date.min, actual_interval['start']) - datetime.combine(date.min, time_now) 
+
+                
+                    if ((time_now < actual_interval['end']) and (time_now > actual_interval['start'])):
+                        time_of_high_tarif += datetime.combine(date.min, actual_interval['end']) - datetime.combine(date.min, time_now)
+
+                    elif added_in_day + time_added < hours_to_next_heating:
+                            time_of_high_tarif += actual_interval['duration']
+
+
+                    time_now = actual_interval['end']
+                        
+            time_added += datetime.combine(date.min, time_now.replace(hour = 23, minute=59)) - datetime.combine(date.min, day_time_start)
+            day_of_week = (day_of_week + 1) % 7
+            time_now = time_now.replace(hour = 0, minute=0)
+            day_time_start = time_now
+
+
+        print("time of high tarif : {}".format(time_of_high_tarif))
+        return (hours_to_next_heating - time_of_high_tarif) / timedelta(hours=1)
 
     def _empty_intervals(self, data_from_db = None):
         if (data_from_db is not None):

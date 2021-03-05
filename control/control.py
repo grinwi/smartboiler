@@ -187,6 +187,7 @@ class Controller:
 
             actual_time = self.TimeHandler.hour_minutes_now().replace(hour=0, minute=0)
             days_plus += 1
+
                 
     def _is_in_heating(self):
 
@@ -259,7 +260,8 @@ class Controller:
             #for current heating   
             current_heating = self._next_heating_event('end')
             current_heating_half_duration = current_heating['duration'] / 2
-            how_long_to_current_heating_end = current_heating['will_occur_in']
+            how_long_to_current_heating_end = current_heating['will_occur_in'] 
+            
 
             if(tmp_act < self.consumption_tmp_min):
             
@@ -285,7 +287,10 @@ class Controller:
         else:
             #reseni ohrevu pro dalsi spotrebu
             next_heating =  self._next_heating_event('start')
-            time_to_next_heating = next_heating['will_occur_in']
+            print("next heating in", next_heating['will_occur_in'] )
+            time_to_next_heating = self.WeekPlanner.duration_of_low_tarif_to_next_heating(next_heating['will_occur_in']) 
+            print("time to next heating without high tarifs", time_to_next_heating)
+            
             next_heating_goal_temperature = next_heating['peak'] * self.heating_coef
             #print("{}   next heating at {} starts in: {}".format(datetime.now(), next_heating['time'], time_to_next_heating))
 
