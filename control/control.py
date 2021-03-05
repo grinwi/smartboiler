@@ -151,7 +151,7 @@ class Controller:
             
             print("got new datasets")
             df = pd.DataFrame(datasets)
-            df = df[df.in_event != True].tmp1
+            df = df[df.in_event != True]
     
             return df
 
@@ -291,7 +291,7 @@ class Controller:
             print("next heating in", next_heating['will_occur_in'] )
 
             time_to_next_heating = self.WeekPlanner.duration_of_low_tarif_to_next_heating(next_heating['will_occur_in']) 
-            
+
             print("time to next heating without high tarifs", time_to_next_heating)
 
             next_heating_goal_temperature = next_heating['peak'] * self.heating_coef
