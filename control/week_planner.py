@@ -49,7 +49,7 @@ class WeekPlanner:
         #for each of day of week finds intervals of high tarif
         for idx in range(7):    
 
-            i = 0   #index of interval if the day
+            i = 0   #index of interval of the day
 
             day_high_tarifs = {}
             first_none = False
@@ -121,7 +121,7 @@ class WeekPlanner:
         prepared_data = self._prepare_data(data)
         #specialni height pro kazdy den tydne zvlast
 
-        for idx, value in enumerate(self.TimeHandler.daysofweek):
+        for idx in range(7):
 
             x = prepared_data[prepared_data.day_of_week == idx].tmp1.reset_index(drop=True)
 
@@ -136,7 +136,7 @@ class WeekPlanner:
                                                 "duration" : results_half[0][i], 
                                                 "peak":round(_['peak_heights'][i],2)}})
 
-            new_week_days_consumptions.update({value:day_aconsumptions})
+            new_week_days_consumptions.update({idx:day_aconsumptions})
 
         print("created new days average")
 

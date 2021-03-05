@@ -14,13 +14,6 @@ class TimeHandler:
     def float_to_time(self, float_number):
         return datetime.strptime('{0:02.0f}:{1:02.0f}'.format(*divmod(float_number * 60, 60)), "%H:%M%f")
 
-    def this_day_string(self, days_delta=None):
-        date = datetime.now()
-        
-        if days_delta is not None:
-            date += timedelta(days=days_delta)
-            
-        return (calendar.day_name[date.weekday()]) 
 
     def hour_minutes_now(self, dtime = None):
         if dtime is None:

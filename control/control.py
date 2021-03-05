@@ -168,12 +168,13 @@ class Controller:
         """
         actual_time = self.TimeHandler.hour_minutes_now() 
 
+        day_of_week = datetime.now().weekday()
 
         days_plus = 0
 
-        while(1):
+        while(days_plus < 7):
         
-            day_plan = self.WeekPlanner.week_days_consumptions[self.TimeHandler.this_day_string(days_plus)]
+            day_plan = self.WeekPlanner.week_days_consumptions[day_of_week]
 
             for  key, item in   day_plan.items():
                 next_time = item[event]
@@ -187,6 +188,8 @@ class Controller:
 
             actual_time = self.TimeHandler.hour_minutes_now().replace(hour=0, minute=0)
             days_plus += 1
+            day_of_week = (day_of_week + 1) % 7
+        return None
 
                 
     def _is_in_heating(self):
@@ -288,7 +291,6 @@ class Controller:
             #reseni ohrevu pro dalsi spotrebu
             next_heating =  self._next_heating_event('start')
 
-            print("next heating in", next_heating['will_occur_in'] )
 
             time_to_next_heating = self.WeekPlanner.duration_of_low_tarif_to_next_heating(next_heating['will_occur_in']) 
 
@@ -305,10 +307,7 @@ class Controller:
 
                 return
 
-            #resit cas do dalsiho topeni a chladnuti
-            #podle toho pricitat stupne
-            #idealne ovsem, kdyby po heatingy bylo min
-            #takze mozna netreva resit, jelikoz cil je, aby po spotrebe byla teplota idealne na min
+      
 
             if ( (tmp_act > (self.consumption_tmp_min + 3)) and not self.coef_down_in_current_heating_cycle_changed):
                 self.coef_down_in_current_heating_cycle_changed = True
