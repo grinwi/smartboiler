@@ -176,8 +176,13 @@ class WeekPlanner:
         
         return self.week_days_consumptions
 
-    
-    def next_high_tarif_interval(self):
+    def is_in_DTO(self):
+
+        time_to_next_DTO_start = self.next_high_tarif_interval('start')
+        time_to_next_DTO_end = self.next_high_tarif_interval('end')
+
+        return time_to_next_DTO_start > time_to_next_DTO_end
+    def next_high_tarif_interval(self, event):
 
         actual_time = datetime.now().time()
 
@@ -190,7 +195,7 @@ class WeekPlanner:
             day_high_tarifs_intervals = self.week_days_high_tarifs_intervals[day_of_week]
 
             for  key, item in   day_high_tarifs_intervals.items():
-                next_time = item['start']
+                next_time = item[event]
 
                 next_actual_time_delta = datetime.combine(date.min, next_time)- datetime.combine(date.min, actual_time) 
                 

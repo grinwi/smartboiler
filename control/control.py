@@ -118,13 +118,8 @@ class Controller:
             tmp2 = result_list["tmp2"]
             socket_turned_on = result_list["turned"]
 
-            time_now = datetime.now()
-
-            if (time_now - time_of_last_entry > timedelta(minutes = 30)):
-                print("too old last entry ({}), need to heat".format(time_of_last_entry))
-                return None
-            return (tmp1, tmp2, socket_turned_on)
-        
+            return {"tmp1":tmp1, "tmp2":tmp2, "socket_turned_on":socket_turned_on, "time_of_last_entry":time_of_last_entry}
+         
         except:
             print("unable to read from influxDBclient")
             return None
@@ -197,9 +192,8 @@ class Controller:
         hours_to_end = self._next_heating_event('end')["will_occur_in"]
         hours_to_start = self._next_heating_event('start')["will_occur_in"]
 
-        if(hours_to_start > hours_to_end):
-            return True
-        False
+        return hours_to_start > hours_to_end
+      
 
     def _check_data(self):
         if self.last_data_update - datetime.now()  > timedelta(days = 7):
@@ -231,10 +225,24 @@ class Controller:
         if last_entry is None:
             self._turn_socket_on()
             return
+
         
-        tmp_out, tmp_act, is_on = last_entry
+        time_now = datetime.now()
+        tmp_out = last_entry['tmp1']
+        tmp_act = last_entry['tmp2']
+        is_on = last_entry['socket_turned_on']
+        time_of_last_entry = last_entry['time_of_last_entry']
+
+        if (time_now - time_of_last_entry > timedelta(minutes = 30)) and not self.WeekPlanner.is_in_DTO():
+            print("too old last entry ({}), need to heat".format(time_of_last_entry))
+            if not is_on:
+                    self._turn_socket_on()
+            return
+                
+        
         if next_heat_up_event['hours_to_event'] is not None:
-            if( self.Bojler.is_needed_to_heat(tmp_act, tmp_goal=next_heat_up_event['degree_target'], time_to_consumption = next_heat_up_event['hours_to_event'])):
+            time_to_without_DTO = self.WeekPlanner.duration_of_low_tarif_to_next_heating(next_heat_up_event['hours_to_event'])
+            if( self.Bojler.is_needed_to_heat(tmp_act, tmp_goal=next_heat_up_event['degree_target'], time_to_consumption = time_to_without_DTO)):
                 print("planned event to heat up with target {} Celsius occurs in {} hours".format(next_heat_up_event['degree_target'], next_heat_up_event['hours_to_event']))
                 if not is_on:
                     self._turn_socket_on()
@@ -300,7 +308,7 @@ class Controller:
 
             #v tomto pripade je v momente neodberu potreba ohrivat + v pripadech, ze je teplota pod min viz vyse
             if( self.Bojler.is_needed_to_heat(tmp_act, tmp_goal=next_heating_goal_temperature, time_to_consumption = time_to_next_heating)):
-                print("need to heat up before consumption, time to coms:{}".format(time_to_next_heating))
+                print("need to heat up before consumption, time to coms:{} , time without DTO: {}".format(next_heating['will_occur_in'], time_to_next_heating))
                 if not is_on:
                     print("bojler is needed to heat up from {} to {}. turning socket on".format(tmp_act, next_heating_goal_temperature))
                     self._turn_socket_on()
@@ -318,7 +326,7 @@ class Controller:
 
             #if boiler need to heat tmp act, tmp act + delta, time to next high tarif
 
-            next_high_tarif_interval = self.WeekPlanner.next_high_tarif_interval()
+            next_high_tarif_interval = self.WeekPlanner.next_high_tarif_interval('start')
             if next_high_tarif_interval is not None:
                 tmp_delta = next_high_tarif_interval['tmp_delta']
                 if tmp_delta > 0:
