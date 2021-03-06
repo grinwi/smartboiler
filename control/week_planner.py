@@ -178,8 +178,8 @@ class WeekPlanner:
 
     def is_in_DTO(self):
 
-        time_to_next_DTO_start = self.next_high_tarif_interval('start')
-        time_to_next_DTO_end = self.next_high_tarif_interval('end')
+        time_to_next_DTO_start = self.next_high_tarif_interval('start')['next_high_tarif_in']
+        time_to_next_DTO_end = self.next_high_tarif_interval('end')['next_high_tarif_in']
 
         return time_to_next_DTO_start > time_to_next_DTO_end
     def next_high_tarif_interval(self, event):
