@@ -233,13 +233,11 @@ class Controller:
         is_on = last_entry['socket_turned_on']
         time_of_last_entry = last_entry['time_of_last_entry']
 
-        if self.WeekPlanner.is_in_DTO():
-            return
-
-        if (time_now - time_of_last_entry > timedelta(minutes = 30)):
-            print("too old last entry ({}), need to heat".format(time_of_last_entry))
-            if not is_on:
-                    self._turn_socket_on()
+        if (time_now - time_of_last_entry > timedelta(minutes = 10)):
+            if not self.WeekPlanner.is_in_DTO():
+                print("too old last entry ({}), need to heat".format(time_of_last_entry))
+                if not is_on:
+                        self._turn_socket_on()
             return
                 
         
