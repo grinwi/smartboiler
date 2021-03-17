@@ -24,10 +24,10 @@ class WeekPlanner:
         
         data = data[data.index > (data.last_valid_index() - timedelta(days=10))]
 
-        data = data.groupby(pd.Grouper(freq=time_interval)).aggregate(np.mean)
+        data = data.groupby(pd.Grouper(freq=time_interval)).aggregate(np.sum)
 
         #grouping data grouped by time interval by dayofweek, hour and minut
-        df_grouped = data.groupby([data.index.dayofweek, data.index.hour, data.index.minute], dropna=True).mean()
+        df_grouped = data.groupby([data.index.dayofweek, data.index.hour, data.index.minute], dropna=True).sum()
 
 
         #start and of measuring for creating an emptu dataframe with rows for all times by 5 minuts
@@ -37,8 +37,8 @@ class WeekPlanner:
         df = pd.DataFrame({'tmp2': -1} ,index=pd.date_range(start, 
                             end, freq='1min'))
         #grouped by same time interval as dataframe from db and then by day of week, hour and minute
-        df = df.groupby(pd.Grouper(freq=time_interval)).aggregate(np.mean)
-        df = df.groupby([df.index.dayofweek, df.index.hour, df.index.minute], dropna = False).mean()
+        df = df.groupby(pd.Grouper(freq=time_interval)).aggregate(np.sum)
+        df = df.groupby([df.index.dayofweek, df.index.hour, df.index.minute], dropna = False).sum()
 
         #adding of values from db into an empty dataframe
         df.tmp2 = df_grouped.tmp2
@@ -110,6 +110,7 @@ class WeekPlanner:
 
             #print(day_high_tarifs)
             week_high_tarifs.update({idx:day_high_tarifs})
+        print(week_high_tarifs)
         return week_high_tarifs
 
 
