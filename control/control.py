@@ -243,7 +243,10 @@ class Controller:
         
         if next_heat_up_event['hours_to_event'] is not None:
             time_to_without_DTO = self.WeekPlanner.duration_of_low_tarif_to_next_heating(next_heat_up_event['hours_to_event'])
-            if( self.Bojler.is_needed_to_heat(tmp_act, tmp_goal=next_heat_up_event['degree_target'], time_to_consumption = time_to_without_DTO)):
+            tmp_goal = next_heat_up_event['degree_target']
+            print("time to next heating without DTO: ", time_to_without_DTO)
+            print("tmp goal : ", tmp_goal)
+            if( self.Bojler.is_needed_to_heat(tmp_act, tmp_goal=tmp_goal, time_to_consumption = time_to_without_DTO)):
                 print("planned event to heat up with target {} Celsius occurs in {} hours".format(next_heat_up_event['degree_target'], next_heat_up_event['hours_to_event']))
                 if not is_on:
                     self._turn_socket_on()
