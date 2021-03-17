@@ -49,13 +49,18 @@ class EventChecker:
             service = build('calendar', 'v3', credentials=creds)
         except:
             print("couldnt build service")
+            return
         # Call the Calendar API
         now = datetime.datetime.utcnow().isoformat() + 'Z' # 'Z' indicates UTC time
-        events_result = service.events().list(calendarId='primary', timeMin=now,
-                                            maxResults=1, singleEvents=True,
-                                            orderBy='startTime').execute()
-        events = events_result.get('items', [])
-        return events
+        try:
+
+            events_result = service.events().list(calendarId='primary', timeMin=now,
+                                                maxResults=1, singleEvents=True,
+                                                orderBy='startTime').execute()
+            events = events_result.get('items', [])
+            return events
+        except:
+            print("couldnt get events")
     def next_heat_up_event(self):
         events = self.load_events()
 

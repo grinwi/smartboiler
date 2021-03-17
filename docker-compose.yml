@@ -35,14 +35,6 @@ services:
   #    dockerfile: arima/Dockerfile
   #  links:
   #    - influxdb
-      
-  peaks:
-    image: peaks
-    build: 
-      context: "."
-      dockerfile: peaks/Dockerfile
-    volumes:
-      - ./settings.json:/mnt/c/Users/grunw/Desktop/BP/dockerized/settings.json
 
   #  links:
   #    - influxdb
