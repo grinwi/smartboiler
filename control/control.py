@@ -233,6 +233,7 @@ class Controller:
         time_now = datetime.now()
         tmp_out = last_entry['tmp1']
         tmp_act = last_entry['tmp2']
+        print(self.Bojler.real_tmp(tmp_act))
         is_on = last_entry['socket_turned_on']
         time_of_last_entry = last_entry['time_of_last_entry']
 
