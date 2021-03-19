@@ -3,7 +3,7 @@ import pandas as pd
 
 #https://vytapeni.tzb-info.cz/tabulky-a-vypocty/97-vypocet-doby-ohrevu-teple-vody
 class Bojler:
-    def __init__(self, capacity=100, wattage=2000):
+    def __init__(self, capacity=100, wattage=2000, set_tmp = 60):
                 
                 
         print("------------------------------------------------------\n")
@@ -12,6 +12,7 @@ class Bojler:
 
         self.bojler_heat_cap = capacity * 1.163
         self.real_wattage = wattage * 0.98
+        self.set_tmp = set_tmp
  
 
     def time_needed_to_heat_up(self, tmp_change):
@@ -28,6 +29,27 @@ class Bojler:
             return True
         else:
             return False
+
+    def real_tmp(self, act_tmp):
+
+
+        if(tmp_act < self.area_tmp or tmp_act > self.set_tmp):
+            return tmp_act
+
+        tmp_act_and_area_delta = tmp_act - self.area_tmp
+        tmp_max_and_area_delta = self.boiler_measured_max - self.area_tmp
+
+        p1 = tmp_act_and_area_delta / tmp_max_and_area_delta
+
+        tmp = p1 * (self.set_tmp - self.area_tmp) + self.area_tmp
+        return tmp
+
+    def set_measured_tmp(self, df):
+        self.area_tmp = df['tmp1'].nsmallest(100).mean()
+        self.boiler_measured_max = df['tmp2'].nlargest(100).mean()
+
+        print("area_tmp: ", self.area_tmp, "\nboiler_max: ", self.boiler_measured_max)
+
 if __name__ == '__main__':
     tmp_act = 30
     tmp_goal = 52

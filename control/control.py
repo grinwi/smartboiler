@@ -67,6 +67,7 @@ class Controller:
         self.measurement = settings['measurement']
         
         self.socket_url = settings['socket_url']
+        
 
         self.tmp_output = settings['tmp_output']
         self.tmp_bojler = settings['tmp_bojler']
@@ -76,6 +77,7 @@ class Controller:
 
         bojler_wattage = settings['bojler_wattage']
         bojler_capacity = settings['bojler_capacity']
+        bojler_set_tmp = settings['bojler_set_tmp']
 
         print("------------------------------------------------------\n")
         print('initializing of Control...\n\tdb_name = {}\n\tsocker_url = {}\n\ttmp_output = {}\n\ttmp_bojler = {}\n\thost name = {}\n\tport = {}\n\tbojler capacity = {}\n\tbojler woltage = {}\n'.format(self.db_name, self.socket_url, self.tmp_output, self.tmp_bojler, self.host, self.port, bojler_capacity, bojler_wattage))
@@ -88,7 +90,7 @@ class Controller:
 
         self.EventChecker = EventChecker()
         self.TimeHandler = TimeHandler()
-        self.Bojler = Bojler(bojler_capacity, bojler_wattage)
+        self.Bojler = Bojler(bojler_capacity, bojler_wattage, bojler_set_tmp)
         
         self.data_db = self._actualize_data()
         self.last_data_update = datetime.now() 
@@ -147,6 +149,7 @@ class Controller:
             print("got new datasets")
             df = pd.DataFrame(datasets)
             df = df[df.in_event != True]
+            self.Bojler.set_measured_tmp(df)
     
             return df
 
