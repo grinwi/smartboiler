@@ -30,7 +30,7 @@ class Bojler:
         else:
             return False
 
-    def real_tmp(self, act_tmp):
+    def real_tmp(self, tmp_act):
 
 
         if(tmp_act < self.area_tmp or tmp_act > self.set_tmp):
