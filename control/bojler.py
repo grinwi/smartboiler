@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 
 #https://vytapeni.tzb-info.cz/tabulky-a-vypocty/97-vypocet-doby-ohrevu-teple-vody
@@ -45,8 +45,10 @@ class Bojler:
         return tmp
 
     def set_measured_tmp(self, df):
-        self.area_tmp = df['tmp1'].nsmallest(100).mean()
-        self.boiler_measured_max = df['tmp2'].nlargest(100).mean()
+        df_of_last_week = df[df.index > (df.last_valid_index() - timedelta(days=7))]
+
+        self.area_tmp = df_of_last_week['tmp1'].nsmallest(100).mean()
+        self.boiler_measured_max = df_of_last_week['tmp2'].nlargest(100).mean()
 
         print("area_tmp: ", self.area_tmp, "\nboiler_max: ", self.boiler_measured_max)
 
