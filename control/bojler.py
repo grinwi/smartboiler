@@ -42,6 +42,9 @@ class Bojler:
 
         needed_temperature = ( (self.min_tmp * self.capacity) + (self.shower_temperature * showers_volume) - (showers_volume * cold_water_tmp) ) / self.capacity
 
+        if needed_temperature > self.set_tmp:
+            return self.set_tmp
+
         return needed_temperature
 
         
