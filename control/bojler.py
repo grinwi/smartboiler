@@ -3,7 +3,7 @@ import pandas as pd
 
 #https://vytapeni.tzb-info.cz/tabulky-a-vypocty/97-vypocet-doby-ohrevu-teple-vody
 class Bojler:
-    def __init__(self, capacity=100, wattage=2000, set_tmp = 60):
+    def __init__(self, capacity=100, wattage=2000, set_tmp = 60, one_shower_volume = 40, shower_temperature = 40, min_tmp = 37):
                 
                 
         print("------------------------------------------------------\n")
@@ -13,6 +13,11 @@ class Bojler:
         self.bojler_heat_cap = capacity * 1.163
         self.real_wattage = wattage * 0.98
         self.set_tmp = set_tmp
+        self.capacity = capacity
+        self.one_shower_volume = one_shower_volume
+        self.shower_temperature = shower_temperature
+        self.min_tmp = min_tmp
+        
  
 
     def time_needed_to_heat_up(self, tmp_change):
@@ -30,6 +35,17 @@ class Bojler:
         else:
             return False
 
+    def showers_degrees(self, number_of_showers):
+        showers_volume = number_of_showers * self.one_shower_volume
+
+        cold_water_tmp = 10
+
+        needed_temperature = ( (self.min_tmp * self.capacity) + (self.shower_temperature * showers_volume) - (showers_volume * cold_water_tmp) ) / self.capacity
+
+        return needed_temperature
+
+        
+
     def real_tmp(self, tmp_act):
 
 
@@ -45,7 +61,7 @@ class Bojler:
         return tmp
 
     def set_measured_tmp(self, df):
-        df_of_last_week = df[df.index > (df.last_valid_index() - timedelta(days=7))]
+        df_of_last_week = df[df.index > (df.last_valid_index() - timedelta(days=14))]
 
         self.area_tmp = df_of_last_week['tmp1'].nsmallest(100).mean()
         self.boiler_measured_max = df_of_last_week['tmp2'].nlargest(100).mean()

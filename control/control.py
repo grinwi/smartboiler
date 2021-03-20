@@ -71,8 +71,10 @@ class Controller:
 
         self.tmp_output = settings['tmp_output']
         self.tmp_bojler = settings['tmp_bojler']
+
         self.tmp_min = settings['tmp_min']
         self.consumption_tmp_min = settings['consumption_tmp_min']
+
         self.heating_coef = settings['heating_coef']
 
         bojler_wattage = settings['bojler_wattage']
@@ -93,7 +95,9 @@ class Controller:
         self.Bojler = Bojler(bojler_capacity, bojler_wattage, bojler_set_tmp)
         
         self.data_db = self._actualize_data()
-        self.last_data_update = datetime.now() 
+        self.last_data_update = datetime.now()
+
+
         self.WeekPlanner = WeekPlanner(self.data_db)
         self.coef_up_in_current_heating_cycle_changed = False
         self.coef_down_in_current_heating_cycle_changed = False
@@ -223,7 +227,7 @@ class Controller:
             self._turn_socket_off()
             time.sleep(600)
             return
-        next_heat_up_event = self.EventChecker.next_heat_up_event()
+        next_heat_up_event = self.EventChecker.next_heat_up_event(self.Bojler)
 
         if last_entry is None:
             self._turn_socket_on()
@@ -232,8 +236,8 @@ class Controller:
         
         time_now = datetime.now()
         tmp_out = last_entry['tmp1']
-        tmp_act = last_entry['tmp2']
-        print(self.Bojler.real_tmp(tmp_act))
+        tmp_act = self.Bojler.real_tmp(last_entry['tmp2'])
+
         is_on = last_entry['socket_turned_on']
         time_of_last_entry = last_entry['time_of_last_entry']
 
@@ -243,6 +247,8 @@ class Controller:
                 if not is_on:
                         self._turn_socket_on()
             return
+
+        
                 
         
         if next_heat_up_event['hours_to_event'] is not None:
