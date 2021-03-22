@@ -64,7 +64,7 @@ class Bojler:
         return tmp
 
     def set_measured_tmp(self, df):
-        df_of_last_week = df[df.index > (df.last_valid_index() - timedelta(days=14))]
+        df_of_last_week = df[df.index > (df.last_valid_index() - timedelta(days=21))]
 
         self.area_tmp = df_of_last_week['tmp1'].nsmallest(100).mean()
         self.boiler_measured_max = df_of_last_week['tmp2'].nlargest(100).mean()

@@ -24,10 +24,10 @@ class WeekPlanner:
         
         data = data[data.index > (data.last_valid_index() - timedelta(days=10))]
 
-        data = data.groupby(pd.Grouper(freq=time_interval)).aggregate(np.sum)
+        data = data.groupby(pd.Grouper(freq=time_interval)).aggregate(np.mean)
 
         #grouping data grouped by time interval by dayofweek, hour and minut
-        df_grouped = data.groupby([data.index.dayofweek, data.index.hour, data.index.minute], dropna=True).sum()
+        df_grouped = data.groupby([data.index.dayofweek, data.index.hour, data.index.minute], dropna=True).mean()
 
 
         #start and of measuring for creating an emptu dataframe with rows for all times by 5 minuts

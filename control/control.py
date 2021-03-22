@@ -96,6 +96,7 @@ class Controller:
         
         self.data_db = self._actualize_data()
         self.last_data_update = datetime.now()
+        self.last_legionella_heating = datetime.now()
 
 
         self.WeekPlanner = WeekPlanner(self.data_db)
@@ -248,8 +249,25 @@ class Controller:
                         self._turn_socket_on()
             return
 
-        
-                
+
+        if(self._is_in_heating()):
+            self.coef_down_in_current_heating_cycle_changed = False
+        else:
+            self.coef_up_in_current_heating_cycle_changed = False
+
+        if self.last_legionella_heating - datetime.now() > timedelta(days =21):
+            self.coef_down_in_current_heating_cycle_changed = True
+            if not is_on:
+                print("starting heating for reduce legionella, this occurs every 3 weeks")
+                self._turn_socket_on()
+
+            if tmp_act >= (65):
+                time.sleep(1200)
+                self.last_legionella_heating = datetime.now()
+                print("legionella was eliminated, see you in 3 weeks")
+
+
+
         
         if next_heat_up_event['hours_to_event'] is not None:
             time_to_without_DTO = self.WeekPlanner.duration_of_low_tarif_to_next_heating(next_heat_up_event['hours_to_event'])
@@ -266,10 +284,6 @@ class Controller:
 
 
         
-        if(self._is_in_heating()):
-            self.coef_down_in_current_heating_cycle_changed = False
-        else:
-            self.coef_up_in_current_heating_cycle_changed = False
 
         if (tmp_act < self.tmp_min):
             if not is_on:
