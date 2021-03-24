@@ -75,7 +75,6 @@ class Controller:
         self.tmp_min = settings['tmp_min']
         self.consumption_tmp_min = settings['consumption_tmp_min']
 
-        self.heating_coef = settings['heating_coef']
 
         bojler_wattage = settings['bojler_wattage']
         bojler_capacity = settings['bojler_capacity']
@@ -310,8 +309,8 @@ class Controller:
 
                 if( (how_long_to_current_heating_end > current_heating_half_duration)  and not self.coef_up_in_current_heating_cycle_changed):
                     self.coef_up_in_current_heating_cycle_changed = True
-                    self.heating_coef *= 1.015
-                    print("changing coef to {}".format(self.heating_coef))
+                    self.WeekPlanner.week_days_coefs[datetime.now().weekday()] *= 1.015
+                    print("changing coef to {}".format(self.WeekPlanner.week_days_coefs[datetime.now().weekday()]))
                     #zmena aby v cyklu nedochazelo stale ke zvysovani, nebot zmena se promitne az po nejake dobe
 
             #pokud neni treba doohrivat behem heatingu, vypinam
@@ -331,7 +330,7 @@ class Controller:
             time_to_next_heating = self.WeekPlanner.duration_of_low_tarif_to_next_heating(next_heating['will_occur_in']) 
 
 
-            next_heating_goal_temperature = next_heating['peak'] * self.heating_coef
+            next_heating_goal_temperature = next_heating['peak'] * self.WeekPlanner.week_days_coefs[datetime.now().weekday()]
             #print("{}   next heating at {} starts in: {}".format(datetime.now(), next_heating['time'], time_to_next_heating))
 
             #v tomto pripade je v momente neodberu potreba ohrivat + v pripadech, ze je teplota pod min viz vyse
@@ -349,8 +348,8 @@ class Controller:
                 self.coef_down_in_current_heating_cycle_changed = True
                 #rozlisovat kolik casu zbyva do zacatku dalsiho ohrivani a podle toho uspat
                 print("actual tmp is greater than consumption tmp min")
-                self.heating_coef *= 0.985            
-                print("changing coef to {}".format(self.heating_coef))
+                self.WeekPlanner.week_days_coefs[datetime.now().weekday()] *= 0.985            
+                print("changing coef to {}".format(self.WeekPlanner.week_days_coefs[datetime.now().weekday()]))
 
             #if boiler need to heat tmp act, tmp act + delta, time to next high tarif
 

@@ -13,6 +13,10 @@ class WeekPlanner:
         self.TimeHandler = TimeHandler()
         self.week_days_consumptions = self._create_days_average(data)
         self.week_days_high_tarifs_intervals = self._find_empty_intervals(data)
+        self.week_days_coefs =  dict.fromkeys(range(0,7))
+        for key in self.week_days_coefs:
+            self.week_days_coefs[key] = 1.3
+
 
     def _find_empty_intervals(self, data):
             
@@ -135,7 +139,10 @@ class WeekPlanner:
                 day_aconsumptions.update({i:{   "start":self.TimeHandler.float_to_time(results_half[2][i]), 
                                                 "end":self.TimeHandler.float_to_time(results_half[3][i]), 
                                                 "duration" : results_half[0][i], 
-                                                "peak":round(_['peak_heights'][i],2)}})
+                                                "peak":round(_['peak_heights'][i],2)
+                                            }
+                                        })
+                                                
 
             new_week_days_consumptions.update({idx:day_aconsumptions})
 
