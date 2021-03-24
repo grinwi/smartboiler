@@ -291,7 +291,7 @@ class Controller:
         ##############################################################################
         
 
-
+        day_of_week = datetime.now().weekday()
         #upravit, zjednodusit
         if (self._is_in_heating()):
 
@@ -309,8 +309,8 @@ class Controller:
 
                 if( (how_long_to_current_heating_end > current_heating_half_duration)  and not self.coef_up_in_current_heating_cycle_changed):
                     self.coef_up_in_current_heating_cycle_changed = True
-                    self.WeekPlanner.week_days_coefs[datetime.now().weekday()] *= 1.015
-                    print("changing coef to {}".format(self.WeekPlanner.week_days_coefs[datetime.now().weekday()]))
+                    self.WeekPlanner.week_days_coefs[day_of_week] *= 1.015
+                    print("changing day ({}) coef to {}".format(( day_of_week + 1 ), self.WeekPlanner.week_days_coefs[day_of_week]))
                     #zmena aby v cyklu nedochazelo stale ke zvysovani, nebot zmena se promitne az po nejake dobe
 
             #pokud neni treba doohrivat behem heatingu, vypinam
@@ -348,8 +348,8 @@ class Controller:
                 self.coef_down_in_current_heating_cycle_changed = True
                 #rozlisovat kolik casu zbyva do zacatku dalsiho ohrivani a podle toho uspat
                 print("actual tmp is greater than consumption tmp min")
-                self.WeekPlanner.week_days_coefs[datetime.now().weekday()] *= 0.985            
-                print("changing coef to {}".format(self.WeekPlanner.week_days_coefs[datetime.now().weekday()]))
+                self.WeekPlanner.week_days_coefs[day_of_week] *= 0.985            
+                print("changing day ({}) coef to {}".format(( day_of_week + 1 ), self.WeekPlanner.week_days_coefs[day_of_week]))
 
             #if boiler need to heat tmp act, tmp act + delta, time to next high tarif
 
