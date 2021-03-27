@@ -61,7 +61,7 @@ class EventChecker:
         except:
             print("couldnt't get events")
             return None
-    def next_heat_up_event(self, Bojler):
+    def next_calendar_heat_up_event(self, Bojler):
         events = self.load_events()
         return_dict = {"hours_to_event": None, "degree_target": None}
 
@@ -82,7 +82,7 @@ class EventChecker:
                     number_of_showers = int(re.split('^.*Prepare (\d+) showers$', e['summary'])[1])
 
                     degree_target = Bojler.showers_degrees(number_of_showers = number_of_showers)
-                    
+
                     start = self.date_to_datetime(e['start'].get('dateTime', e['start'].get('date')))
                     time_to_event  = (start - (datetime.datetime.now() + datetime.timedelta(hours= 1) )) / datetime.timedelta(hours=1)
 

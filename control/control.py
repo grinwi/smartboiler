@@ -35,7 +35,7 @@ from event_checker import EventChecker
 #################################################
 #######################TODO######################
 #################################################
-#jednou za 14 dni ohrat pred odberem na max
+
 
 class Controller:
     """Main and only class which decides about heating
@@ -91,7 +91,7 @@ class Controller:
 
         self.EventChecker = EventChecker()
         self.TimeHandler = TimeHandler()
-        self.Bojler = Bojler(bojler_capacity, bojler_wattage, bojler_set_tmp)
+        self.Bojler = Bojler(capacity = bojler_capacity, wattage = bojler_wattage, set_tmp = bojler_set_tmp)
         
         self.data_db = self._actualize_data()
         self.last_data_update = datetime.now()
@@ -227,7 +227,7 @@ class Controller:
             self._turn_socket_off()
             time.sleep(600)
             return
-        next_heat_up_event = self.EventChecker.next_heat_up_event(self.Bojler)
+        next_calendar_heat_up_event = self.EventChecker.next_calendar_heat_up_event(self.Bojler)
 
         if last_entry is None:
             self._turn_socket_on()
@@ -268,13 +268,13 @@ class Controller:
 
 
         
-        if next_heat_up_event['hours_to_event'] is not None:
-            time_to_without_DTO = self.WeekPlanner.duration_of_low_tarif_to_next_heating(next_heat_up_event['hours_to_event'])
-            tmp_goal = next_heat_up_event['degree_target']
+        if next_calendar_heat_up_event['hours_to_event'] is not None:
+            time_to_without_DTO = self.WeekPlanner.duration_of_low_tarif_to_next_heating(next_calendar_heat_up_event['hours_to_event'])
+            tmp_goal = next_calendar_heat_up_event['degree_target']
             print("time to next heating without DTO: ", time_to_without_DTO)
             print("tmp goal : ", tmp_goal)
             if( self.Bojler.is_needed_to_heat(tmp_act, tmp_goal=tmp_goal, time_to_consumption = time_to_without_DTO)):
-                print("planned event to heat up with target {} Celsius occurs in {} hours".format(next_heat_up_event['degree_target'], next_heat_up_event['hours_to_event']))
+                print("planned event to heat up with target {} Celsius occurs in {} hours".format(next_calendar_heat_up_event['degree_target'], next_calendar_heat_up_event['hours_to_event']))
                 if not is_on:
                     self._turn_socket_on()
                 return
@@ -330,7 +330,7 @@ class Controller:
             time_to_next_heating = self.WeekPlanner.duration_of_low_tarif_to_next_heating(next_heating['will_occur_in']) 
 
 
-            next_heating_goal_temperature = next_heating['peak'] * self.WeekPlanner.week_days_coefs[datetime.now().weekday()]
+            next_heating_goal_temperature = next_heating['peak'] * self.WeekPlanner.week_days_coefs[day_of_week]
             #print("{}   next heating at {} starts in: {}".format(datetime.now(), next_heating['time'], time_to_next_heating))
 
             #v tomto pripade je v momente neodberu potreba ohrivat + v pripadech, ze je teplota pod min viz vyse
