@@ -245,7 +245,7 @@ class Controller:
             if not is_on:
                 self._turn_socket_on()
 
-            return
+        return
 
 
         time_of_last_entry = last_entry['time_of_last_entry']
