@@ -105,7 +105,6 @@ class Controller:
 
 
     def _last_entry(self):
-        #zde jsou casy v poradku
         """Loads last entru from DB - actual.
 
         Args:
@@ -237,8 +236,18 @@ class Controller:
         time_now = datetime.now()
         tmp_out = last_entry['tmp1']
         tmp_act = self.Bojler.real_tmp(last_entry['tmp2'])
-
         is_on = last_entry['socket_turned_on']
+
+        if tmp_act > 60:
+            if is_on:
+                self._turn_socket_off()
+        else:
+            if not is_on:
+                self._turn_socket_on()
+
+            return
+
+
         time_of_last_entry = last_entry['time_of_last_entry']
 
         if (time_now - time_of_last_entry > timedelta(minutes = 10)):
@@ -408,23 +417,11 @@ if __name__ == '__main__':
 
     settings_file = options.settings_file
 
-
-    #data = pd.read_pickle('data.pkl')
-
-
-
-
-    #predat cele nastavei
     c = Controller(settings_file)
 
     while (1):
-        #try:
         c.control()
-        #except:
-        #    print(datetime.now())
-        #    print("unable to control in this cycle")
-        
-        #c.control()
+
         time.sleep(60)
     
 

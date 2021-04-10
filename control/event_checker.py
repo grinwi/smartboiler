@@ -19,13 +19,11 @@ class EventChecker:
     def __init__(self):
 
      
-        SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
+        self.SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
 
         sleeping_time = 1800
     def load_events(self):
-        """Shows basic usage of the Google Calendar API.
-        Prints the start and name of the next 10 events on the user's calendar.
-        """
+
         creds = None
         # The file token.pickle stores the user's access and refresh tokens, and is
         # created automatically when the authorization flow completes for the first
@@ -48,7 +46,7 @@ class EventChecker:
         try:
             service = build('calendar', 'v3', credentials=creds)
         except:
-            print("couldnt build service")
+            print("couldn't build service")
             return
         # Call the Calendar API
         now = datetime.datetime.utcnow().isoformat() + 'Z' # 'Z' indicates UTC time
@@ -59,7 +57,7 @@ class EventChecker:
             events = events_result.get('items', [])
             return events
         except:
-            print("couldnt't get events")
+            print("couldn't get events")
             return None
     def next_calendar_heat_up_event(self, Bojler):
         events = self.load_events()

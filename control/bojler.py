@@ -23,7 +23,7 @@ class Bojler:
     def time_needed_to_heat_up(self, tmp_change):
         """
             time = (m * c) * d'(tmp) / P * effectivity_coef
-        """
+        """  
         return (self.bojler_heat_cap * tmp_change) / (self.real_wattage )
 
 
