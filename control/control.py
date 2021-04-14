@@ -242,8 +242,9 @@ class Controller:
             if is_on:
                 self._turn_socket_off()
         else:
-            if not is_on:
-                self._turn_socket_on()
+            if tmp_act < 57:
+                if not is_on:
+                    self._turn_socket_on()
 
         return
 

@@ -26,7 +26,7 @@ class WeekPlanner:
         #data = data.to_frame()
 
         
-        data = data[data.index > (data.last_valid_index() - timedelta(days=10))]
+        data = data[data.index > (data.last_valid_index() - timedelta(days=14))]
 
         data = data.groupby(pd.Grouper(freq=time_interval)).aggregate(np.mean)
 
