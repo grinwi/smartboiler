@@ -10,7 +10,7 @@ RUN pip install --trusted-host pypi.python.org -r requirements.txt
 RUN pip install --upgrade google-api-python-client google-auth-httplib2 google-auth-oauthlib
 
 COPY control/control.py /app/control.py
-COPY control/bojler.py /app/bojler.py
+COPY control/boiler.py /app/boiler.py
 COPY control/time_handler.py /app/time_handler.py
 COPY control/week_planner.py /app/week_planner.py
 COPY control/event_checker.py /app/event_checker.py

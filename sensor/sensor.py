@@ -40,76 +40,67 @@ def wait_for_server(host, port, nretries=5):
             waiting_time *= 2
             pass
     print('cannot connect to', url)
-    sys.exit(1)
 
 def connect_db(host, port, reset):
-    '''connect to the database, and create it if it does not exist'''
     global client
     print('connecting to database: {}:{}'.format(host,port))
     client = InfluxDBClient(host, port, retries=5, timeout=1)
     wait_for_server(host, port)
-    create = False
     if not db_exists():
-        create = True
         print('creating database...')
         client.create_database(db_name)
     else:
         print('database already exists')
     client.switch_database(db_name)
-    if not create and reset:
-        client.delete_series(measurement=measurement)
+
 
  
 def measure(nmeas):
-    '''insert dummy measurements to the db.
-    nmeas = 0 means : insert measurements forever. 
-    '''
-    bad_request_sleeping_time = 20
 
 
-    while True:
+
+    try:
+        http = requests.get("http://" + socket_url + "/status")
+        bad_request_sleeping_time = 10
+    except:
+        print("unable to get request")
+        if(bad_request_sleeping_time != 200):
+            bad_request_sleeping_time +=10
+        time.sleep(bad_request_sleeping_time)
+        continue  
+    if http.status_code == 200:
         try:
-            http = requests.get("http://" + socket_url + "/status")
-            bad_request_sleeping_time = 10
-        except:
-            print("unable to get request")
-            if(bad_request_sleeping_time != 200):
-                bad_request_sleeping_time +=10
-            time.sleep(bad_request_sleeping_time)
-            continue  
-        if http.status_code == 200:
-            try:
-                data = http.json()
+            data = http.json()
 
-                power = data['meters'][0]["power"]
-                temperature_1 = data['ext_temperature']['0']['tC']
-                temperature_2 = data['ext_temperature']['1']['tC']
-                current_time = datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
+            power = data['meters'][0]["power"]
+            temperature_1 = data['ext_temperature']['0']['tC']
+            temperature_2 = data['ext_temperature']['1']['tC']
+            current_time = datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
 
-                data_to_db_json = [
-                    {
-                        "measurement": measurement,
-                        "time": current_time,
-                        
-                        "fields": {
-                            "power": power,
-                            "tmp1": temperature_1, 
-                            "tmp2": temperature_2,
-                            "turned": data['relays'][0]['ison'],
-                            "in_event" : EvntChecker.check_off_event()
-                        }
+            data_to_db_json = [
+                {
+                    "measurement": measurement,
+                    "time": current_time,
+                    
+                    "fields": {
+                        "power": power,
+                        "tmp1": temperature_1, 
+                        "tmp2": temperature_2,
+                        "turned": data['relays'][0]['ison'],
+                        "in_event" : EvntChecker.check_off_event()
                     }
-                ]
+                }
+            ]
 
-                        
-            except:
-                print("unable to read data")
-            try:
-                client.write_points(data_to_db_json)
-            except:
-                print("unable to write data in db")
-           
-        time.sleep(20)
+                    
+        except:
+            print("unable to read data")
+        try:
+            client.write_points(data_to_db_json)
+        except:
+            print("unable to write data in db")
+        
+    time.sleep(20)
 
 def get_entries():
     '''returns all entries in the database.'''
@@ -135,18 +126,7 @@ if __name__ == '__main__':
     from optparse import OptionParser
 
     parser = OptionParser('%prog [OPTIONS] <host> <port>')
-    parser.add_option(
-        '-r', '--reset', dest='reset',
-        help='reset database',
-        default=False,
-        action='store_true'
-        )
-    parser.add_option(
-        '-n', '--nmeasurements', dest='nmeasurements',
-        type='int', 
-        help='reset database',
-        default=0
-        )
+
   
     parser.add_option(
         '-f', '--settings_file', dest='settings_file',
@@ -172,13 +152,11 @@ if __name__ == '__main__':
     measurement = settings['measurement']
 
     connect_db(host, port, options.reset)
-    def signal_handler(sig, frame):
-        print()
-        print('stopping')
-        pprint.pprint(get_entries())
-        sys.exit(0)
-    signal.signal(signal.SIGINT, signal_handler)
+    bad_request_sleeping_time = 20
 
-    measure(options.nmeasurements)
+
+    while(True):
+
+
+        measure(options.nmeasurements)
         
-    pprint.pprint(get_entries())

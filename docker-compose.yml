@@ -21,24 +21,7 @@ services:
     links:
       - influxdb
 
-  #test:
-  #  image: test
-  #  build: 
-  #    context: "."
-  #    dockerfile: test/Dockerfile
-  #  links:
-  #    - influxdb
-  #arima:
-  #  image: arima
-  #  build: 
-  #    context: "."
-  #    dockerfile: arima/Dockerfile
-  #  links:
-  #    - influxdb
 
-  #  links:
-  #    - influxdb
-      
   dashboard:
     image: grafana/grafana
     links:

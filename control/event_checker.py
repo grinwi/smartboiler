@@ -18,10 +18,9 @@ class EventChecker:
 
     def __init__(self):
 
-     
         self.SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
+        self.TimeHandler = TimeHandler()
 
-        sleeping_time = 1800
     def load_events(self):
 
         creds = None
@@ -49,49 +48,53 @@ class EventChecker:
             print("couldn't build service")
             return
         # Call the Calendar API
-        now = datetime.datetime.utcnow().isoformat() + 'Z' # 'Z' indicates UTC time
+        now = datetime.datetime.utcnow().isoformat() + 'Z'  # 'Z' indicates UTC time
         try:
             events_result = service.events().list(calendarId='primary', timeMin=now,
-                                                maxResults=1, singleEvents=True,
-                                                orderBy='startTime').execute()
+                                                  maxResults=1, singleEvents=True,
+                                                  orderBy='startTime').execute()
             events = events_result.get('items', [])
             return events
         except:
             print("couldn't get events")
             return None
-    def next_calendar_heat_up_event(self, Bojler):
+
+    def next_calendar_heat_up_event(self, Boiler):
         events = self.load_events()
         return_dict = {"hours_to_event": None, "degree_target": None}
 
         if events:
             for e in events:
                 if re.match('^.*boiler heat up at (\d+) degrees$', e['summary']):
-                    degree_target = int(re.split('^.*boiler heat up at (\d+) degrees$', e['summary'])[1])
-                    start = self.date_to_datetime(e['start'].get('dateTime', e['start'].get('date')))
-                    time_to_event  = (start - (datetime.datetime.now() + datetime.timedelta(hours= 1) )) / datetime.timedelta(hours=1)
-
+                    degree_target = int(
+                        re.split('^.*boiler heat up at (\d+) degrees$', e['summary'])[1])
+                    start = self.TimeHandler.date_to_datetime(
+                        e['start'].get('dateTime', e['start'].get('date')))
+                    time_to_event = (start - (datetime.datetime.now() +
+                                     datetime.timedelta(hours=1))) / datetime.timedelta(hours=1)
 
                     if (time_to_event > 0):
-                        
-                        return_dict['hours_to_event'] = time_to_event 
+
+                        return_dict['hours_to_event'] = time_to_event
                         return_dict['degree_target'] = degree_target
                     break
                 if re.match('^.*Prepare (\d+) showers$', e['summary']):
-                    number_of_showers = int(re.split('^.*Prepare (\d+) showers$', e['summary'])[1])
+                    number_of_showers = int(
+                        re.split('^.*Prepare (\d+) showers$', e['summary'])[1])
 
-                    degree_target = Bojler.showers_degrees(number_of_showers = number_of_showers)
+                    degree_target = Boiler.showers_degrees(
+                        number_of_showers=number_of_showers)
 
-                    start = self.date_to_datetime(e['start'].get('dateTime', e['start'].get('date')))
-                    time_to_event  = (start - (datetime.datetime.now() + datetime.timedelta(hours= 1) )) / datetime.timedelta(hours=1)
-
+                    start = self.TimeHandler.date_to_datetime(
+                        e['start'].get('dateTime', e['start'].get('date')))
+                    time_to_event = (start - (datetime.datetime.now() +
+                                     datetime.timedelta(hours=1))) / datetime.timedelta(hours=1)
 
                     if (time_to_event > 0):
-                        
-                        return_dict['hours_to_event'] = time_to_event 
+
+                        return_dict['hours_to_event'] = time_to_event
                         return_dict['degree_target'] = degree_target
                     break
-
-
 
         return return_dict
 
@@ -103,23 +106,15 @@ class EventChecker:
             for e in events:
 
                 if("#off" in e['summary']):
-                    start = self.date_to_datetime(e['start'].get('dateTime', e['start'].get('date')))
-                    end = self.date_to_datetime( e['end'].get('dateTime', e['end'].get('date')))
-                    
-                    return self.is_date_between(start, end)
+                    start = self.TimeHandler.date_to_datetime(
+                        e['start'].get('dateTime', e['start'].get('date')))
+                    end = self.TimeHandler.date_to_datetime(
+                        e['end'].get('dateTime', e['end'].get('date')))
+
+                    return self.TimeHandler.is_date_between(start, end)
             return False
 
-    def date_to_datetime(self, date):
-        return datetime.datetime.strptime(date, "%Y-%m-%dT%H:%M:%S+01:00")
-
-    def is_date_between(self, begin_date, end_date):
-        check_date = datetime.datetime.now()   
-
-        return check_date >= begin_date or check_date <= end_date - datetime.timedelta(hours=3)
-
+  
 if __name__ == '__main__':
     e = EventChecker()
     e.check_event()
-
-    
-
