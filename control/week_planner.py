@@ -1,3 +1,14 @@
+##########################################################
+# Bachelor's thesis                                      #
+# From a dumb boiler to a smart one using a smart socket #
+# Author: Adam Grünwald                                  #
+# BUT FIT BRNO, Faculty of Information Technology        #
+# 26/6/2021                                              #
+#                                                        #
+# Module with class used for creating schedules          #
+# of predicted consumptions                              #
+##########################################################
+
 from scipy.signal import argrelextrema, find_peaks, peak_widths
 from datetime import datetime, timedelta, date
 from time_handler import TimeHandler
@@ -15,20 +26,31 @@ class WeekPlanner:
         self.TimeHandler = TimeHandler()
         self.week_days_consumptions = self._create_days_average(data)
         self.week_days_high_tarifs_intervals = self._find_empty_intervals(data)
+
+
+        #creating of dictionary of day coefficients
         self.week_days_coefs = dict.fromkeys(range(0, 7))
         for key in self.week_days_coefs:
             self.week_days_coefs[key] = 1.3
 
     def _find_empty_intervals(self, data):
+        """Finds an empty intervals in measured dataframe, 
+        which represents the times of high tarif, when the boiler cannot heat.
+
+        Args:
+            data ([DataFrame]): [DataFRame to search in]
+
+        Returns:
+            [dict]: [times of high tarifs]
+        """
 
         time_interval_int = 5
         time_interval = str(time_interval_int) + 'min'
-        # grouping data from db by time interval in minutes
-        #data = data.to_frame()
 
         data = data[data.index > (
             data.last_valid_index() - timedelta(days=14))]
 
+        # grouping data from db by time interval in minutes
         data = data.groupby(pd.Grouper(freq=time_interval)).aggregate(np.mean)
 
         # grouping data grouped by time interval by dayofweek, hour and minut
@@ -57,8 +79,9 @@ class WeekPlanner:
             i = 0  # index of interval of the day
 
             day_high_tarifs = {}
-            first_none = False
+            first_none = False #first empty interval
             for index, row in df.iloc[df.index.get_level_values(level=0) == idx].iterrows():
+                #iterates over values in data from certain day of week
 
                 day_of_week = index[0]
                 hour = index[1]
@@ -68,9 +91,10 @@ class WeekPlanner:
 
                 if(np.isnan(tmp1)):
                     if (first_none == False):
+                        #found first none value
                         first_none = True
-                        start_of_none = timedelta(hours=(hour + (minute/60)))
 
+                        start_of_none = timedelta(hours=(hour + (minute/60)))
                         minute -= time_interval_int
 
                         if minute < 0:
@@ -104,17 +128,25 @@ class WeekPlanner:
                         tmp_after_end = df.loc[next_index][0]
 
                         tmp_delta = tmp_before_start - tmp_after_end
-
+                        #saves empty interval to dict of empty intervals for one day
                         day_high_tarifs.update(
                             {i: {"start": start_of_none, "end": end_of_none, "duration": duration, "tmp_delta": tmp_delta}})
                         i += 1
                         first_none = False
-
+            #updates dict of week empty intervals with day empty intervals
             week_high_tarifs.update({idx: day_high_tarifs})
-        print(week_high_tarifs)
+
         return week_high_tarifs
 
     def _create_days_average(self, data):
+        """creating of new days averages with peaks for predicting consumption
+
+        Args:
+            data ([DataFrame]): [dataframe to create averages for prediction from]
+
+        Returns:
+            [dict]: [dictionary with predicted consumption for each day of week]
+        """
 
         new_week_days_consumptions = dict.fromkeys(
             self.TimeHandler.daysofweek, 0)
@@ -146,11 +178,16 @@ class WeekPlanner:
         return new_week_days_consumptions
 
     def _find_ideal_peaks(self, x):
+        """searchs for maximal 4 peaks in day data
+
+        Args:
+            x ([DataFrame]): [dataframe for specific day of week]
+        """
         height = 20
         distance = 3
         peaks, _ = find_peaks(x, height=height, distance=distance)
 
-        while(len(peaks) > 3):
+        while(len(peaks) > 4):
             height += 1
             distance += 0.2
             peaks, _ = find_peaks(x, height=height, distance=distance)
@@ -158,6 +195,14 @@ class WeekPlanner:
         return(peaks, _)
 
     def _prepare_data(self, data):
+        """groups the measured data by day of week and 1 hour
+
+        Args:
+            data ([type]): [description]
+
+        Returns:
+            [type]: [description]
+        """
         df_grouped = data.groupby(
             [data.index.dayofweek, data.index.hour]).mean().reset_index()
         return df_grouped.rename(columns={'level_0': 'day_of_week', 'level_1': 'hour'})
@@ -181,6 +226,11 @@ class WeekPlanner:
         return self.week_days_consumptions
 
     def is_in_DTO(self):
+        """Checks whether is DTO currently turned on
+
+        Returns:
+            [boolean]: [boolean value specifiing if it is in DTO]
+        """
 
         start = self.next_high_tarif_interval('start')
         if start is not None:
@@ -194,6 +244,15 @@ class WeekPlanner:
         return False
 
     def next_high_tarif_interval(self, event):
+        """Returns the next high tarif interval with time to next interval 
+        and delta of temperatures before and after
+
+        Args:
+            event ([string]): [type of event to search for]
+
+        Returns:
+            [dict]: [dict of next high tarif interval]
+        """
 
         actual_time = datetime.now().time()
 
@@ -222,8 +281,15 @@ class WeekPlanner:
         return None
 
     def duration_of_low_tarif_to_next_heating(self, hours_to_next_heating):
-        # time in hours float
+        """Returns duration of low tarif to next heating. It is time to next consumption
+         substracted by time of high tarif in this interval. 
 
+        Args:
+            hours_to_next_heating ([float]): [hours remaining to next heating]
+
+        Returns:
+            [float]: [time to next consumption minus time of high interval]
+        """
         datetime_now = datetime.now()
         time_now = datetime_now.time()
         day_time_start = time_now
@@ -270,6 +336,14 @@ class WeekPlanner:
         return (hours_to_next_heating - time_of_high_tarif) / timedelta(hours=1)
 
     def _empty_intervals(self, data_from_db=None):
+        """Function returning a dictionary of empty intervals.
+
+        Args:
+            data_from_db ([DataFrame], optional): [Data rom the DB to search in]. Defaults to None.
+
+        Returns:
+            [type]: [description]
+        """
         if (data_from_db is not None):
             self.empty_intervals = self._find_empty_intervals(data_from_db)
 

@@ -1,3 +1,12 @@
+#################################################################
+# Bachelor's thesis                                             #
+# From a dumb boiler to a smart one using a smart socket        #
+# Author: Adam Grünwald                                         #
+# BUT FIT BRNO, Faculty of Information Technology               #
+# 26/6/2021                                                     #
+#                                                               #
+# Module with class for maniulating with time and date  formats #
+#################################################################
 from datetime import datetime, timedelta
 import calendar 
 
@@ -16,16 +25,33 @@ class TimeHandler:
 
 
     def hour_minutes_now(self, dtime = None):
+        """Returns actual hour and minute
+
+        Args:
+            dtime ([DateTime], optional): [Actual DateTime]. Defaults to None.
+
+        Returns:
+            [type]: [Hour and minute]
+        """
         if dtime is None:
             dtime = datetime.now()
         return dtime.strptime(dtime.strftime("%H:%M"), "%H:%M")
 
 
-    #funkce pro kalendar Google, jez ma data v SEC, nutno pricist hodinu k datetime.now()
     def is_date_between(self, begin_date, end_date):
+        """ Returns boolean value describing presence actual time between two times.
+
+        Args:
+            begin_date ([type]): [time of beginning]
+            end_date ([type]): [time of end]
+
+        Returns:
+            [boolean]: [if is date between - True]
+        """
+        # addition because google calendar api returns utc
         check_date = datetime.now() + timedelta(hours = 1)
 
-        #hodinu pred koncem udalosti uz ridit normalne, aby se voda stihla pripadne nahrat
+        # one hour before the ond of vacation should be water preheated
         return begin_date <= check_date <= (end_date - timedelta(hours = 1))
 
     def date_from_influxdb_to_datetime(self, date_from_db):

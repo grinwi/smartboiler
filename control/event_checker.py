@@ -1,3 +1,14 @@
+##########################################################
+# Bachelor's thesis                                      #
+# From a dumb boiler to a smart one using a smart socket #
+# Author: Adam Grünwald                                  #
+# BUT FIT BRNO, Faculty of Information Technology        #
+# 26/6/2021                                              #
+#                                                        #
+# Module with class used for comunicating with Google    #
+# Calendar API and searching for special events.         #
+##########################################################
+
 from __future__ import print_function
 import json
 import datetime
@@ -11,8 +22,6 @@ from google.auth.transport.requests import Request
 
 from time_handler import TimeHandler
 
-# If modifying these scopes, delete the file token.pickle.
-
 
 class EventChecker:
 
@@ -22,15 +31,17 @@ class EventChecker:
         self.TimeHandler = TimeHandler()
 
     def load_events(self):
+        """Loads events from Google Calendar API using credentials of Google Calendar
+
+        Returns:
+            [list]: [list of events]
+        """
 
         creds = None
-        # The file token.pickle stores the user's access and refresh tokens, and is
-        # created automatically when the authorization flow completes for the first
-        # time.
+
         if os.path.exists('token.pickle'):
             with open('token.pickle', 'rb') as token:
                 creds = pickle.load(token)
-        # If there are no (valid) credentials available, let the user log in.
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
@@ -38,7 +49,6 @@ class EventChecker:
                 flow = InstalledAppFlow.from_client_secrets_file(
                     'credentials.json', self.SCOPES)
                 creds = flow.run_local_server(port=0)
-            # Save the credentials for the next run
             with open('token.pickle', 'wb') as token:
                 pickle.dump(creds, token)
 
@@ -47,8 +57,7 @@ class EventChecker:
         except:
             print("couldn't build service")
             return
-        # Call the Calendar API
-        now = datetime.datetime.utcnow().isoformat() + 'Z'  # 'Z' indicates UTC time
+        now = datetime.datetime.utcnow().isoformat() + 'Z'
         try:
             events_result = service.events().list(calendarId='primary', timeMin=now,
                                                   maxResults=1, singleEvents=True,
@@ -60,6 +69,14 @@ class EventChecker:
             return None
 
     def next_calendar_heat_up_event(self, Boiler):
+        """Search next event in a calendar which contains specific words describing the process of heating up.
+
+        Args:
+            Boiler ([class]): [class of boiler]
+
+        Returns:
+            [dict]: [dictionary describing next heating up event]
+        """
         events = self.load_events()
         return_dict = {"hours_to_event": None, "degree_target": None}
 
@@ -99,6 +116,11 @@ class EventChecker:
         return return_dict
 
     def check_off_event(self):
+        """Search for an event for turning off the boiler.
+
+        Returns:
+            [type]: [description]
+        """
         events = self.load_events()
         if not events:
             return False
@@ -114,7 +136,7 @@ class EventChecker:
                     return self.TimeHandler.is_date_between(start, end)
             return False
 
-  
+
 if __name__ == '__main__':
     e = EventChecker()
     e.check_event()

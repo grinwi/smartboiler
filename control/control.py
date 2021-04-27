@@ -1,13 +1,19 @@
-"""
-Module that controls a heating of smart boiler. 
+###########################################################
+# Bachelor's thesis                                       #
+# From a dumb boiler to a smart one using a smart socket  #
+# Author: Adam Grünwald                                   #
+# BUT FIT BRNO, Faculty of Information Technology         #
+# 26/6/2021                                               #
+#                                                         #
+# Module that controls a heating of smart boiler.         #
+# Uses module Boiler for computing time needed to heating #
+# of water, module TimeHandler for basic time and date    #
+# operations, WeekPlanner for plan week heating,          # 
+# SettingsLoader to load setting from settings file and   # 
+# EventChecker which checks events in calendar,           # 
+#when the water shouldn't be heated.                      #
+###########################################################
 
-Uses module Boiler for computing time needed to heating of water, 
-module TimeHandler for basic time and date operations, 
-WeekPlanner for plan week heating, 
-SettingsLoader to load setting from settings file and EventChecker which checks events in calendar, 
-when the water shouldnt be heated.
-
-"""
 
 from datetime import datetime, timedelta
 import pandas as pd
@@ -34,24 +40,16 @@ from event_checker import EventChecker
 
 
 class Controller:
-    """Main and only class which decides about heating
+    """Main class which makes decisions about about heating
     """
 
     def __init__(self, settings_file='settings.json'):
-        """Initializes controller with settings from SettingsLoader
+        """Inits class of Controller. Loads settings from a settings file
 
         Args:
-
-
-            db_name ([type]): [description]
-            socket_url ([type]): [description]
-            tmp_output (str, optional): [description]. Defaults to 'tmp1'.
-            tmp_boiler (str, optional): [description]. Defaults to 'tmp2'.
-            host (str, optional): [description]. Defaults to 'influxdb'.
-            port (int, optional): [description]. Defaults to 8086.
-            boiler_capacity (int, optional): [description]. Defaults to 100.
-            boiler_wattage (int, optional): [description]. Defaults to 2000.
+            settings_file (str, optional): [name of json file with settings]. Defaults to 'settings.json'.
         """
+
         from settings_loader import SettingsLoader
         SettingsLoader = SettingsLoader(settings_file)
         settings = SettingsLoader.load_settings()
@@ -128,6 +126,7 @@ class Controller:
 
     def _actualize_data(self):
         """
+        Actualizes data form DB
 
         Args:
             measurement (str, optional): [description]. Defaults to 'senzory_boiler'.
@@ -192,6 +191,8 @@ class Controller:
         return hours_to_start > hours_to_end
 
     def _check_data(self):
+        """ Refreshs data every day
+        """
         if self.last_data_update - datetime.now() > timedelta(days=1):
             print(datetime.now())
             print("actualizing data")
@@ -202,31 +203,48 @@ class Controller:
                 self.WeekPlanner.week_plan(self.data_db)
 
     def _learning(self):
+        """ After one week of only measuring the data starts heating based on historical data.
+
+        Returns:
+            [type]: [description]
+        """
         return ( ( datetime.now() - self.start_date) > timedelta(days=7) )
 
     def control(self):
+        """ Method which decides about turning on or off the heating of a boiler.
+        """
 
         self._check_data()
 
         last_entry = self._last_entry()
 
+        # checks whether the water in boiler should be even ready 
         if self.EventChecker.check_off_event():
             print("naplanovana udalost")
             self._turn_socket_off()
             time.sleep(600)
             return
-        next_calendar_heat_up_event = self.EventChecker.next_calendar_heat_up_event(
-            self.Boiler)
 
+        # last measured entry in DB
         if last_entry is None:
             self._turn_socket_on()
             return
 
+
+        # looks for the next heat up event from a calendar    
+        next_calendar_heat_up_event = self.EventChecker.next_calendar_heat_up_event(
+            self.Boiler)
+
         time_now = datetime.now()
-        tmp_out = last_entry['tmp1']
+        day_of_week = time_now.weekday()
+
+        # actual tmp of water in boiler
         tmp_act = self.Boiler.real_tmp(last_entry['tmp2'])
+
+        # state of smart socket
         is_on = last_entry['socket_turned_on']
 
+        # in first week is water in boiler hold around 60 degrees
         if self._learning():
             if tmp_act > 60:
                 if is_on:
@@ -239,9 +257,8 @@ class Controller:
             return
 
 
-
+        # if last entry is older than 10 minutes, water in a boiler is heated for sure
         time_of_last_entry = last_entry['time_of_last_entry']
-
         if (time_now - time_of_last_entry > timedelta(minutes=10)):
             if not self.WeekPlanner.is_in_DTO():
                 print("too old last entry ({}), need to heat".format(
@@ -250,11 +267,15 @@ class Controller:
                     self._turn_socket_on()
             return
 
+
+        # helping variables for changing day coefs
         if(self._is_in_heating()):
             self.coef_down_in_current_heating_cycle_changed = False
         else:
             self.coef_up_in_current_heating_cycle_changed = False
 
+
+        # once a three weeks is water in boiler heated on max for ellimination of Legionella
         if self.last_legionella_heating - datetime.now() > timedelta(days=21):
             self.coef_down_in_current_heating_cycle_changed = True
             if not is_on:
@@ -267,6 +288,7 @@ class Controller:
                 self.last_legionella_heating = datetime.now()
                 print("legionella was eliminated, see you in 3 weeks")
 
+        # if is scheduled event for heating, there is evaluated if it is needed to heat
         if next_calendar_heat_up_event is not None:
             time_to_without_DTO = self.WeekPlanner.duration_of_low_tarif_to_next_heating(
                 next_calendar_heat_up_event['hours_to_event'])
@@ -280,19 +302,19 @@ class Controller:
                     self._turn_socket_on()
                 return
 
+        # if is actual tmp lower than tmp min, there is need to heat
         if (tmp_act < self.tmp_min):
             if not is_on:
                 self._turn_socket_on()
             return
 
-        day_of_week = datetime.now().weekday()
 
         if (self._is_in_heating()):
 
             current_heating = self._next_heating_event('end')
             current_heating_half_duration = current_heating['duration'] / 2
             how_long_to_current_heating_end = current_heating['will_occur_in']
-
+            
             if(tmp_act < self.consumption_tmp_min):
 
                 print("in heating, needed to increase tmp({}°C) above tmp min({}°C)".format(
@@ -301,6 +323,7 @@ class Controller:
                     self._turn_socket_on()
 
                 if((how_long_to_current_heating_end > current_heating_half_duration) and not self.coef_up_in_current_heating_cycle_changed):
+                    #changing the coefs if the temperature during predicted consumption is too low
                     self.coef_up_in_current_heating_cycle_changed = True
                     self.WeekPlanner.week_days_coefs[day_of_week] *= 1.015
                     print("changing day ({}) coef to {}".format(
@@ -314,7 +337,7 @@ class Controller:
 
             return
         else:
-            # reseni ohrevu pro dalsi spotrebu
+            # checking whether it is needed to heat before the next predicted consumption
             next_heating = self._next_heating_event('start')
 
             time_to_next_heating = self.WeekPlanner.duration_of_low_tarif_to_next_heating(
@@ -323,7 +346,6 @@ class Controller:
             next_heating_goal_temperature = next_heating['peak'] * \
                 self.WeekPlanner.week_days_coefs[day_of_week]
 
-            # v tomto pripade je v momente neodberu potreba ohrivat + v pripadech, ze je teplota pod min viz vyse
             if(self.Boiler.is_needed_to_heat(tmp_act, tmp_goal=next_heating_goal_temperature, time_to_consumption=time_to_next_heating)):
                 print("need to heat up before consumption, time to coms:{} , time without DTO: {}".format(
                     next_heating['will_occur_in'], time_to_next_heating))
@@ -333,7 +355,7 @@ class Controller:
                     self._turn_socket_on()
 
                 return
-
+            # te day coef is changed whether the temperature is too high outside of the predicted consumption
             if ((tmp_act > (self.consumption_tmp_min + 3)) and not self.coef_down_in_current_heating_cycle_changed):
                 self.coef_down_in_current_heating_cycle_changed = True
                 print("actual tmp is greater than consumption tmp min")
@@ -342,7 +364,6 @@ class Controller:
                     (day_of_week + 1), self.WeekPlanner.week_days_coefs[day_of_week]))
 
             # if boiler need to heat tmp act, tmp act + delta, time to next high tarif
-
             next_high_tarif_interval = self.WeekPlanner.next_high_tarif_interval(
                 'start')
             if next_high_tarif_interval is not None:
@@ -359,6 +380,8 @@ class Controller:
                 self._turn_socket_off()
 
     def _turn_socket_on(self):
+        """Turning of the socket.
+        """
         try:
             requests.get("http://" + self.socket_url + "/relay/0?turn=on")
             print("socket turned on")
@@ -367,6 +390,8 @@ class Controller:
             print("it was unable to turn on socket")
 
     def _turn_socket_off(self):
+        """Turning of the socket.
+        """
         try:
             requests.get("http://" + self.socket_url + "/relay/0?turn=off")
             print("socket turned off")
