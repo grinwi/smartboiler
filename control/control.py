@@ -289,7 +289,7 @@ class Controller:
                 print("legionella was eliminated, see you in 3 weeks")
 
         # if is scheduled event for heating, there is evaluated if it is needed to heat
-        if next_calendar_heat_up_event is not None:
+        if next_calendar_heat_up_event['hours_to_event'] is not None:
             time_to_without_DTO = self.WeekPlanner.duration_of_low_tarif_to_next_heating(
                 next_calendar_heat_up_event['hours_to_event'])
             tmp_goal = next_calendar_heat_up_event['degree_target']
