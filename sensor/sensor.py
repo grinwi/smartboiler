@@ -145,7 +145,7 @@ if __name__ == '__main__':
     if len(args)< 2:
         parser.print_usage()
         print('please specify two or more arguments')
-        return        
+        sys.exit(1)        
     host, port = args
 
 
