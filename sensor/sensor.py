@@ -69,7 +69,7 @@ def connect_to_db():
 
 
  
-def measure(nmeas):
+def measure():
 
     try:
         http = requests.get("http://" + socket_url + "/status")
@@ -161,5 +161,5 @@ if __name__ == '__main__':
 
 
     while(True):
-        measure(options.nmeasurements)
+        measure()
         
