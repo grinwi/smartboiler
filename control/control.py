@@ -390,7 +390,7 @@ class Controller:
             print("it was unable to turn on socket")
 
     def _turn_socket_off(self):
-        """Turning of the socket.
+        """Turning of the socket
         """
         try:
             requests.get("http://" + self.socket_url + "/relay/0?turn=off")

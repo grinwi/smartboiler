@@ -1,3 +1,13 @@
+###########################################################
+# Bachelor's thesis                                       #
+# From a dumb boiler to a smart one using a smart socket  #
+# Author: Adam Grünwald                                   #
+# BUT FIT BRNO, Faculty of Information Technology         #
+# 26/6/2021                                               #
+#                                                         #
+# Module that collects data from a smart socket.          #
+###########################################################
+
 from influxdb import InfluxDBClient
 import requests
 
@@ -19,7 +29,11 @@ EvntChecker = EventChecker()
 client = None
 
 def db_exists():
-    '''returns True if the database exists'''
+    """Returns True if the database exists.
+
+    Returns:
+        [boolean]: [True if DB exists]
+    """
     dbs = client.get_list_database()
     for db in dbs:
         if db['name'] == db_name:
@@ -37,11 +51,11 @@ def wait_for_server(host, port, nretries=5):
         except requests.exceptions.ConnectionError:
             print('waiting for', url)
             time.sleep(waiting_time)
-            waiting_time *= 2
+            waiting_time += 2
             pass
     print('cannot connect to', url)
 
-def connect_db(host, port, reset):
+def connect_to_db():
     global client
     print('connecting to database: {}:{}'.format(host,port))
     client = InfluxDBClient(host, port, retries=5, timeout=1)
@@ -57,8 +71,6 @@ def connect_db(host, port, reset):
  
 def measure(nmeas):
 
-
-
     try:
         http = requests.get("http://" + socket_url + "/status")
         bad_request_sleeping_time = 10
@@ -67,7 +79,7 @@ def measure(nmeas):
         if(bad_request_sleeping_time != 200):
             bad_request_sleeping_time +=10
         time.sleep(bad_request_sleeping_time)
-        continue  
+        return  
     if http.status_code == 200:
         try:
             data = http.json()
@@ -102,12 +114,6 @@ def measure(nmeas):
         
     time.sleep(20)
 
-def get_entries():
-    '''returns all entries in the database.'''
-    results = client.query('select * from {}'.format(measurement))
-    # we decide not to use the x tag
-    return list(results[(measurement, None)])
-
 def load_settings(file_name):
     try:
         with open(file_name) as json_file:
@@ -139,8 +145,7 @@ if __name__ == '__main__':
     if len(args)< 2:
         parser.print_usage()
         print('please specify two or more arguments')
-        sys.exit(1)
-        
+        return        
     host, port = args
 
 
@@ -151,12 +156,10 @@ if __name__ == '__main__':
     db_name = settings['db_name']
     measurement = settings['measurement']
 
-    connect_db(host, port, options.reset)
+    connect_to_db()
     bad_request_sleeping_time = 20
 
 
     while(True):
-
-
         measure(options.nmeasurements)
         
