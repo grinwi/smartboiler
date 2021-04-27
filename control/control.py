@@ -208,6 +208,8 @@ class Controller:
         Returns:
             [type]: [description]
         """
+
+        print(( ( datetime.now() - self.start_date) > timedelta(days=7) ))
         return ( ( datetime.now() - self.start_date) > timedelta(days=7) )
 
     def control(self):
