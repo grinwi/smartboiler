@@ -1,4 +1,4 @@
-# smart_boiler
+# SMART BOILER
 From dumb boiler smart with help of smart plug. 
 
 
