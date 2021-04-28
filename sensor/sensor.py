@@ -75,7 +75,7 @@ def connect_to_db():
 
 
  
-def measure():
+def measure(bad_request_sleeping_time):
 
     try:
         http = requests.get("http://" + socket_url + "/status")
@@ -163,9 +163,9 @@ if __name__ == '__main__':
     measurement = settings['measurement']
 
     connect_to_db()
-    global bad_request_sleeping_time = 20
+    bad_request_sleeping_time = 20
 
 
     while(True):
-        measure()
+        measure(bad_request_sleeping_time)
         
