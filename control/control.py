@@ -11,7 +11,7 @@
 # operations, WeekPlanner for plan week heating,          # 
 # SettingsLoader to load setting from settings file and   # 
 # EventChecker which checks events in calendar,           # 
-#when the water shouldn't be heated.                      #
+# when the water shouldn't be heated.                      #
 ###########################################################
 
 
@@ -206,11 +206,11 @@ class Controller:
         """ After one week of only measuring the data starts heating based on historical data.
 
         Returns:
-            [type]: [description]
+            [boolean]: [True if in learing]
         """
 
-        print(( ( datetime.now() - self.start_date) > timedelta(days=7) ))
-        return ( ( datetime.now() - self.start_date) > timedelta(days=7) )
+        print(( ( datetime.now() - self.start_date) < timedelta(days=7) ))
+        return ( ( datetime.now() - self.start_date) < timedelta(days=7) )
 
     def control(self):
         """ Method which decides about turning on or off the heating of a boiler.

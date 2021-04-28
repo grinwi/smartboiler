@@ -40,8 +40,14 @@ def db_exists():
             return True
     return False
 
-def wait_for_server(host, port, nretries=5):
-    '''wait for the server to come online for waiting_time, nretries times.'''
+def wait_for_server(nretries=5):
+    """Waiting to server response
+
+    Args:
+        host ([string]): [host]
+        port ([int]): [port number]
+        nretries (int, optional): [number of retries]. Defaults to 5.
+    """
     url = 'http://{}:{}'.format(host, port)
     waiting_time = 1
     for i in range(nretries):
@@ -59,7 +65,7 @@ def connect_to_db():
     global client
     print('connecting to database: {}:{}'.format(host,port))
     client = InfluxDBClient(host, port, retries=5, timeout=1)
-    wait_for_server(host, port)
+    wait_for_server()
     if not db_exists():
         print('creating database...')
         client.create_database(db_name)
@@ -157,7 +163,7 @@ if __name__ == '__main__':
     measurement = settings['measurement']
 
     connect_to_db()
-    bad_request_sleeping_time = 20
+    global bad_request_sleeping_time = 20
 
 
     while(True):
