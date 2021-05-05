@@ -4,7 +4,7 @@ This is a manual for creating your own smart boiler from a dumb one.
 The first thing you need to do is to get a smart socket to which will be connected boiler and a device, which will be able to measure temperature from a body of boiler. 
 The best and the easiest option is to buy a smart relay Shelly 1PM with a module for connecting two temperature sensors DS18B20. On this relay connect the socket to which is connected the boiler.
 
-![Connection of smart relay on a socket.](https://github.com/grinwi/smart_boiler/blob/main/sta%C5%BEen%C3%BD%20soubor.png)
+![Connection of smart relay on a socket.](https://github.com/grinwi/smart_boiler/blob/main/relay_schema.png)
 
 # Connect sensors
 The two temperature sensors need to be situated on a boiler. First one place into a case of boiler close to the top of the bottle tank. This one will be monitoring the temperature of the water in the boiler. Second one place on an output pipe of hot water for detecting the consumption.
@@ -22,7 +22,7 @@ You can use the preset events as:
 Place a string "#off" into a name of an event and during this event, the water in the boiler won't be heated.
 - Prepare shower
 Using the string "Prepare <number of showers> showers" in the name of an event assure the required number of showers, when as one shower is 40 liters water of 40 degrees Celsium.
-- Prepare water on a certain temperature
+- Prepare water at a certain temperature
 The event with string "boiler heat up at <number> degrees" in the name of an event ensures the water of required temperature prepared on a start of the event."
 
 # Set up the workstation
