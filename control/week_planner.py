@@ -203,6 +203,11 @@ class WeekPlanner:
         Returns:
             [type]: [description]
         """
+
+        
+        data = data[data.index > (
+            data.last_valid_index() - timedelta(days=14))]
+            
         df_grouped = data.groupby(
             [data.index.dayofweek, data.index.hour]).mean().reset_index()
         return df_grouped.rename(columns={'level_0': 'day_of_week', 'level_1': 'hour'})

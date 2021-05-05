@@ -91,6 +91,9 @@ class Boiler:
             [float]: [the real temperature of water in boiler]
         """
 
+        if((tmp_act is None) or (self.area_tmp is None) or (self.set_tmp is None)):
+            return 50
+
         if(tmp_act < self.area_tmp or tmp_act > self.set_tmp):
             return tmp_act
 
