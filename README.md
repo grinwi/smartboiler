@@ -1,6 +1,8 @@
 # SMART BOILER
 From dumb boiler smart with help of smart plug. 
 
+Recursive link to the github repository: <https://github.com/grinwi/smart_boiler>.
+
 
 ## What's it all about?
 This project is my bachelor's thesis with one simple goal: make from dumb boiler a smart one with help of a smart plug and few sensors.
