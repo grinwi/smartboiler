@@ -4,8 +4,7 @@ This is an manual for creating your own smart boiler from a dumb one.
 First thing you need to do is to get a smart socket to which will be connected boiler and a device, which will be able to measure temperature from a body of boiler. 
 The best and the easiest option is to buy a smart rele Shelly 1PM with a module for connect two temperature sensors DS18B20. On this rele connect the socket to which is connected the boiler.
 
-
-![alt text](https://github.com/grinwi/smart_boiler/blob/main/socket_schema.pdf "Logo Title Text 1")
+![alt text](https://github.com/grinwi/smart_boiler/blob/main/socket_schema.pdf )
 
 # Connect sensors
 The who temrperature sensors need to be situated on a boiler. First one place into a case of boiler. This one will be monitoring temperature of a water in boiler. Second one place on an output pipe for detecting the consumption.
