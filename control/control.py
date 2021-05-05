@@ -245,7 +245,7 @@ class Controller:
 
         # state of smart socket
         is_on = last_entry['socket_turned_on']
-
+        print(tmp_act)
         # in first week is water in boiler hold around 60 degrees
         if self._learning():
             if tmp_act > 60:
