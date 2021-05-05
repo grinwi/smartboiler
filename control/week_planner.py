@@ -225,6 +225,44 @@ class WeekPlanner:
 
         return self.week_days_consumptions
 
+
+    def next_heating_event(self, event):
+        """Finds how long it takes to next heating.
+
+        Returns:
+            [type]: [description]
+        """
+        actual_time = self.TimeHandler.hour_minutes_now()
+
+        day_of_week = datetime.now().weekday()
+
+        days_plus = 0
+
+        while(days_plus < 7):
+
+            day_plan = self.week_days_consumptions[day_of_week]
+
+            for key, item in day_plan.items():
+                next_time = item[event]
+
+                if (next_time >= actual_time):
+                    time_to_next_heating_event = (
+                        next_time - actual_time + timedelta(days=days_plus)) / timedelta(hours=1)
+
+                    return{"will_occur_in": time_to_next_heating_event, "duration": item['duration'], "peak": item["peak"], "time": next_time}
+
+            actual_time = self.TimeHandler.hour_minutes_now().replace(hour=0, minute=0)
+            days_plus += 1
+            day_of_week = (day_of_week + 1) % 7
+        return None
+
+    def is_in_heating(self):
+
+        hours_to_end = self.next_heating_event('end')["will_occur_in"]
+        hours_to_start = self.next_heating_event('start')["will_occur_in"]
+
+        return hours_to_start > hours_to_end
+
     def is_in_DTO(self):
         """Checks whether is DTO currently turned on
 

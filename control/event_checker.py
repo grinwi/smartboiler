@@ -31,7 +31,10 @@ class EventChecker:
         self.TimeHandler = TimeHandler()
 
     def load_events(self):
-        """Loads events from Google Calendar API using credentials of Google Calendar
+        """Loads events from Google Calendar API using credentials of Google Calendar.
+
+        Code for communicating with Google Calendar API is inspired by a manual on https://developers.google.com/calendar/
+        quickstart/python
 
         Returns:
             [list]: [list of events]

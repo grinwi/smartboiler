@@ -1,0 +1,19 @@
+{
+  "settings":
+  {
+      "socket_url" : "",
+      "db_name" : "",
+      "db_host" : "influxdb",
+      "db_port" : 8086,
+      "measurement" : "senzory_bojler",
+      "tmp_min" : 37,
+      "tmp_output" : "tmp1",
+      "tmp_boiler" : "tmp2",
+      "boiler_capacity" : 80,
+      "boiler_wattage" : 2000,
+      "boiler_set_tmp" : 80 ,
+      "heating_coef" : 1.3,
+      "consumption_tmp_min" : 38,
+      "rel_height" : 0.7
+  }
+}

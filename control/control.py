@@ -153,42 +153,6 @@ class Controller:
             print("it wasnt posiible to get new datasets")
             return None
 
-    def _next_heating_event(self, event):
-        """Finds how long it takes to next heating.
-
-        Returns:
-            [type]: [description]
-        """
-        actual_time = self.TimeHandler.hour_minutes_now()
-
-        day_of_week = datetime.now().weekday()
-
-        days_plus = 0
-
-        while(days_plus < 7):
-
-            day_plan = self.WeekPlanner.week_days_consumptions[day_of_week]
-
-            for key, item in day_plan.items():
-                next_time = item[event]
-
-                if (next_time >= actual_time):
-                    time_to_next_heating_event = (
-                        next_time - actual_time + timedelta(days=days_plus)) / timedelta(hours=1)
-
-                    return{"will_occur_in": time_to_next_heating_event, "duration": item['duration'], "peak": item["peak"], "time": next_time}
-
-            actual_time = self.TimeHandler.hour_minutes_now().replace(hour=0, minute=0)
-            days_plus += 1
-            day_of_week = (day_of_week + 1) % 7
-        return None
-
-    def _is_in_heating(self):
-
-        hours_to_end = self._next_heating_event('end')["will_occur_in"]
-        hours_to_start = self._next_heating_event('start')["will_occur_in"]
-
-        return hours_to_start > hours_to_end
 
     def _check_data(self):
         """ Refreshs data every day
@@ -271,7 +235,7 @@ class Controller:
 
 
         # helping variables for changing day coefs
-        if(self._is_in_heating()):
+        if(self.WeekPlanner.is_in_heating()):
             self.coef_down_in_current_heating_cycle_changed = False
         else:
             self.coef_up_in_current_heating_cycle_changed = False
@@ -311,9 +275,9 @@ class Controller:
             return
 
 
-        if (self._is_in_heating()):
+        if (self.WeekPlanner.is_in_heating()):
 
-            current_heating = self._next_heating_event('end')
+            current_heating = self.WeekPlanner.next_heating_event('end')
             current_heating_half_duration = current_heating['duration'] / 2
             how_long_to_current_heating_end = current_heating['will_occur_in']
             
@@ -340,7 +304,7 @@ class Controller:
             return
         else:
             # checking whether it is needed to heat before the next predicted consumption
-            next_heating = self._next_heating_event('start')
+            next_heating = self.WeekPlanner. next_heating_event('start')
 
             time_to_next_heating = self.WeekPlanner.duration_of_low_tarif_to_next_heating(
                 next_heating['will_occur_in'])
