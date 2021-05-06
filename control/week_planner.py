@@ -25,6 +25,7 @@ class WeekPlanner:
         print("------------------------------------------------------\n")
         self.TimeHandler = TimeHandler()
         self.week_days_consumptions = self._create_days_average(data)
+        print(self.week_days_consumptions)
         self.week_days_high_tarifs_intervals = self._find_empty_intervals(data)
 
 
@@ -257,9 +258,13 @@ class WeekPlanner:
         return None
 
     def is_in_heating(self):
+        end = self.next_heating_event('end')
+        start = self.next_heating_event('start')
 
-        hours_to_end = self.next_heating_event('end')["will_occur_in"]
-        hours_to_start = self.next_heating_event('start')["will_occur_in"]
+        if ((end is None) or (start is None)):
+            return False
+        hours_to_end = end["will_occur_in"]
+        hours_to_start = start["will_occur_in"]
 
         return hours_to_start > hours_to_end
 
