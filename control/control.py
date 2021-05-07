@@ -173,7 +173,6 @@ class Controller:
             [boolean]: [True if in learing]
         """
 
-        print(( ( datetime.now() - self.start_date) < timedelta(days=7) ))
         return ( ( datetime.now() - self.start_date) < timedelta(days=7) )
 
     def control(self):
@@ -209,7 +208,6 @@ class Controller:
 
         # state of smart socket
         is_on = last_entry['socket_turned_on']
-
         # in first week is water in boiler hold around 60 degrees
         if self._learning():
             if tmp_act > 60:
@@ -278,6 +276,8 @@ class Controller:
         if (self.WeekPlanner.is_in_heating()):
 
             current_heating = self.WeekPlanner.next_heating_event('end')
+            if (current_heating is None):
+                return
             current_heating_half_duration = current_heating['duration'] / 2
             how_long_to_current_heating_end = current_heating['will_occur_in']
             
@@ -305,7 +305,8 @@ class Controller:
         else:
             # checking whether it is needed to heat before the next predicted consumption
             next_heating = self.WeekPlanner. next_heating_event('start')
-
+            if (next_heating is None):
+                return
             time_to_next_heating = self.WeekPlanner.duration_of_low_tarif_to_next_heating(
                 next_heating['will_occur_in'])
 

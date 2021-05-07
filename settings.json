@@ -1,11 +1,11 @@
 {
   "settings":
   {
-      "socket_url" : "",
-      "db_name" : "",
+      "socket_url" : "192.168.4.144",
+      "db_name" : "formankovi",
       "db_host" : "influxdb",
       "db_port" : 8086,
-      "measurement" : "senzory_bojler",
+      "measurement" : "senzory_room",
       "tmp_min" : 37,
       "tmp_output" : "tmp1",
       "tmp_boiler" : "tmp2",
