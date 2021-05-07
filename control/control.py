@@ -209,6 +209,12 @@ class Controller:
         # state of smart socket
         is_on = last_entry['socket_turned_on']
         # in first week is water in boiler hold around 60 degrees
+
+        #protection from freezing
+        if tmp_act < 5:
+            if not is_on:
+                self._turn_socket_on()
+
         if self._learning():
             if tmp_act > 60:
                 if is_on:
@@ -221,7 +227,7 @@ class Controller:
             return
 
 
-        # if last entry is older than 10 minutes, water in a boiler is heated for sure
+        # if last entry is older than 10 minutes and not because of high tarif, water in a boiler is heated for sure
         time_of_last_entry = last_entry['time_of_last_entry']
         if (time_now - time_of_last_entry > timedelta(minutes=10)):
             if not self.WeekPlanner.is_in_DTO():
