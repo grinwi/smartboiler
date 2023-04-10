@@ -1,36 +1,67 @@
 version: "3"
 services:
-  influxdb:
-    image: influxdb
-    ports:
-      - "8086:8086"
-    volumes:
-      - influxdb:/var/lib/influxdb
-  sensor:
-    image: sensor
-    build: 
-      context: "."
-      dockerfile: sensor/Dockerfile
-    links:
-      - influxdb
-  control:
-    image: control
-    build:
-      context: "."
-      dockerfile: control/Dockerfile
-    links:
-      - influxdb
+    influxdb:
+      image: influxdb:2.6
+      container_name: influxdb
+      environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=grinwi
+      - DOCKER_INFLUXDB_INIT_PASSWORD=12418712
+      - DOCKER_INFLUXDB_INIT_ORG=smart_household
+      - DOCKER_INFLUXDB_INIT_BUCKET=smart_boiler
+      volumes:
+        - ./influxdb/data:/var/lib/influxdb2
+        - ./influxdb/config:/etc/influxdb2
+      ports:
+        - 8086:8086
+      restart: unless-stopped
+      networks:
+        - tig_network
+  
+    telegraf:
+      image: telegraf:1.18-alpine      
+      container_name: telegraf
+      user: "1000:1000"
+      volumes:
+        - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf
+      restart: unless-stopped
+      networks:
+        - tig_network
+  
+    grafana:
+      image: grafana/grafana:latest
+      container_name: grafana
+      # user: 1000:1000
+      ports:
+        - 3000:3000
+      volumes:
+        - ./grafana/data:/var/lib/grafana_storage
+        - ./grafana/config:/etc/grafana_storage
+        - ./grafana/log:/var/log/grafana_storage
+      restart: unless-stopped
+      networks:
+        - tig_network
 
-
-  dashboard:
-    image: grafana/grafana
-    links:
-      - sensor
-    ports:
-      - "3000:3000"
-    volumes:
-      - grafana:/var/lib/grafana
+    sensor:
+      image: sensor
+      build: 
+        context: "."
+        dockerfile: sensor/Dockerfile
+      links:
+        - influxdb
+      networks:
+        - tig_network
+    control:
+      image: control
+      build:
+        context: "."
+        dockerfile: control/Dockerfile
+      links:
+        - influxdb
+networks:
+  tig_network:
+    driver: bridge
 
 volumes:
-  influxdb:
-  grafana:
+  influxdb: {}
+  grafana:  {}

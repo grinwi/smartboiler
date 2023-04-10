@@ -8,7 +8,7 @@
 # Dockerfile for sensor container measuring the data      #
 ###########################################################
 
-FROM python
+FROM python:3.8
 
 WORKDIR /app
 # copy requirements
@@ -18,14 +18,17 @@ RUN pip install --trusted-host pypi.python.org -r requirements.txt
 # install the google api client
 RUN pip install --upgrade google-api-python-client google-auth-httplib2 google-auth-oauthlib
 
+
 # copying files needed to run of a script
 COPY sensor/sensor.py /app/sensor.py
+COPY sensor/shelly.py /app/shelly.py
 COPY settings.json /app/settings.json
 COPY settings_loader/settings_loader.py /app/settings_loader.py
 COPY control/time_handler.py /app/time_handler.py
 COPY control/event_checker.py /app/event_checker.py
-COPY control/credentials.json /app/credentials.json
-COPY control/token.pickle /app/token.pickle
+COPY control/week_planner.py /app/week_planner.py
+# COPY control/credentials.json /app/credentials.json
+# COPY control/token.pickle /app/token.pickle
 
 
 CMD ["python", "-u", "sensor.py", "influxdb", "8086"]

@@ -30,8 +30,8 @@ COPY settings.json /app/settings.json
 COPY settings_loader/settings_loader.py /app/settings_loader.py
 
 # copy of credentials needed for google api
-COPY control/credentials.json /app/credentials.json
-COPY control/token.pickle /app/token.pickle
+# COPY control/credentials.json /app/credentials.json
+# COPY control/token.pickle /app/token.pickle
 
 # run of script itself
 CMD ["python", "-u", "control.py","-f", "settings.json"]

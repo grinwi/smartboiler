@@ -1,2 +1,6 @@
 # requirements.txt
 influxdb
+influxdb_client
+pandas
+requests
+datetime
