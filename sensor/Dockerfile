@@ -21,7 +21,7 @@ RUN pip install --upgrade google-api-python-client google-auth-httplib2 google-a
 
 # copying files needed to run of a script
 COPY sensor/sensor.py /app/sensor.py
-COPY sensor/shelly.py /app/shelly.py
+COPY boiler/shelly.py /app/boiler/shelly.py
 COPY settings.json /app/settings.json
 COPY settings_loader/settings_loader.py /app/settings_loader.py
 COPY control/time_handler.py /app/time_handler.py

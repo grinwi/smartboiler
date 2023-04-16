@@ -8,7 +8,6 @@
 # Module that collects data from a smart socket.          #
 ###########################################################
 
-import influxdb_client, os, time
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
 import requests
@@ -21,7 +20,7 @@ import time
 import pprint
 import signal
 import datetime
-from shelly import SmartBoiler
+from boiler.shelly import SmartBoiler
 from optparse import OptionParser
 from settings_loader import SettingsLoader
 
