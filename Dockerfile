@@ -1,6 +1,7 @@
-# https://developers.home-assistant.io/docs/add-ons/configuration#add-on-dockerfile
-ARG BUILD_FROM
-FROM $BUILD_FROM
+FROM python:3.8-slim-buster
+
+# switch working directory
+WORKDIR /app
 
 # copy the requirements file into the image
 COPY requirements.txt requirements.txt
@@ -29,12 +30,10 @@ RUN apt-get update \
         netcdf-bin \
         libnetcdf-dev \
     && rm -rf /var/lib/apt/lists/*
-RUN pip3 install --no-cache-dir -r requirements_webserver.txt
 
-FROM python
-WORKDIR /app
-COPY src/smart_boiler/requirements.txt /app/requirements.txt
+RUN pip3 install --no-cache-dir -r requirements_webserver.txt
 RUN pip install --trusted-host pypi.python.org -r requirements.txt
+
 
 # copying of files needed to run the script (modules etc...)
 COPY src/smart_boiler/control.py /app/control.py
