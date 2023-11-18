@@ -27,6 +27,8 @@ import sys
 import time
 import json
 import requests
+import homeassistant.remote as remote
+
 
 
 from scipy.misc import electrocardiogram
@@ -58,7 +60,8 @@ class Controller:
         self.port = settings['db_port']
         self.db_name = settings['db_name']
         self.measurement = settings['measurement']
-
+        self.db_user = settings['db_user']
+        self.db_pass = settings['db_pass']
         self.socket_url = settings['socket_url']
 
         self.tmp_output = settings['tmp_output']
@@ -68,6 +71,10 @@ class Controller:
         self.consumption_tmp_min = settings['consumption_tmp_min']
 
         self.start_date = datetime.now()
+        
+        self.Hass = remote.API('localhost', 'smart_boiler01')
+        self.shelly_entity_id = 'shelly1pm_34945475a969'
+
 
         boiler_wattage = settings['boiler_wattage']
         boiler_capacity = settings['boiler_capacity']
@@ -79,20 +86,28 @@ class Controller:
         print("------------------------------------------------------\n")
 
         self.InfluxDBClient = InfluxDBClient(
-            self.host, self.port, retries=5, timeout=1)
+            host=self.host, 
+            port=self.port, 
+            username=self.db_user, 
+            password=self.db_pass, 
+            retries=5, 
+            timeout=1)
         self.DataFrameClient = DataFrameClient(
-            host=self.host, database=self.db_name)
+            username=self.db_user, 
+            password=self.db_pass,
+            host=self.host, 
+            database=self.db_name)
 
-        self.EventChecker = EventChecker()
-        self.TimeHandler = TimeHandler()
-        self.Boiler = Boiler(capacity=boiler_capacity,
-                             wattage=boiler_wattage, set_tmp=boiler_set_tmp)
+        #self.EventChecker = EventChecker()
+        #self.TimeHandler = TimeHandler()
+        #self.Boiler = Boiler(capacity=boiler_capacity,
+        #                    wattage=boiler_wattage, set_tmp=boiler_set_tmp)
 
-        self.data_db = self._actualize_data()
+        #self.data_db = self._actualize_data()
         self.last_data_update = datetime.now()
         self.last_legionella_heating = datetime.now()
 
-        self.WeekPlanner = WeekPlanner(self.data_db)
+        #self.WeekPlanner = WeekPlanner(self.data_db)
         self.coef_up_in_current_heating_cycle_changed = False
         self.coef_down_in_current_heating_cycle_changed = False
 
@@ -140,17 +155,18 @@ class Controller:
         try:
 
             datasets = self.DataFrameClient.query(
-                'SELECT * FROM "' + self.db_name + '"."autogen"."' + self.measurement + '" ORDER BY DESC')[self.measurement]
+                # 'SELECT * FROM "' + self.db_name + '"."autogen"."' + self.measurement + '" ORDER BY DESC')[self.measurement]
+                'SELECT * FROM "' + self.db_name + '"."autogen"."°C" ORDER BY DESC')['°C']
 
             print("got new datasets")
             df = pd.DataFrame(datasets)
-            df = df[df.in_event != True]
+            # df = df[df.in_event != True]
             self.Boiler.set_measured_tmp(df)
 
             return df
 
         except:
-            print("it wasnt posiible to get new datasets")
+            print("it wasnt possible to get new datasets")
             return None
 
 
@@ -186,13 +202,13 @@ class Controller:
         # checks whether the water in boiler should be even ready 
         if self.EventChecker.check_off_event():
             print("naplanovana udalost")
-            self._turn_socket_off()
+            self.toggle_shelly_relay('off')
             time.sleep(600)
             return
 
         # last measured entry in DB
         if last_entry is None:
-            self._turn_socket_on()
+            self.toggle_shelly_relay('on')
             return
 
 
@@ -213,16 +229,16 @@ class Controller:
         #protection from freezing
         if tmp_act < 5:
             if not is_on:
-                self._turn_socket_on()
+                self.toggle_shelly_relay('on')
 
         if self._learning():
             if tmp_act > 60:
                 if is_on:
-                    self._turn_socket_off()
+                    self.toggle_shelly_relay('off')
             else:
                 if tmp_act < 57:
                     if not is_on:
-                        self._turn_socket_on()
+                        self.toggle_shelly_relay('on')
 
             return
 
@@ -234,7 +250,7 @@ class Controller:
                 print("too old last entry ({}), need to heat".format(
                     time_of_last_entry))
                 if not is_on:
-                    self._turn_socket_on()
+                    self.toggle_shelly_relay('on')
             return
 
 
@@ -249,9 +265,8 @@ class Controller:
         if self.last_legionella_heating - datetime.now() > timedelta(days=21):
             self.coef_down_in_current_heating_cycle_changed = True
             if not is_on:
-                print(
-                    "starting heating for reduce legionella, this occurs every 3 weeks")
-                self._turn_socket_on()
+                print("starting heating for reduce legionella, this occurs every 3 weeks")
+                self.toggle_shelly_relay('on')
 
             if tmp_act >= (65):
                 time.sleep(1200)
@@ -269,13 +284,13 @@ class Controller:
                 print("planned event to heat up with target {} Celsius occurs in {} hours".format(
                     next_calendar_heat_up_event['degree_target'], next_calendar_heat_up_event['hours_to_event']))
                 if not is_on:
-                    self._turn_socket_on()
+                    self.toggle_shelly_relay('on')
                 return
 
         # if is actual tmp lower than tmp min, there is need to heat
         if (tmp_act < self.tmp_min):
             if not is_on:
-                self._turn_socket_on()
+                self.toggle_shelly_relay('on')
             return
 
 
@@ -292,7 +307,7 @@ class Controller:
                 print("in heating, needed to increase tmp({}°C) above tmp min({}°C)".format(
                     tmp_act, self.consumption_tmp_min))
                 if not is_on:
-                    self._turn_socket_on()
+                    self.toggle_shelly_relay('on')
 
                 if((how_long_to_current_heating_end > current_heating_half_duration) and not self.coef_up_in_current_heating_cycle_changed):
                     #changing the coefs if the temperature during predicted consumption is too low
@@ -305,7 +320,7 @@ class Controller:
                 if is_on:
                     print("turning off in heating, actual_tmp = {}".format(tmp_act))
 
-                    self._turn_socket_off()
+                    self.to
 
             return
         else:
@@ -325,7 +340,7 @@ class Controller:
                 if not is_on:
                     print("boiler is needed to heat up from {} to {}. turning socket on".format(
                         tmp_act, next_heating_goal_temperature))
-                    self._turn_socket_on()
+                    self.toggle_shelly_relay('on')
 
                 return
             # te day coef is changed whether the temperature is too high outside of the predicted consumption
@@ -350,28 +365,13 @@ class Controller:
                         return
             if is_on:
                 print("turning off outside of heating, actual_tmp = {}".format(tmp_act))
-                self._turn_socket_off()
+                self.to
 
-    def _turn_socket_on(self):
-        """Turning of the socket.
-        """
-        try:
-            requests.get("http://" + self.socket_url + "/relay/0?turn=on")
-            print("socket turned on")
-        except:
-            print(datetime.now())
-            print("it was unable to turn on socket")
-
-    def _turn_socket_off(self):
-        """Turning of the socket
-        """
-        try:
-            requests.get("http://" + self.socket_url + "/relay/0?turn=off")
-            print("socket turned off")
-
-        except:
-            print(datetime.now())
-            print("it was unable to turn off socket")
+    
+    def toggle_shelly_relay(self, action):
+        service = 'switch.turn_' + action
+        data = {'entity_id': self.shelly_entity_id}
+        self.Hass.services.call('switch', service, data)
 
 
 if __name__ == '__main__':
@@ -393,6 +393,10 @@ if __name__ == '__main__':
     c = Controller(settings_file)
 
     while (1):
-        c.control()
-
+        # c.control()
+        c.toggle_shelly_relay('on')
         time.sleep(60)
+        c.toggle_shelly_relay('off')
+        
+        time.sleep(60)
+

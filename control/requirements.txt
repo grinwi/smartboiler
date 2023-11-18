@@ -1,5 +1,0 @@
-# requirements.txt
-influxdb
-pandas
-scipy
-#matplotlib
