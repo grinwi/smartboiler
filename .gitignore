@@ -4,7 +4,7 @@ __pycache__/
 *$py.class
 
 #settings
-/settings.json
+# settings.json
 control/token.pickle
 control/credentials.json
 
