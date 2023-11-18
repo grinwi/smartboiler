@@ -143,5 +143,5 @@ dmypy.json
 # Pyre type checker
 .pyre/
 api.token
-settings.json
 influxdb/config/influx-configs
+.vscode/settings.json
