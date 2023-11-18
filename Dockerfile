@@ -15,7 +15,7 @@ RUN apt-get update \
         gcc \
         libhdf5-dev \
         libhdf5-serial-dev \
-        netcdf-bin \
+        netcdf-bin \    
         libnetcdf-dev \
         coinor-cbc \
         coinor-libcbc-dev \
