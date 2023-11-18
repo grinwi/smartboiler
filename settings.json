@@ -1,9 +1,11 @@
 {
   "settings":
   {
-      "socket_url" : "192.168.4.144",
-      "db_name" : "formankovi",
-      "db_host" : "influxdb",
+      "socket_url" : "a0d7b954-influxdb",
+      "db_name" : "smart_home_formankovi",
+      "db_host" : "a0d7b954-influxdb",
+      "db_user" : "home_assistant",
+      "db_pass" : "smart_boiler01",
       "db_port" : 8086,
       "measurement" : "senzory_room",
       "tmp_min" : 37,
