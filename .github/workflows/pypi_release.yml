@@ -34,7 +34,6 @@ jobs:
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
         password: ${{ secrets.PYPI_TOKEN }}
-        name: __token__
     - name: Trigged HA addon repository update build
       uses: convictional/trigger-workflow-and-wait@v1.6.1
       with:
