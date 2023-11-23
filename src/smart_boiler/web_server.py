@@ -12,10 +12,10 @@ from distutils.util import strtobool
 import pandas as pd
 import plotly.express as px
 pd.options.plotting.backend = "plotly"
-from emhass.command_line import set_input_data_dict
-from emhass.command_line import perfect_forecast_optim, dayahead_forecast_optim, naive_mpc_optim
-from emhass.command_line import forecast_model_fit, forecast_model_predict, forecast_model_tune
-from emhass.command_line import publish_data
+# from emhass.command_line import set_input_data_dict
+# from emhass.command_line import perfect_forecast_optim, dayahead_forecast_optim, naive_mpc_optim
+# from emhass.command_line import forecast_model_fit, forecast_model_predict, forecast_model_tune
+# from emhass.command_line import publish_data
 
 # Define the Flask instance
 app = Flask(__name__)
@@ -56,7 +56,7 @@ def get_injection_dict(df, plot_size = 1366):
     table2 = df[cost_cols].reset_index().sum(numeric_only=True).to_frame(name='Cost Totals').reset_index().to_html(classes='mystyle', index=False)
     # The dict of plots
     injection_dict = {}
-    injection_dict['title'] = '<h2>EMHASS optimization results</h2>'
+    injection_dict['title'] = '<h2>SMART_BOILER optimization results</h2>'
     injection_dict['subsubtitle0'] = '<h4>Plotting latest optimization results</h4>'
     injection_dict['figure_0'] = image_path_0
     if 'SOC_opt' in df.columns.to_list():
@@ -156,7 +156,7 @@ def build_params(params, options, addon):
 def index():
     app.logger.info("Smart Boiler server online, serving index.html...")
     # Load HTML template
-    file_loader = PackageLoader('emhass', 'templates')
+    file_loader = PackageLoader('smart_boiler', 'templates')
     env = Environment(loader=file_loader)
     template = env.get_template('index.html')
     # Load cache dict
@@ -181,7 +181,7 @@ def action_call(action_name):
     if action_name == 'publish-data':
         app.logger.info(" >> Publishing data...")
         _ = publish_data(input_data_dict, app.logger)
-        msg = f'EMHASS >> Action publish-data executed... \n'
+        msg = f'SMART_BOILER >> Action publish-data executed... \n'
         return make_response(msg, 201)
     elif action_name == 'perfect-optim':
         app.logger.info(" >> Performing perfect optimization...")
@@ -189,7 +189,7 @@ def action_call(action_name):
         injection_dict = get_injection_dict(opt_res)
         with open(str(data_path / 'injection_dict.pkl'), "wb") as fid:
             pickle.dump(injection_dict, fid)
-        msg = f'EMHASS >> Action perfect-optim executed... \n'
+        msg = f'SMART_BOILER >> Action perfect-optim executed... \n'
         return make_response(msg, 201)
     elif action_name == 'dayahead-optim':
         app.logger.info(" >> Performing dayahead optimization...")
@@ -197,7 +197,7 @@ def action_call(action_name):
         injection_dict = get_injection_dict(opt_res)
         with open(str(data_path / 'injection_dict.pkl'), "wb") as fid:
             pickle.dump(injection_dict, fid)
-        msg = f'EMHASS >> Action dayahead-optim executed... \n'
+        msg = f'SMART_BOILER >> Action dayahead-optim executed... \n'
         return make_response(msg, 201)
     elif action_name == 'naive-mpc-optim':
         app.logger.info(" >> Performing naive MPC optimization...")
@@ -205,7 +205,7 @@ def action_call(action_name):
         injection_dict = get_injection_dict(opt_res)
         with open(str(data_path / 'injection_dict.pkl'), "wb") as fid:
             pickle.dump(injection_dict, fid)
-        msg = f'EMHASS >> Action naive-mpc-optim executed... \n'
+        msg = f'SMART_BOILER >> Action naive-mpc-optim executed... \n'
         return make_response(msg, 201)
     elif action_name == 'forecast-model-fit':
         app.logger.info(" >> Performing a machine learning forecast model fit...")
@@ -214,7 +214,7 @@ def action_call(action_name):
             df_fit_pred, mlf)
         with open(str(data_path / 'injection_dict.pkl'), "wb") as fid:
             pickle.dump(injection_dict, fid)
-        msg = f'EMHASS >> Action forecast-model-fit executed... \n'
+        msg = f'SMART_BOILER >> Action forecast-model-fit executed... \n'
         return make_response(msg, 201)
     elif action_name == 'forecast-model-predict':
         app.logger.info(" >> Performing a machine learning forecast model predict...")
@@ -226,7 +226,7 @@ def action_call(action_name):
         injection_dict['table1'] = table1
         with open(str(data_path / 'injection_dict.pkl'), "wb") as fid:
             pickle.dump(injection_dict, fid)
-        msg = f'EMHASS >> Action forecast-model-predict executed... \n'
+        msg = f'SMART_BOILER >> Action forecast-model-predict executed... \n'
         return make_response(msg, 201)
     elif action_name == 'forecast-model-tune':
         app.logger.info(" >> Performing a machine learning forecast model tune...")
@@ -235,26 +235,26 @@ def action_call(action_name):
             df_pred_optim, mlf)
         with open(str(data_path / 'injection_dict.pkl'), "wb") as fid:
             pickle.dump(injection_dict, fid)
-        msg = f'EMHASS >> Action forecast-model-tune executed... \n'
+        msg = f'SMART_BOILER >> Action forecast-model-tune executed... \n'
         return make_response(msg, 201)
     else:
         app.logger.error("ERROR: passed action is not valid")
-        msg = f'EMHASS >> ERROR: Passed action is not valid... \n'
+        msg = f'SMART_BOILER >> ERROR: Passed action is not valid... \n'
         return make_response(msg, 400)
 
 if __name__ == "__main__":
     # Parsing arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('--url', type=str, help='The URL to your Home Assistant instance, ex the external_url in your hass configuration')
-    parser.add_argument('--key', type=str, help='Your access key. If using EMHASS in standalone this should be a Long-Lived Access Token')
-    parser.add_argument('--addon', type=strtobool, default='False', help='Define if we are usinng EMHASS with the add-on or in standalone mode')
+    parser.add_argument('--key', type=str, help='Your access key. If using SMART_BOILER in standalone this should be a Long-Lived Access Token')
+    parser.add_argument('--addon', type=strtobool, default='False', help='Define if we are usinng SMART_BOILER with the add-on or in standalone mode')
     args = parser.parse_args()
     
     # Define the paths
     if args.addon == 1:
         OPTIONS_PATH = "/data/options.json"
         options_json = Path(OPTIONS_PATH)
-        CONFIG_PATH = "/usr/src/config_emhass.yaml"
+        CONFIG_PATH = "/usr/src/config_smart_boiler.yaml"
         hass_url = args.url
         key = args.key
         # Read options info
@@ -265,7 +265,7 @@ if __name__ == "__main__":
             app.logger.error("options.json does not exists")
         DATA_PATH = "/share/" #"/data/"
     else:
-        CONFIG_PATH = "/app/config_emhass.yaml"
+        CONFIG_PATH = "/app/config_smart_boiler.yaml"
         options = None
         DATA_PATH = "/app/data/"
     config_path = Path(CONFIG_PATH)
@@ -279,7 +279,7 @@ if __name__ == "__main__":
         optim_conf = config['optim_conf']
         plant_conf = config['plant_conf']
     else:
-        app.logger.error("config_emhass.json does not exists")
+        app.logger.error("config_smart_boiler.json does not exists")
         app.logger.info("Falied config_path: "+str(config_path))
 
     params = {}
@@ -328,7 +328,7 @@ if __name__ == "__main__":
     else:
         costfun = os.getenv('LOCAL_COSTFUN', default='profit')
         logging_level = os.getenv('LOGGING_LEVEL', default='INFO')
-        with open('/app/secrets_emhass.yaml', 'r') as file:
+        with open('/app/secrets_smart_boiler.yaml', 'r') as file:
             params_secrets = yaml.load(file, Loader=yaml.FullLoader)
         hass_url = params_secrets['hass_url']
         
@@ -361,8 +361,8 @@ if __name__ == "__main__":
     
     # Launch server
     port = int(os.environ.get('PORT', 5000))
-    app.logger.info("Launching the emhass webserver at: http://"+web_ui_url+":"+str(port))
+    app.logger.info("Launching the smart boiler webserver at: http://"+web_ui_url+":"+str(port))
     app.logger.info("Home Assistant data fetch will be performed using url: "+hass_url)
     app.logger.info("The data path is: "+str(data_path))
-    app.logger.info("Using core emhass version: "+version('emhass'))
+    app.logger.info("Using core smart boiler version: "+version('smart-boiler'))
     serve(app, host=web_ui_url, port=port, threads=8)

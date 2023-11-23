@@ -379,20 +379,19 @@ if __name__ == '__main__':
 
     import sys
 
-    from optparse import OptionParser
-    parser = OptionParser('%prog [OPTIONS] <host> <port>')
+    # from optparse import OptionParser
+    # parser = OptionParser('%prog [OPTIONS] <host> <port>')
 
-    parser.add_option(
-        '-f', '--settings_file', dest='settings_file',
-        type='string',
-        default=None
-    )
-    options, args = parser.parse_args()
+    # parser.add_option(
+    #     '-f', '--settings_file', dest='settings_file',
+    #     type='string',
+    #     default=None
+    # )
+    # options, args = parser.parse_args()
 
-    settings_file = options.settings_file
-
-    c = Controller(settings_file)
-
+    # settings_file = options.settings_file
+    setting_file = 'settings.json'
+    # c = Controller(settings_file)
     while (1):
         # c.control()
         c.toggle_shelly_relay('on')

@@ -52,10 +52,11 @@ setup(
         'pyyaml>=5.4.1',
         'tables==3.7.0',
         'skforecast==0.10.1',
-    ],  # Optional
+    ],  
+    # # Optional
     # entry_points={  # Optional
     #     'console_scripts': [
-    #         'smart_boiler=emhass.command_line:main',
+    #         'smart_boiler=smart_boiler.command_line:main',
     #     ],
     # },
     package_data={'smart_boiler': ['templates/index.html','static/style.css']},
