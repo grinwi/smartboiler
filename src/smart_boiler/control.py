@@ -52,64 +52,64 @@ class Controller:
             settings_file (str, optional): [name of json file with settings]. Defaults to 'settings.json'.
         """
 
-        from settings_loader import SettingsLoader
-        SettingsLoader = SettingsLoader(settings_file)
-        settings = SettingsLoader.load_settings()
+        # from settings_loader import SettingsLoader
+        # SettingsLoader = SettingsLoader(settings_file)
+        # settings = SettingsLoader.load_settings()
 
-        self.host = settings['db_host']
-        self.port = settings['db_port']
-        self.db_name = settings['db_name']
-        self.measurement = settings['measurement']
-        self.db_user = settings['db_user']
-        self.db_pass = settings['db_pass']
-        self.socket_url = settings['socket_url']
+        # self.host = settings['db_host']
+        # self.port = settings['db_port']
+        # self.db_name = settings['db_name']
+        # self.measurement = settings['measurement']
+        # self.db_user = settings['db_user']
+        # self.db_pass = settings['db_pass']
+        # self.socket_url = settings['socket_url']
 
-        self.tmp_output = settings['tmp_output']
-        self.tmp_boiler = settings['tmp_boiler']
+        # self.tmp_output = settings['tmp_output']
+        # self.tmp_boiler = settings['tmp_boiler']
 
-        self.tmp_min = settings['tmp_min']
-        self.consumption_tmp_min = settings['consumption_tmp_min']
+        # self.tmp_min = settings['tmp_min']
+        # self.consumption_tmp_min = settings['consumption_tmp_min']
 
-        self.start_date = datetime.now()
+        # self.start_date = datetime.now()
         
         self.Hass = remote.API('localhost', 'smart_boiler01')
         self.shelly_entity_id = 'shelly1pm_34945475a969'
 
+        
+        # boiler_wattage = settings['boiler_wattage']
+        # boiler_capacity = settings['boiler_capacity']
+        # boiler_set_tmp = settings['boiler_set_tmp']
 
-        boiler_wattage = settings['boiler_wattage']
-        boiler_capacity = settings['boiler_capacity']
-        boiler_set_tmp = settings['boiler_set_tmp']
+        # print("------------------------------------------------------\n")
+        # print('initializing of Control...\n\tdb_name = {}\n\tsocker_url = {}\n\ttmp_output = {}\n\ttmp_boiler = {}\n\thost name = {}\n\tport = {}\n\tboiler capacity = {}\n\tboiler woltage = {}\n'.format(
+        #     self.db_name, self.socket_url, self.tmp_output, self.tmp_boiler, self.host, self.port, boiler_capacity, boiler_wattage))
+        # print("------------------------------------------------------\n")
 
-        print("------------------------------------------------------\n")
-        print('initializing of Control...\n\tdb_name = {}\n\tsocker_url = {}\n\ttmp_output = {}\n\ttmp_boiler = {}\n\thost name = {}\n\tport = {}\n\tboiler capacity = {}\n\tboiler woltage = {}\n'.format(
-            self.db_name, self.socket_url, self.tmp_output, self.tmp_boiler, self.host, self.port, boiler_capacity, boiler_wattage))
-        print("------------------------------------------------------\n")
+        # self.InfluxDBClient = InfluxDBClient(
+        #     host=self.host, 
+        #     port=self.port, 
+        #     username=self.db_user, 
+        #     password=self.db_pass, 
+        #     retries=5, 
+        #     timeout=1)
+        # self.DataFrameClient = DataFrameClient(
+        #     username=self.db_user, 
+        #     password=self.db_pass,
+        #     host=self.host, 
+        #     database=self.db_name)
 
-        self.InfluxDBClient = InfluxDBClient(
-            host=self.host, 
-            port=self.port, 
-            username=self.db_user, 
-            password=self.db_pass, 
-            retries=5, 
-            timeout=1)
-        self.DataFrameClient = DataFrameClient(
-            username=self.db_user, 
-            password=self.db_pass,
-            host=self.host, 
-            database=self.db_name)
+        # #self.EventChecker = EventChecker()
+        # #self.TimeHandler = TimeHandler()
+        # #self.Boiler = Boiler(capacity=boiler_capacity,
+        # #                    wattage=boiler_wattage, set_tmp=boiler_set_tmp)
 
-        #self.EventChecker = EventChecker()
-        #self.TimeHandler = TimeHandler()
-        #self.Boiler = Boiler(capacity=boiler_capacity,
-        #                    wattage=boiler_wattage, set_tmp=boiler_set_tmp)
+        # #self.data_db = self._actualize_data()
+        # self.last_data_update = datetime.now()
+        # self.last_legionella_heating = datetime.now()
 
-        #self.data_db = self._actualize_data()
-        self.last_data_update = datetime.now()
-        self.last_legionella_heating = datetime.now()
-
-        #self.WeekPlanner = WeekPlanner(self.data_db)
-        self.coef_up_in_current_heating_cycle_changed = False
-        self.coef_down_in_current_heating_cycle_changed = False
+        # #self.WeekPlanner = WeekPlanner(self.data_db)
+        # self.coef_up_in_current_heating_cycle_changed = False
+        # self.coef_down_in_current_heating_cycle_changed = False
 
     def _last_entry(self):
         """Loads last entru from DB - actual.
@@ -391,7 +391,7 @@ if __name__ == '__main__':
 
     # settings_file = options.settings_file
     setting_file = 'settings.json'
-    # c = Controller(settings_file)
+    c = Controller(settings_file)
     while (1):
         # c.control()
         c.toggle_shelly_relay('on')
