@@ -35,7 +35,7 @@ jobs:
       with:
         password: ${{ secrets.PYPI_TOKEN }}
   trigger-workflow:
-    runs-on:ubuntu: ubuntu-latest 
+    runs-on: ubuntu-latest 
     steps:
       - name: Trigged HA addon repository update build
         uses: convictional/trigger-workflow-and-wait@v1.6.1
