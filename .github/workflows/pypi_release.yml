@@ -41,7 +41,7 @@ jobs:
         uses: convictional/trigger-workflow-and-wait@v1.6.1
         with:
           owner: grinwi
-          repo: https://github.com/grinwi/smart_boiler_hassio_addon
+          repo: smart_boiler_hassio_addon
           github_token: ${{ secrets.SMART_BOILER_HA_API_TOKEN }}
           workflow_file_name: publish_docker.yaml
           ref: main
