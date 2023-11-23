@@ -371,6 +371,7 @@ class Controller:
     def toggle_shelly_relay(self, action):
         service = 'switch.turn_' + action
         data = {'entity_id': self.shelly_entity_id}
+        print("Setting shelly relay to {}".format(action))
         self.Hass.services.call('switch', service, data)
 
 
@@ -395,6 +396,7 @@ if __name__ == '__main__':
     while (1):
         # c.control()
         c.toggle_shelly_relay('on')
+        
         time.sleep(60)
         c.toggle_shelly_relay('off')
         
