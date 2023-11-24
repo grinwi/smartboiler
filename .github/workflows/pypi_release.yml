@@ -37,13 +37,25 @@ jobs:
   trigger-workflow:
     runs-on: ubuntu-latest 
     steps:
-      - name: Trigged HA addon repository update build
+      - name: Trigged HA addon repository lint
         uses: convictional/trigger-workflow-and-wait@v1.6.1
         with:
           owner: grinwi
-          repo: smart_boiler_hassio_addon
+          repo: smartboiler-add-on
           github_token: ${{ secrets.SMART_BOILER_HA_API_TOKEN }}
-          workflow_file_name: publish_docker.yaml
+          workflow_file_name: lint.yaml
+          ref: main
+          wait_interval: 10
+          propagate_failure: true
+          trigger_workflow: true
+          wait_workflow: true
+      - name: Trigged HA addon repository builder
+        uses: convictional/trigger-workflow-and-wait@v1.6.1
+        with:
+          owner: grinwi
+          repo: smartboiler-add-on
+          github_token: ${{ secrets.SMART_BOILER_HA_API_TOKEN }}
+          workflow_file_name: builder.yaml
           ref: main
           wait_interval: 10
           propagate_failure: true
