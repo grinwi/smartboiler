@@ -23,11 +23,11 @@ from influxdb import InfluxDBClient
 import os.path
 import signal
 import sys
+import argparse
 
 import time
 import json
 import requests
-import homeassistant.remote as remote
 
 
 
@@ -73,7 +73,7 @@ class Controller:
         # self.start_date = datetime.now()
         
         self.Hass = remote.API('localhost', 'smart_boiler01')
-        self.shelly_entity_id = 'shelly1pm_34945475a969'
+        self.shelly_entity_id = 'switch.shelly1pm_34945475a969'
 
         
         # boiler_wattage = settings['boiler_wattage']
@@ -368,19 +368,46 @@ class Controller:
                 self.to
 
     
-    def toggle_shelly_relay(self, action):
+    def toggle_shelly_relay(self, action, headers, base_url):
         service = 'switch.turn_' + action
         data = {'entity_id': self.shelly_entity_id}
         print("Setting shelly relay to {}".format(action))
-        self.Hass.services.call('switch', service, data)
-
+        response = requests.post(
+            f"{base_url}services/{service}", headers=headers, json=data
+        )
+        if response.status_code == 200:
+            print(f"Shelly turned {'on' if on else 'off'} successfully")
+        else:
+            print("Failed to toggle Shelly")
 
 if __name__ == '__main__':
 
     import sys
-
-    # from optparse import OptionParser
-    # parser = OptionParser('%prog [OPTIONS] <host> <port>')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--url', type=str, help='The URL to your Home Assistant instance, ex the external_url in your hass configuration')
+    parser.add_argument('--key', type=str, help='Your access key. If using EMHASS in standalone this should be a Long-Lived Access Token')
+    parser.add_argument('--addon', type=strtobool, default='False', help='Define if we are usinng EMHASS with the add-on or in standalone mode')
+    args = parser.parse_args()
+    
+    base_url = args.url
+    url = base_url + '/config'
+    key = args.key
+    web_ui = "0.0.0.0"
+    
+    headers = {
+            "Authorization": "Bearer " + key,
+            "content-type": "application/json"
+        }
+    response = get(url, headers=headers)
+    config_hass = response.json()
+    params_secrets = {
+    'hass_url': hass_url,
+    'long_lived_token': long_lived_token,
+    'time_zone': config_hass['time_zone'],
+    'lat': config_hass['latitude'],
+    'lon': config_hass['longitude'],
+    'alt': config_hass['elevation']
+}
 
     # parser.add_option(
     #     '-f', '--settings_file', dest='settings_file',
@@ -394,10 +421,10 @@ if __name__ == '__main__':
     c = Controller(settings_file)
     while (1):
         # c.control()
-        c.toggle_shelly_relay('on')
+        c.toggle_shelly_relay('on', headers, base_url)
         
-        # time.sleep(60)
-        c.toggle_shelly_relay('off')
+        time.sleep(60)
+        c.toggle_shelly_relay('off', headers, base_url)
         
         time.sleep(60)
 
