@@ -394,10 +394,10 @@ if __name__ == '__main__':
     c = Controller(settings_file)
     while (1):
         # c.control()
-        # c.toggle_shelly_relay('on')
+        c.toggle_shelly_relay('on')
         
         # time.sleep(60)
-        # c.toggle_shelly_relay('off')
+        c.toggle_shelly_relay('off')
         
         time.sleep(60)
 
