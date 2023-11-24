@@ -364,5 +364,5 @@ if __name__ == "__main__":
     app.logger.info("Launching the smart boiler webserver at: http://"+web_ui_url+":"+str(port))
     app.logger.info("Home Assistant data fetch will be performed using url: "+hass_url)
     app.logger.info("The data path is: "+str(data_path))
-    app.logger.info("Using core smart boiler version: "+version('smart-boiler'))
+    app.logger.info("Using core smart boiler version: "+version('smartboiler'))
     serve(app, host=web_ui_url, port=port, threads=8)

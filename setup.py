@@ -18,12 +18,12 @@ long_description = (here / 'README.md').read_text(encoding='utf-8')
 # Fields marked as "Optional" may be commented out.
 
 setup(
-    name='smart_boiler',  # Required
+    name='smartboiler',  # Required
     version='{{VERSION_PLACEHOLDER}}',  # Required
     description='Smart boiling of household',  # Optional
     long_description=long_description,  # Optional
     long_description_content_type='text/markdown',  # Optional (see note above)
-    url='https://github.com/grinwi/smart_boiler',  # Optional
+    url='https://github.com/grinwi/smartboiler',  # Optional
     author='Adam GRUNWALD',  # Optional
     author_email='grunwald.adam24@gmail.com',  # Optional
     classifiers=[  # Optional
@@ -53,11 +53,11 @@ setup(
         'tables==3.7.0',
         'skforecast==0.10.1',
     ],  
-    # # Optional
-    # entry_points={  # Optional
-    #     'console_scripts': [
-    #         'smart_boiler=smart_boiler.command_line:main',
-    #     ],
-    # },
-    package_data={'smart_boiler': ['templates/index.html','static/style.css']},
+    # Optional
+    entry_points={  # Optional
+        'console_scripts': [
+            'smartboiler=smartboiler.command_line:main',
+        ],
+    },
+    package_data={'smartboiler': ['templates/index.html','static/style.css']},
 )

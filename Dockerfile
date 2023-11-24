@@ -36,15 +36,15 @@ RUN pip install --trusted-host pypi.python.org -r requirements.txt
 
 
 # copying of files needed to run the script (modules etc...)
-COPY src/smart_boiler/control.py /app/control.py
-COPY src/smart_boiler/boiler.py /app/boiler.py
-COPY src/smart_boiler/time_handler.py /app/time_handler.py
-COPY src/smart_boiler/week_planner.py /app/week_planner.py
-COPY src/smart_boiler/event_checker.py /app/event_checker.py
-COPY src/smart_boiler/settings.json /app/settings.json
-COPY src/smart_boiler/web_server.py /app/src/smart_boiler/web_server.py
-COPY src/smart_boiler/templates/index.html /app/src/smart_boiler/templates/index.html
-COPY src/smart_boiler/static/style.css /app/src/smart_boiler/static/style.css
+COPY src/smartboiler/control.py /app/control.py
+COPY src/smartboiler/boiler.py /app/boiler.py
+COPY src/smartboiler/time_handler.py /app/time_handler.py
+COPY src/smartboiler/week_planner.py /app/week_planner.py
+COPY src/smartboiler/event_checker.py /app/event_checker.py
+COPY src/smartboiler/settings.json /app/settings.json
+COPY src/smartboiler/web_server.py /app/src/smartboiler/web_server.py
+COPY src/smartboiler/templates/index.html /app/src/smartboiler/templates/index.html
+COPY src/smartboiler/static/style.css /app/src/smartboiler/static/style.css
 
 # CMD ["python", "-u", "control.py","-f", "settings.json"]
 RUN python3 setup.py install
@@ -54,5 +54,5 @@ ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
 # configure the container to run in an executed manner
-CMD [ "python3", "src/smart_boiler/control.py" ]
+CMD [ "python3", "src/smartboiler/control.py" ]
 
