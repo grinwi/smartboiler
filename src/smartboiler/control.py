@@ -35,10 +35,10 @@ from scipy.misc import electrocardiogram
 import numpy as np
 
 
-from boiler import Boiler
-from time_handler import TimeHandler
-from week_planner import WeekPlanner
-from event_checker import EventChecker
+from smartboiler.boiler import Boiler
+from smartboiler.time_handler import TimeHandler
+from smartboiler.week_planner import WeekPlanner
+from smartboiler.event_checker import EventChecker
 
 
 class Controller:

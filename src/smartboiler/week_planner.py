@@ -11,7 +11,7 @@
 
 from scipy.signal import argrelextrema, find_peaks, peak_widths
 from datetime import datetime, timedelta, date
-from time_handler import TimeHandler
+from smartboiler.time_handler import TimeHandler
 
 import pandas as pd
 import numpy as np

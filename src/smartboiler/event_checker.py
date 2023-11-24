@@ -20,7 +20,7 @@ from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 
-from time_handler import TimeHandler
+from smartboiler.time_handler import TimeHandler
 
 
 class EventChecker:
