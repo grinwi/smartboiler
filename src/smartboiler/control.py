@@ -397,7 +397,7 @@ if __name__ == '__main__':
     web_ui = "0.0.0.0"
     
     headers = {
-            "Authorization": "Bearer {key}",
+            "Authorization": f"Bearer {key}",
             "content-type": "application/json"
         }
     # response = requests.get(url, headers=headers)
