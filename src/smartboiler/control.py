@@ -26,11 +26,13 @@ import sys
 import argparse
 
 import time
+
 import json
 import requests
 
 
 
+from distutils.util import strtobool
 from scipy.misc import electrocardiogram
 import numpy as np
 
@@ -398,7 +400,7 @@ if __name__ == '__main__':
             "Authorization": "Bearer " + key,
             "content-type": "application/json"
         }
-    response = get(url, headers=headers)
+    response = requests.get(url, headers=headers)
     config_hass = response.json()
     params_secrets = {
     'hass_url': hass_url,
