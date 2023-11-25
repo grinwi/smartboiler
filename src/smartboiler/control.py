@@ -371,11 +371,11 @@ class Controller:
 
     
     def toggle_shelly_relay(self, action, headers, base_url):
-        service = 'switch.turn_' + action
+        # service = 'switch.turn_' + action
         data = {'entity_id': self.shelly_entity_id}
         print("Setting shelly relay to {}".format(action))
         response = requests.post(
-            f"{base_url}services/{service}", headers=headers, json=data
+            f"{base_url}/services/switch/turn_{action}", headers=headers, json=data
         )
         if response.status_code == 200:
             print(f"Shelly turned {action} successfully")
@@ -397,7 +397,7 @@ if __name__ == '__main__':
     web_ui = "0.0.0.0"
     
     headers = {
-            "Authorization": "Bearer " + key,
+            "Authorization": "Bearer {key}",
             "content-type": "application/json"
         }
     # response = requests.get(url, headers=headers)
