@@ -74,7 +74,7 @@ class Controller:
 
         # self.start_date = datetime.now()
         
-        self.Hass = remote.API('localhost', 'smart_boiler01')
+        # self.Hass = remote.API('localhost', 'smart_boiler01')
         self.shelly_entity_id = 'switch.shelly1pm_34945475a969'
 
         
@@ -378,7 +378,7 @@ class Controller:
             f"{base_url}services/{service}", headers=headers, json=data
         )
         if response.status_code == 200:
-            print(f"Shelly turned {'on' if on else 'off'} successfully")
+            print(f"Shelly turned {action} successfully")
         else:
             print("Failed to toggle Shelly")
 
@@ -400,16 +400,16 @@ if __name__ == '__main__':
             "Authorization": "Bearer " + key,
             "content-type": "application/json"
         }
-    response = requests.get(url, headers=headers)
-    config_hass = response.json()
-    params_secrets = {
-    'hass_url': hass_url,
-    'long_lived_token': long_lived_token,
-    'time_zone': config_hass['time_zone'],
-    'lat': config_hass['latitude'],
-    'lon': config_hass['longitude'],
-    'alt': config_hass['elevation']
-}
+    # response = requests.get(url, headers=headers)
+    # config_hass = response.json()
+    # params_secrets = {
+    #     'hass_url': base_url,
+    #     'long_lived_token': key,
+    #     'time_zone': config_hass['time_zone'],
+    #     'lat': config_hass['latitude'],
+    #     'lon': config_hass['longitude'],
+    #     'alt': config_hass['elevation']
+    #     }
 
     # parser.add_option(
     #     '-f', '--settings_file', dest='settings_file',
@@ -420,7 +420,7 @@ if __name__ == '__main__':
 
     # settings_file = options.settings_file
     setting_file = 'settings.json'
-    c = Controller(settings_file)
+    c = Controller(setting_file)
     while (1):
         # c.control()
         c.toggle_shelly_relay('on', headers, base_url)
