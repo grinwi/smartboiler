@@ -48,6 +48,7 @@ COPY src/smartboiler/settings.json /app/settings.json
 COPY src/smartboiler/templates/index.html /app/src/smartboiler/templates/index.html
 COPY src/smartboiler/static/style.css /app/src/smartboiler/static/style.css
 
+
 # CMD ["python", "-u", "control.py","-f", "settings.json"]
 RUN python3 setup.py install
 
