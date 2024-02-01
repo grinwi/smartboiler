@@ -37,26 +37,24 @@ from scipy.misc import electrocardiogram
 import numpy as np
 
 
-from smartboiler.boiler import Boiler
-from smartboiler.time_handler import TimeHandler
-from smartboiler.week_planner import WeekPlanner
-from smartboiler.event_checker import EventChecker
+from boiler import Boiler
+from time_handler import TimeHandler
+from week_planner import WeekPlanner
+from event_checker import EventChecker
 
 
 class Controller:
     """Main class which makes decisions about about heating
     """
 
-    def __init__(self, settings_file='settings.json'):
+    def __init__(self, settings):
         """Inits class of Controller. Loads settings from a settings file
 
         Args:
             settings_file (str, optional): [name of json file with settings]. Defaults to 'settings.json'.
         """
+        # TODO - load settings from config file or home assistant
 
-        # from settings_loader import SettingsLoader
-        # SettingsLoader = SettingsLoader(settings_file)
-        # settings = SettingsLoader.load_settings()
 
         # self.host = settings['db_host']
         # self.port = settings['db_port']
@@ -64,18 +62,24 @@ class Controller:
         # self.measurement = settings['measurement']
         # self.db_user = settings['db_user']
         # self.db_pass = settings['db_pass']
+        
         # self.socket_url = settings['socket_url']
 
-        # self.tmp_output = settings['tmp_output']
-        # self.tmp_boiler = settings['tmp_boiler']
+        # self.tmp_output = settings['tmp_output']        
+        #self.tmp_boiler = settings['tmp_boiler']
+        #self.tmp_boiler_room = settings['tmp_boiler_room']
 
+        # self.how_water_flow = settings['how_water_flow']
+        # self.tmp_water_flow = settings['tmp_water_flow']
+        
+        
         # self.tmp_min = settings['tmp_min']
         # self.consumption_tmp_min = settings['consumption_tmp_min']
 
         # self.start_date = datetime.now()
         
         # self.Hass = remote.API('localhost', 'smart_boiler01')
-        self.shelly_entity_id = 'switch.shelly1pm_34945475a969'
+        self.switch_entity_id = settings['switch_entity_id']
 
         
         # boiler_wattage = settings['boiler_wattage']
@@ -213,6 +217,7 @@ class Controller:
             self.toggle_shelly_relay('on')
             return
 
+        
 
         # looks for the next heat up event from a calendar    
         next_calendar_heat_up_event = self.EventChecker.next_calendar_heat_up_event(
@@ -372,7 +377,7 @@ class Controller:
     
     def toggle_shelly_relay(self, action, headers, base_url):
         # service = 'switch.turn_' + action
-        data = {'entity_id': self.shelly_entity_id}
+        data = {'entity_id': self.switch_entity_id}
         print("Setting shelly relay to {}".format(action))
         response = requests.post(
             f"{base_url}/services/switch/turn_{action}", headers=headers, json=data

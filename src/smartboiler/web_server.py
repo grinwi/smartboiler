@@ -12,6 +12,7 @@ from distutils.util import strtobool
 import pandas as pd
 import plotly.express as px
 pd.options.plotting.backend = "plotly"
+from control import Controller
 # from emhass.command_line import set_input_data_dict
 # from emhass.command_line import perfect_forecast_optim, dayahead_forecast_optim, naive_mpc_optim
 # from emhass.command_line import forecast_model_fit, forecast_model_predict, forecast_model_tune
@@ -98,14 +99,14 @@ def get_injection_dict_forecast_model_tune(df_pred_optim, mlf):
 
 def build_params(params, options, addon):
     if addon == 1:
-        # Updating variables in retrieve_hass_conf
-        params['retrieve_hass_conf'][0]['freq'] = options['optimization_time_step']
-        params['retrieve_hass_conf'][1]['days_to_retrieve'] = options['historic_days_to_retrieve']
-        params['retrieve_hass_conf'][2]['var_PV'] = options['sensor_power_photovoltaics']
-        params['retrieve_hass_conf'][3]['var_load'] = options['sensor_power_load_no_var_loads']
-        params['retrieve_hass_conf'][6]['var_replace_zero'] = [options['sensor_power_photovoltaics']]
-        params['retrieve_hass_conf'][7]['var_interp'] = [options['sensor_power_photovoltaics'], options['sensor_power_load_no_var_loads']]
-        params['retrieve_hass_conf'][8]['method_ts_round'] = options['method_ts_round']
+        # Updating variables in retrieve_smartboiler_conf
+        params['retrieve_smartboiler_conf'][0]['freq'] = options['optimization_time_step']
+        params['retrieve_smartboiler_conf'][1]['days_to_retrieve'] = options['historic_days_to_retrieve']
+        params['retrieve_smartboiler_conf'][2]['var_PV'] = options['sensor_power_photovoltaics']
+        params['retrieve_smartboiler_conf'][3]['var_load'] = options['sensor_power_load_no_var_loads']
+        params['retrieve_smartboiler_conf'][6]['var_replace_zero'] = [options['sensor_power_photovoltaics']]
+        params['retrieve_smartboiler_conf'][7]['var_interp'] = [options['sensor_power_photovoltaics'], options['sensor_power_load_no_var_loads']]
+        params['retrieve_smartboiler_conf'][8]['method_ts_round'] = options['method_ts_round']
         # Updating variables in optim_conf
         params['optim_conf'][0]['set_use_battery'] = options['set_use_battery']
         params['optim_conf'][2]['num_def_loads'] = options['number_of_deferrable_loads']
@@ -275,15 +276,15 @@ if __name__ == "__main__":
     if config_path.exists():
         with open(config_path, 'r') as file:
             config = yaml.load(file, Loader=yaml.FullLoader)
-        retrieve_hass_conf = config['retrieve_hass_conf']
+        retrieve_smartboiler_conf = config['retrieve_smartboiler_conf']
         optim_conf = config['optim_conf']
         plant_conf = config['plant_conf']
     else:
-        app.logger.error("config_smart_boiler.json does not exists")
+        app.logger.error("config_smartboiler.json does not exists")
         app.logger.info("Falied config_path: "+str(config_path))
 
     params = {}
-    params['retrieve_hass_conf'] = retrieve_hass_conf
+    params['retrieve_smartboiler_conf'] = retrieve_smartboiler_conf
     params['optim_conf'] = optim_conf
     params['plant_conf'] = plant_conf
     web_ui_url = '0.0.0.0'
@@ -296,8 +297,6 @@ if __name__ == "__main__":
         injection_dict = None
     
     if args.addon == 1:
-        # The cost function
-        costfun = options['costfun']
         # Some data from options
         logging_level = options['logging_level']
         url_from_options = options['hass_url']
@@ -326,7 +325,6 @@ if __name__ == "__main__":
             'alt': config_hass['elevation']
         }
     else:
-        costfun = os.getenv('LOCAL_COSTFUN', default='profit')
         logging_level = os.getenv('LOGGING_LEVEL', default='INFO')
         with open('/app/secrets_smart_boiler.yaml', 'r') as file:
             params_secrets = yaml.load(file, Loader=yaml.FullLoader)
@@ -365,4 +363,9 @@ if __name__ == "__main__":
     app.logger.info("Home Assistant data fetch will be performed using url: "+hass_url)
     app.logger.info("The data path is: "+str(data_path))
     app.logger.info("Using core smart boiler version: "+version('smartboiler'))
-    serve(app, host=web_ui_url, port=port, threads=8)
+
+    controller = Controller(params, app.logger)
+    
+    while(1):
+        controller.control()
+    # serve(app, host=web_ui_url, port=port, threads=8)

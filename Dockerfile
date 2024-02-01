@@ -38,11 +38,13 @@ RUN pip install --trusted-host pypi.python.org -r requirements.txt
 # copying of files needed to run the script (modules etc...)
 COPY src/smartboiler/control.py /app/control.py
 COPY src/smartboiler/boiler.py /app/boiler.py
+COPY src/smartboiler/switch.py /app/switch.py
 COPY src/smartboiler/time_handler.py /app/time_handler.py
 COPY src/smartboiler/week_planner.py /app/week_planner.py
 COPY src/smartboiler/event_checker.py /app/event_checker.py
-COPY src/smartboiler/settings.json /app/settings.json
 COPY src/smartboiler/web_server.py /app/src/smartboiler/web_server.py
+
+COPY src/smartboiler/settings.json /app/settings.json
 COPY src/smartboiler/templates/index.html /app/src/smartboiler/templates/index.html
 COPY src/smartboiler/static/style.css /app/src/smartboiler/static/style.css
 

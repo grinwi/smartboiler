@@ -20,7 +20,7 @@ import re
 # from google_auth_oauthlib.flow import InstalledAppFlow
 # from google.auth.transport.requests import Request
 
-from smartboiler.time_handler import TimeHandler
+from time_handler import TimeHandler
 
 
 class EventChecker:

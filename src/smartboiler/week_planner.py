@@ -11,7 +11,7 @@
 
 from scipy.signal import argrelextrema, find_peaks, peak_widths
 from datetime import datetime, timedelta, date
-from smartboiler.time_handler import TimeHandler
+from time_handler import TimeHandler
 
 import pandas as pd
 import numpy as np
@@ -39,7 +39,7 @@ class WeekPlanner:
         which represents the times of high tarif, when the boiler cannot heat.
 
         Args:
-            data ([DataFrame]): [DataFRame to search in]
+            data ([DataFrame]): [DataFrame to search in]
 
         Returns:
             [dict]: [times of high tarifs]

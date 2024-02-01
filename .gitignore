@@ -7,7 +7,7 @@ __pycache__/
 # settings.json
 control/token.pickle
 control/credentials.json
-
+boiler_venv/
 #arima model
 arima/
 #turning on

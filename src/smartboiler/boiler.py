@@ -12,19 +12,21 @@
 ##########################################################
 
 from datetime import datetime, timedelta
+from switch import Switch
 import pandas as pd
 
 
-class Boiler:
-    def __init__(self, capacity=100, wattage=2000, set_tmp=60, one_shower_volume=40, shower_temperature=40, min_tmp=37):
+class Boiler (Switch):
+    def __init__(self,  switch_url, token, headers, capacity=100, wattage=2000, set_tmp=60, one_shower_volume=40, shower_temperature=40, min_tmp=37, heater_efficiency=0.98):
 
         print("------------------------------------------------------\n")
         print('initializing of control...\n\tCapacity of Boiler = {}\n\t Wattage of boiler = {}\n'.format(
             capacity, wattage))
         print("------------------------------------------------------\n")
-
+        Switch.__init__(self, entity_id='switch.smartboiler', url=switch_url, token=token, headers=headers)
         self.boiler_heat_cap = capacity * 1.163
-        self.real_wattage = wattage * 0.98
+        self.real_wattage = wattage * heater_efficiency
+        
         self.set_tmp = set_tmp
         self.capacity = capacity
         self.one_shower_volume = one_shower_volume

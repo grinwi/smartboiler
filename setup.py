@@ -52,6 +52,10 @@ setup(
         'pyyaml>=5.4.1',
         'tables==3.7.0',
         'skforecast==0.10.1',
+        'influxdb==5.3.1',
+        'matplotlib==3.5.1',
+        'flask==2.0.2',
+        
     ],  
     # Optional
     entry_points={  # Optional
