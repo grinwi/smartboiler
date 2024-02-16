@@ -1,0 +1,1 @@
+docker run -it --restart always -p 5001:5001  --name DockerSmartBoiler f9b63be20ba3852573ed2b043045157ef3724ca882920af4d46c1703ddb15bbd  

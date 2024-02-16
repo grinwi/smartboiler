@@ -427,11 +427,11 @@ if __name__ == '__main__':
     setting_file = 'settings.json'
     c = Controller(setting_file)
     while (1):
-        # c.control()
-        c.toggle_shelly_relay('on', headers, base_url)
+        c.control()
+        # c.toggle_shelly_relay('on', headers, base_url)
         
-        time.sleep(60)
-        c.toggle_shelly_relay('off', headers, base_url)
+        # time.sleep(60)
+        # c.toggle_shelly_relay('off', headers, base_url)
         
-        time.sleep(60)
+        # time.sleep(60)
 

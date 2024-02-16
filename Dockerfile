@@ -36,17 +36,27 @@ RUN pip install --trusted-host pypi.python.org -r requirements.txt
 
 
 # copying of files needed to run the script (modules etc...)
-COPY src/smartboiler/control.py /app/control.py
-COPY src/smartboiler/boiler.py /app/boiler.py
-COPY src/smartboiler/switch.py /app/switch.py
-COPY src/smartboiler/time_handler.py /app/time_handler.py
-COPY src/smartboiler/week_planner.py /app/week_planner.py
-COPY src/smartboiler/event_checker.py /app/event_checker.py
-COPY src/smartboiler/web_server.py /app/src/smartboiler/web_server.py
+# copy contents
+COPY src/smartboiler/__init__.py /app/src/smartboiler/__init__.py
+COPY src/smartboiler/control.py /app/src/smartboiler/control.py
+COPY src/smartboiler/event_checker.py /app/src/smartboiler/event_checker.py
+COPY src/smartboiler/boiler.py /app/src/smartboiler/switch.py
+COPY src/smartboiler/time_handler.py /app/src/smartboiler/time_handler.py
 
-COPY src/smartboiler/settings.json /app/settings.json
+COPY src/smartboiler/command_line.py /app/src/smartboiler/command_line.py
+COPY src/smartboiler/forecast.py /app/src/smartboiler/forecast.py
+COPY src/smartboiler/machine_learning_forecaster.py /app/src/smartboiler/machine_learning_forecaster.py
+COPY src/smartboiler/optimization.py /app/src/smartboiler/optimization.py
+COPY src/smartboiler/retrieve_hass.py /app/src/smartboiler/retrieve_hass.py
+COPY src/smartboiler/utils.py /app/src/smartboiler/utils.py
+COPY src/smartboiler/web_server.py /app/src/smartboiler/web_server.py
 COPY src/smartboiler/templates/index.html /app/src/smartboiler/templates/index.html
 COPY src/smartboiler/static/style.css /app/src/smartboiler/static/style.css
+
+
+COPY config_smartboiler.yaml /app/config_smartboiler.yaml
+COPY secrets_smartboiler.yaml /app/secrets_smartboiler.yaml
+
 
 
 # CMD ["python", "-u", "control.py","-f", "settings.json"]
@@ -57,5 +67,4 @@ ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
 # configure the container to run in an executed manner
-CMD [ "python3", "src/smartboiler/control.py" ]
-
+CMD [ "python3", "src/smartboiler/web_server.py" ]
