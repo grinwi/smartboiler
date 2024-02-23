@@ -12,18 +12,21 @@
 ##########################################################
 
 from datetime import datetime, timedelta
+import time
+
+from numpy import ndarray
 from switch import Switch
 import pandas as pd
 
 
-class Boiler (Switch):
-    def __init__(self,  switch_url, token, headers, capacity=100, wattage=2000, set_tmp=60, one_shower_volume=40, shower_temperature=40, min_tmp=37, heater_efficiency=0.98):
+class Boiler(Switch):
+    def __init__(self,  base_url, token, headers, switch_entity_id, capacity=100, wattage=2000, set_tmp=60, one_shower_volume=40, shower_temperature=40, min_tmp=37, heater_efficiency=0.98):
 
         print("------------------------------------------------------\n")
         print('initializing of control...\n\tCapacity of Boiler = {}\n\t Wattage of boiler = {}\n'.format(
             capacity, wattage))
         print("------------------------------------------------------\n")
-        Switch.__init__(self, entity_id='switch.smartboiler', url=switch_url, token=token, headers=headers)
+        super.__init__(self, ntity_id=switch_entity_id, url=base_url, token=token, headers=headers)
         self.boiler_heat_cap = capacity * 1.163
         self.real_wattage = wattage * heater_efficiency
         
@@ -33,7 +36,7 @@ class Boiler (Switch):
         self.shower_temperature = shower_temperature
         self.min_tmp = min_tmp
 
-    def time_needed_to_heat_up(self, tmp_change):
+    def time_needed_to_heat_up_minutes(self, consumption_kJ):
         """
         Calculates the time needed for heating water in boiler by temperature delta.
             time = (m * c) * d'(tmp) / P * effectivity_coef
@@ -41,9 +44,9 @@ class Boiler (Switch):
             https://vytapeni.tzb-info.cz/tabulky-a-vypocty/97-vypocet-doby-ohrevu-teple-vody
         """
 
-        return (self.boiler_heat_cap * tmp_change) / (self.real_wattage)
+        return (consumption_kJ*1000*60) / (self.real_wattage)
 
-    def is_needed_to_heat(self, tmp_act, tmp_goal, time_to_consumption):
+    def is_needed_to_heat(self, tmp_act:int, prediction_of_consumption:ndarray):
         """Conciders if it is needed to heat.
 
         Args:
@@ -54,12 +57,25 @@ class Boiler (Switch):
         Returns:
             [boolean]: [boolean value of needed to heat]
         """
-        tmp_change = tmp_goal - tmp_act
-
-        if (tmp_change > 0) and (time_to_consumption <= self.time_needed_to_heat_up(tmp_change)):
+        if(tmp_act < self.min_tmp):
             return True
-        else:
-            return False
+        
+        # get whole dataframe and check if it is needed to heat
+        # if it is, return True
+        # if not, pop last row and continue with reduced df
+        # if df is empty, return False
+        len_of_df = len(prediction_of_consumption)
+        for i in range(len_of_df, 0):
+            sum_of_consumption = prediction_of_consumption.iloc[:i].sum()
+            time_to_consumption_minutes = i*30
+            
+            time_needed_to_heat = self.time_needed_to_heat_up_minutes(consumption_kJ=sum_of_consumption)
+            
+            if(time_to_consumption_minutes < time_needed_to_heat):
+                return True
+            
+        return False
+            
 
     def showers_degrees(self, number_of_showers):
         """Recalculates number of showers to temperature 

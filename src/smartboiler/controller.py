@@ -37,17 +37,19 @@ from scipy.misc import electrocardiogram
 import numpy as np
 
 
-from boiler import Boiler
-from time_handler import TimeHandler
-from week_planner import WeekPlanner
-from event_checker import EventChecker
-
-
+from .time_handler import TimeHandler
+from .week_planner import WeekPlanner
+from .event_checker import EventChecker
+from .data_handler import DataHandler
+from .forecast import Forecast
+from .boiler import Boiler
+from .switch import Switch
+from smartboiler import forecast
 class Controller:
     """Main class which makes decisions about about heating
     """
 
-    def __init__(self, settings):
+    def __init__(self, settings, data_handler : DataHandler, boiler : Boiler, forecast : Forecast, eventChecker : EventChecker):
         """Inits class of Controller. Loads settings from a settings file
 
         Args:
@@ -56,12 +58,6 @@ class Controller:
         # TODO - load settings from config file or home assistant
 
 
-        # self.host = settings['db_host']
-        # self.port = settings['db_port']
-        # self.db_name = settings['db_name']
-        # self.measurement = settings['measurement']
-        # self.db_user = settings['db_user']
-        # self.db_pass = settings['db_pass']
         
         # self.socket_url = settings['socket_url']
 
@@ -76,33 +72,21 @@ class Controller:
         # self.tmp_min = settings['tmp_min']
         # self.consumption_tmp_min = settings['consumption_tmp_min']
 
-        # self.start_date = datetime.now()
+        self.start_date = datetime.now()
         
         # self.Hass = remote.API('localhost', 'smart_boiler01')
-        self.switch_entity_id = settings['switch_entity_id']
+        self.dataHandler = data_handler
+        self.boiler = boiler
+        self.forecast = forecast
+        self.eventChecker = eventChecker
 
-        
-        # boiler_wattage = settings['boiler_wattage']
-        # boiler_capacity = settings['boiler_capacity']
-        # boiler_set_tmp = settings['boiler_set_tmp']
 
         # print("------------------------------------------------------\n")
         # print('initializing of Control...\n\tdb_name = {}\n\tsocker_url = {}\n\ttmp_output = {}\n\ttmp_boiler = {}\n\thost name = {}\n\tport = {}\n\tboiler capacity = {}\n\tboiler woltage = {}\n'.format(
         #     self.db_name, self.socket_url, self.tmp_output, self.tmp_boiler, self.host, self.port, boiler_capacity, boiler_wattage))
         # print("------------------------------------------------------\n")
 
-        # self.InfluxDBClient = InfluxDBClient(
-        #     host=self.host, 
-        #     port=self.port, 
-        #     username=self.db_user, 
-        #     password=self.db_pass, 
-        #     retries=5, 
-        #     timeout=1)
-        # self.DataFrameClient = DataFrameClient(
-        #     username=self.db_user, 
-        #     password=self.db_pass,
-        #     host=self.host, 
-        #     database=self.db_name)
+
 
         # #self.EventChecker = EventChecker()
         # #self.TimeHandler = TimeHandler()
@@ -118,67 +102,13 @@ class Controller:
         # self.coef_down_in_current_heating_cycle_changed = False
 
     def _last_entry(self):
-        """Loads last entru from DB - actual.
-
-        Args:
-            measurement (str, optional): [description]. Defaults to 'senzory_boiler'.
-
-        Returns:
-            [type]: [last entry values]
-        """
-        try:
-            result = self.InfluxDBClient.query(
-                'SELECT * FROM "' + self.db_name + '"."autogen"."' + self.measurement + '" ORDER BY DESC LIMIT 1')
-
-            result_list = list(result.get_points(
-                measurement=self.measurement))[0]
-
-            time_of_last_entry = self.TimeHandler.date_from_influxdb_to_datetime(
-                result_list["time"])
-            tmp1 = result_list["tmp1"]
-            tmp2 = result_list["tmp2"]
-            socket_turned_on = result_list["turned"]
-
-            return {"tmp1": tmp1, "tmp2": tmp2, "socket_turned_on": socket_turned_on, "time_of_last_entry": time_of_last_entry}
-
-        except:
-            print("unable to read from influxDBclient")
-            return None
-
-    def _actualize_data(self):
-        """
-        Actualizes data form DB
-
-        Args:
-            measurement (str, optional): [description]. Defaults to 'senzory_boiler'.
-            host (str, optional): [description]. Defaults to 'influx_db'.
-
-        Returns:
-            [type]: Returns data from DB
-        """
-        print("trying to get new datasets...")
-
-        try:
-
-            datasets = self.DataFrameClient.query(
-                # 'SELECT * FROM "' + self.db_name + '"."autogen"."' + self.measurement + '" ORDER BY DESC')[self.measurement]
-                'SELECT * FROM "' + self.db_name + '"."autogen"."°C" ORDER BY DESC')['°C']
-
-            print("got new datasets")
-            df = pd.DataFrame(datasets)
-            # df = df[df.in_event != True]
-            self.Boiler.set_measured_tmp(df)
-
-            return df
-
-        except:
-            print("it wasnt possible to get new datasets")
-            return None
+        self.data_handler.get_actual_data()
 
 
     def _check_data(self):
         """ Refreshs data every day
         """
+        pass
         if self.last_data_update - datetime.now() > timedelta(days=1):
             print(datetime.now())
             print("actualizing data")
@@ -200,52 +130,55 @@ class Controller:
     def control(self):
         """ Method which decides about turning on or off the heating of a boiler.
         """
+        
+        time_now = datetime.now()
+        time_now_plus_12_hours = time_now + timedelta(hours=12)
+        day_of_week = time_now.weekday()
 
         self._check_data()
 
-        last_entry = self._last_entry()
+        last_entry = self.dataHandler.get_actual_data()
 
         # checks whether the water in boiler should be even ready 
-        if self.EventChecker.check_off_event():
+        if self.eventChecker.check_off_event():
             print("naplanovana udalost")
-            self.toggle_shelly_relay('off')
+            self.boiler.turn_off()
             time.sleep(600)
             return
 
         # last measured entry in DB
         if last_entry is None:
-            self.toggle_shelly_relay('on')
+            self.boiler.turn_off()
             return
 
         
+        # TODO - heatup events from calendar
+        # # looks for the next heat up event from a calendar    
+        # next_calendar_heat_up_event = self.eventChecker.next_calendar_heat_up_event(
+        #     self.Boiler)
 
-        # looks for the next heat up event from a calendar    
-        next_calendar_heat_up_event = self.EventChecker.next_calendar_heat_up_event(
-            self.Boiler)
-
-        time_now = datetime.now()
-        day_of_week = time_now.weekday()
+   
 
         # actual tmp of water in boiler
-        tmp_act = self.Boiler.real_tmp(last_entry['tmp2'])
+        tmp_act = self.boiler.real_tmp(last_entry['boiler_water_temperature_mean'])
 
         # state of smart socket
-        is_on = last_entry['socket_turned_on']
+        is_on = last_entry['boiler_relay_status']
         # in first week is water in boiler hold around 60 degrees
 
         #protection from freezing
         if tmp_act < 5:
             if not is_on:
-                self.toggle_shelly_relay('on')
+                self.boiler.turn_on()
 
         if self._learning():
             if tmp_act > 60:
                 if is_on:
-                    self.toggle_shelly_relay('off')
+                    self.boiler.turn_off()
             else:
                 if tmp_act < 57:
                     if not is_on:
-                        self.toggle_shelly_relay('on')
+                        self.boiler.turn_on()
 
             return
 
@@ -253,16 +186,27 @@ class Controller:
         # if last entry is older than 10 minutes and not because of high tarif, water in a boiler is heated for sure
         time_of_last_entry = last_entry['time_of_last_entry']
         if (time_now - time_of_last_entry > timedelta(minutes=10)):
-            if not self.WeekPlanner.is_in_DTO():
+            if not self.weekPlanner.is_in_DTO():
                 print("too old last entry ({}), need to heat".format(
                     time_of_last_entry))
                 if not is_on:
-                    self.toggle_shelly_relay('on')
+                    self.boiler.turn_on()
             return
 
 
+        # get prediction of of consumption
+        
+        consumption_forecast = self.forecast.get_forecast_next_steps(time_now, time_now_plus_12_hours) # step has 30 minutes, so 24 steps is 12 hours
+        
+        need_to_heat = self.boiler.is_needed_to_heat(tmp_act, consumption_forecast)
+        if need_to_heat:
+            if not is_on:
+                self.boiler.turn_on()
+            return
+        
+        
         # helping variables for changing day coefs
-        if(self.WeekPlanner.is_in_heating()):
+        if(self.weekPlanner.is_in_heating()):
             self.coef_down_in_current_heating_cycle_changed = False
         else:
             self.coef_up_in_current_heating_cycle_changed = False
@@ -273,7 +217,7 @@ class Controller:
             self.coef_down_in_current_heating_cycle_changed = True
             if not is_on:
                 print("starting heating for reduce legionella, this occurs every 3 weeks")
-                self.toggle_shelly_relay('on')
+                self.boiler.turn_on()
 
             if tmp_act >= (65):
                 time.sleep(1200)
@@ -291,13 +235,13 @@ class Controller:
                 print("planned event to heat up with target {} Celsius occurs in {} hours".format(
                     next_calendar_heat_up_event['degree_target'], next_calendar_heat_up_event['hours_to_event']))
                 if not is_on:
-                    self.toggle_shelly_relay('on')
+                    self.boiler.turn_on()
                 return
 
         # if is actual tmp lower than tmp min, there is need to heat
         if (tmp_act < self.tmp_min):
             if not is_on:
-                self.toggle_shelly_relay('on')
+                self.boiler.turn_on()
             return
 
 
@@ -314,7 +258,7 @@ class Controller:
                 print("in heating, needed to increase tmp({}°C) above tmp min({}°C)".format(
                     tmp_act, self.consumption_tmp_min))
                 if not is_on:
-                    self.toggle_shelly_relay('on')
+                    self.boiler.turn_on()
 
                 if((how_long_to_current_heating_end > current_heating_half_duration) and not self.coef_up_in_current_heating_cycle_changed):
                     #changing the coefs if the temperature during predicted consumption is too low
@@ -347,7 +291,7 @@ class Controller:
                 if not is_on:
                     print("boiler is needed to heat up from {} to {}. turning socket on".format(
                         tmp_act, next_heating_goal_temperature))
-                    self.toggle_shelly_relay('on')
+                    self.boiler.turn_on()
 
                 return
             # te day coef is changed whether the temperature is too high outside of the predicted consumption
@@ -425,9 +369,14 @@ if __name__ == '__main__':
 
     # settings_file = options.settings_file
     setting_file = 'settings.json'
-    c = Controller(setting_file)
+    boiler = Boiler(base_url, token, headers, boiler_switch_entity_id='switch.smartboiler') 
+    data_handler = DataHandler(influxdb_host='localhost', influxdb_port=8086, influxdb_user='root', influxdb_pass='root', influxdb_db='smart_home_formankovi', switch_entity_id='switch.smartboiler')
+    
+    controller = Controller()
+
     while (1):
-        c.control()
+        
+        controller.control()
         # c.toggle_shelly_relay('on', headers, base_url)
         
         # time.sleep(60)
