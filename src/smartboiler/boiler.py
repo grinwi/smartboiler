@@ -1,3 +1,6 @@
+from pathlib import Path
+print('Running' if __name__ == '__main__' else 'Importing', Path(__file__).resolve())
+
 ##########################################################
 # Bachelor's thesis                                      #
 # From a dumb boiler to a smart one using a smart socket #

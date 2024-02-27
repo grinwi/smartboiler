@@ -1,3 +1,5 @@
+from pathlib import Path
+print('Running' if __name__ == '__main__' else 'Importing', Path(__file__).resolve())
 from datetime import timedelta
 import datetime
 from turtle import left
@@ -213,11 +215,12 @@ if __name__ == '__main__':
         "root",
         "root",
         "shelly1pm_34945475a969",
+        "esphome_web_c771e8_tmp3"
     )    
     forecast = Forecast(dataHandler)
-    self.train_model()
-    self.build_model()
-    self.fit_model()
-    self.get_forecast_next_steps(30)
+    forecast.train_model()
+    forecast.build_model()
+    forecast.fit_model()
+    forecast.get_forecast_next_steps(30)
         
     

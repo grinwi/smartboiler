@@ -1,5 +1,8 @@
+from pathlib import Path
+print('Running' if __name__ == '__main__' else 'Importing', Path(__file__).resolve())
+
 ###########################################################
-# Bachelor's thesis                                       #
+# Masters's thesis                                       #
 # From a dumb boiler to a smart one using a smart socket  #
 # Author: Adam Grünwald                                   #
 # BUT FIT BRNO, Faculty of Information Technology         #
@@ -37,14 +40,11 @@ from scipy.misc import electrocardiogram
 import numpy as np
 
 
-from .time_handler import TimeHandler
-from .week_planner import WeekPlanner
-from .event_checker import EventChecker
-from .data_handler import DataHandler
-from .forecast import Forecast
-from .boiler import Boiler
-from .switch import Switch
-from smartboiler import forecast
+from data_handler import DataHandler
+from forecast import Forecast
+from boiler import Boiler
+from switch import Switch
+
 class Controller:
     """Main class which makes decisions about about heating
     """
