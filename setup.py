@@ -54,7 +54,7 @@ setup(
         'skforecast==0.10.1',
         'influxdb==5.3.1',
         'matplotlib==3.5.1',
-        'flask==2.0.2',
+        'flask>=2.0.2',
         
     ],  
     # Optional

@@ -67,4 +67,4 @@ ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
 
 # configure the container to run in an executed manner
-CMD [ "python3", "src/smartboiler/web_server.py" ]
+CMD [ "python3", "src/smartboiler/controller.py" ]
