@@ -1,3 +1,5 @@
+from datetime import timedelta
+import datetime
 from turtle import left
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.preprocessing import RobustScaler
@@ -131,57 +133,75 @@ class Forecast:
                                     validation_steps=self.val_steps,
                                     callbacks = callbacks)
         
-    def get_forecast_next_steps(self, begin_date = None, end_date = None):
+    def get_forecast_next_steps(self, left_time_interval = None, right_time_interval = None, predicted_column = 'longtime_mean'):
         
-        left_time_interval = begin_date - pd.Timedelta(hours=self.lookback*0.5)
-        df_predict, datetimes = self.dataHandler.get_data_for_prediction(left_time_interval=left_time_interval, right_time_interval=end_date, predicted_column=self.predicted_column)
-
-        df_predict_norm = df_predict.copy()
-        df_predict_norm[df_predict.columns] = self.scaler.transform(df_predict)
-        # create predict df with values 
+        if (left_time_interval is None):
+            left_time_interval = datetime.now() - timedelta(days=2)
+        if (right_time_interval is None):
+            right_time_interval = datetime.now()        
         
-        predict_gen = self.generator(dataframe = df_predict_norm, 
-                target_name = self.predicted_column, 
-                lookback = self.lookback,
-                delay = self.delay,
-                min_index = 0,
-                max_index = None,
-                step = 1,
-                shuffle = False,
-                batch_size = df_predict.shape[0])
-        
-        (X, y_truth) = next(predict_gen)
+        df_all = self.dataHandler.get_data_for_prediction(left_time_interval=left_time_interval, right_time_interval=right_time_interval, predicted_column=self.predicted_column)
 
-        y_pred = self.model.predict(X)
-  
-        # np.expand_dims(y_truth,axis=1).shape
-        y_pred = np.concatenate((y_pred,np.zeros((y_pred.shape[0],self.num_of_features))),axis=1)
-        y_pred = self.scaler.inverse_transform(y_pred)
-        y_pred = y_pred[:,0]
+        forecast_future = pd.DataFrame()
 
-        y_truth = np.concatenate((np.expand_dims(y_truth,axis=1),np.zeros((y_truth.shape[0],self.num_of_features))),axis=1)
-        y_truth = self.scaler.inverse_transform(y_truth)
-        y_truth = y_truth[:,0]
-        
-        statistics = {}
-        slope, intercept, r_value, p_value, std_err = stats.linregress(x=y_pred,y=y_truth)
-        mse = mean_squared_error(y_true=y_truth, y_pred=y_pred, squared=True)
-        rmse = mean_squared_error(y_true=y_truth, y_pred=y_pred, squared=False)
-        
-        statistics['slope'] = slope
-        statistics['intercept'] = intercept
-        statistics['r_value'] = r_value
-        statistics['p_value'] = p_value
-        statistics['std_err'] = std_err
-        statistics['mse'] = mse
-        statistics['rmse'] = rmse
-        
+        current_forecast_begin_date = left_time_interval
+        current_forecast_end_date = left_time_interval + timedelta(minutes=30)
+        for i in range(0, 48):
+            print("-----")
 
+            df_predict = pd.DataFrame({'datetime': pd.date_range(current_forecast_begin_date, current_forecast_end_date, freq='30min')})
+            df_predict['longtime_mean'] = 0
+            df_predict['weekday_sin'] = np.sin(2 * np.pi * df_predict['datetime'].dt.weekday / 7)
+            df_predict['weekday_cos'] = np.cos(2 * np.pi * df_predict['datetime'].dt.weekday / 7)
+            df_predict['hour_sin'] = np.sin(2 * np.pi * df_predict['datetime'].dt.hour / 24)
+            df_predict['hour_cos'] = np.cos(2 * np.pi * df_predict['datetime'].dt.hour / 24)
+            df_predict['minute_sin'] = np.sin(2 * np.pi * df_predict['datetime'].dt.minute / 60)
+            df_predict['minute_cos'] = np.cos(2 * np.pi * df_predict['datetime'].dt.minute / 60)
+            # delete column datetime
+            df_predict = df_predict.drop(columns='datetime')
+            len_df_predict = df_predict.shape[0]
+            
+            
+            # concar df_all and df_predict
+            
+            df_all = pd.concat([df_all, df_predict], axis=0)
+            df_all = df_all.reset_index(drop=True)
+            
+            df_predict_norm = df_all.copy()
+            df_predict_norm[df_all.columns] = self.scaler.transform(df_all)
+            # create predict df with values 
 
+            predict_gen = self.generator(dataframe = df_predict_norm, 
+                    target_name = self.predicted_column, 
+                    lookback = self.lookback,
+                    delay = self.delay,
+                    min_index = 0,
+                    max_index = None,
+                    step = 1,
+                    shuffle = False,
+                    batch_size = df_predict.shape[0])
 
+            (X, y_truth) = next(predict_gen)
+
+            y_pred = self.model.predict(X)
+
+            # np.expand_dims(y_truth,axis=1).shape
+            y_pred_inv = np.concatenate((y_pred,np.zeros((y_pred.shape[0],self.num_of_features))),axis=1)
+            y_pred_inv = self.scaler.inverse_transform(y_pred_inv)
+            y_pred_inv = y_pred_inv[:,0]
+            
+            # set df_all last len_df_predict values to y_pred_inv
+            df_all.iloc[-len_df_predict:, df_all.columns.get_loc(predicted_column)] = y_pred_inv
+            # plt.plot(df_all.iloc[-len_df_predict:, df_all.columns.get_loc('longtime_mean')], color = 'green', label = 'Predicted data')
+            df_all = df_all[len_df_predict:]
+            forecast_future = pd.concat([forecast_future, df_all[-len_df_predict:]], axis=0)
+            forecast_future = forecast_future.reset_index(drop=True)
+            
+            current_forecast_begin_date = current_forecast_begin_date + timedelta(hours=0.5)
+            current_forecast_end_date = current_forecast_end_date + timedelta(hours=0.5)
         
         # create a dataframe with forecast and datetime as index
-        return y_pred, y_truth, statistics
+        return forecast_future
     
 
 
@@ -195,9 +215,9 @@ if __name__ == '__main__':
         "shelly1pm_34945475a969",
     )    
     forecast = Forecast(dataHandler)
-    forecast.train_model()
-    forecast.build_model()
-    forecast.fit_model()
-    forecast.get_forecast_next_steps(30)
+    self.train_model()
+    self.build_model()
+    self.fit_model()
+    self.get_forecast_next_steps(30)
         
     
