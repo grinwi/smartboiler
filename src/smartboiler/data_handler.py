@@ -1,4 +1,6 @@
 from operator import le
+from click import group
+from matplotlib.dates import drange
 import pandas as pd
 from influxdb import InfluxDBClient
 from influxdb import DataFrameClient
@@ -8,12 +10,17 @@ import numpy as np
 import json
 
 
-data_formankovi_actual_boiler_stats = {
+data_zukalovi_actual_boiler_stats = {
     "boiler_temperature": {
-        "sql_query": 'SELECT mean("value") AS "boiler_temperature_mean" FROM "smart_home_formankovi"."autogen"."°C" WHERE "entity_id"=\'esphome_boiler_temps_ntc_temperature_a_constant\' GROUP BY time({group_by_time_interval}) FILL(null) ORDER BY DESC LIMIT {6}',
+        "sql_query": 'SELECT mean("value") AS "mean_value" FROM "smart_home_zukalovi"."autogen"."°C" WHERE time > :dashboardTime: AND time < :upperDashboardTime: AND "entity_id"=\'esphome_web_c771e8_tmp3\' GROUP BY time({group_by_time_interval}) FILL(null) ORDER BY DESC LIMIT {6}',
         "measurement": "°C",
     },
+    "is_boiler_on": {
+        "sql_query": 'SELECT last("value") AS "mean_value" FROM "smart_home_zukalovi"."autogen"."state" WHERE time > :dashboardTime: AND time < :upperDashboardTime: AND "entity_id"=\'shelly1pm_84cca8b07eae\' GROUP BY time({group_by_time_interval}) FILL(null) ORDER BY DESC LIMIT {6}',
+        "measurement": "state",
+    },
 }
+
 
 
 class DataHandler:
@@ -24,13 +31,14 @@ class DataHandler:
         db_username,
         db_password,
         relay_entity_id,
+        tmp_boiler_case_entity_id,
         start_of_data=datetime(2023, 1, 1, 0, 0, 0, 0),
     ):
         self.influx_id = influx_id
         self.db_name = db_name
         self.db_username = db_username
         self.db_password = db_password
-        self.group_by_time_interval = "30m"
+        self.group_by_time_interval = "30min"
         self.relay_entity_id = relay_entity_id
         self.dataframe_client = DataFrameClient(
             host=self.influx_id,
@@ -41,10 +49,22 @@ class DataHandler:
         )
         self.start_of_data = start_of_data
         self.last_time_data_update = datetime.now()
+        
+        
+    def get_actual_zuka_boiler_stats(self, group_by_time_interval = "1min"):
+        data_zukalovi_actual_boiler_stats = {
+        "boiler_temperature": {
+            "sql_query": f'SELECT mean("value") AS "mean_value" FROM "smart_home_zukalovi"."autogen"."°C" WHERE "entity_id"=\'{self.tmp_boiler_case_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(null) ORDER BY DESC LIMIT {6}',
+            "measurement": "°C",
+        },
+        "is_boiler_on": {
+            "sql_query": f'SELECT last("value") AS "mean_value" FROM "smart_home_zukalovi"."autogen"."state" WHERE "entity_id"=\'{self.relay_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(null) ORDER BY DESC LIMIT {6}',
+            "measurement": "state",
+        },
+}
 
     def get_database_queries(
         self,
-        group_by_time_interval="30m",
         left_time_interval=None,
         right_time_interval=None,
     ):
@@ -52,6 +72,7 @@ class DataHandler:
             left_time_interval = self.start_of_data
         if (right_time_interval == None):
             right_time_interval = datetime.now()
+        group_by_time_interval = '5s'
         
         # format datetime to YYYY-MM-DDTHH:MM:SSZ
         left_time_interval = f"'{left_time_interval.strftime('%Y-%m-%dT%H:%M:%SZ')}'"
@@ -59,7 +80,7 @@ class DataHandler:
 
         queries = {
             "water_flow": {
-                "sql_query": f'SELECT mean("value") AS "water_flow_L_per_hour_mean" FROM "{self.db_name}"."autogen"."L/min" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "entity_id"=\'esphome_boiler_temps_current_water_usage\' GROUP BY time({group_by_time_interval}) FILL(0)',
+                "sql_query": f'SELECT mean("value") AS "water_flow_L_per_minute_mean" FROM "{self.db_name}"."autogen"."L/min" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "entity_id"=\'esphome_boiler_temps_current_water_usage\' GROUP BY time({group_by_time_interval}) FILL(0)',
                 "measurement": "L/min",
             },
             "water_temperature": {
@@ -104,57 +125,62 @@ class DataHandler:
             df_all_list.append(df)
             
         df = pd.concat(df_all_list, axis=1)
+        
+        return df
+    def process_kWh_water_consumption(self, df):
+        df = df.resample('1min').mean()
+        # df = df.reset_index(drop=True)
+        df["consumed_heat_kJ"] = (
+            df["water_flow_L_per_minute_mean"]
+            * (df["water_temperature_mean"] - 10)
+            * 4.186
+            *0.6
+        )
+        df = df.groupby(pd.Grouper(freq='30T'))
+        df = df.agg({'consumed_heat_kJ': 'sum', 'water_flow_L_per_minute_mean': 'mean', 'water_temperature_mean': 'mean', 'outside_temperature_mean': 'mean', 'outside_humidity_mean': 'mean', 'outside_wind_speed_mean': 'mean', 'device_presence_distinct_count': 'mean'})
+        df["consumed_heat_kWh"] = df["consumed_heat_kJ"] / 3600
+        df[f"consumed_heat_kWh"] += 0.4*7
+
+        
         return df
     
-    def get_data_for_training_model(self, group_by_time_interval="30m", left_time_interval=None, right_time_interval=None, predicted_column = 'longtime_mean'):
+    def get_data_for_training_model(self, left_time_interval=None, right_time_interval=None, predicted_column = 'longtime_mean'):
 
         queries = self.get_database_queries(left_time_interval=left_time_interval, right_time_interval=right_time_interval)
         df_all = self.get_df_from_queries(queries)
-        # keep last 1008 rows
-        # keep rows between 1500 and 1750
-        # plot data
-        df_all[f"consumed_heat_kJ"] = (
-            df_all[f"water_flow_L_per_hour_mean"]
-            * (df_all[f"water_temperature_mean"] - 10)
-            * 4.186
-            / 2
-        )  # divided by 2 is because we have {group_by_time_interval} data with mean L/hour
+        df_all = self.process_kWh_water_consumption(df_all)
 
-        transformed_data, datetimes = self.transform_data_for_ml(df_all, predicted_column=predicted_column)
+        return self.transform_data_for_ml(df_all, predicted_column=predicted_column)
 
-        return (transformed_data, datetimes)
 
     def get_data_for_prediction(self, left_time_interval=None, right_time_interval=None, predicted_column = 'longtime_mean'):
-        # queries = self.get_database_queries(left_time_interval=left_time_interval, right_time_interval=right_time_interval)
-        # df_all = self.get_df_from_queries(queries)
+        queries = self.get_database_queries(left_time_interval=left_time_interval, right_time_interval=right_time_interval)
+        df_all = self.get_df_from_queries(queries)
+        df_all = self.process_kWh_water_consumption(df_all)
+        df_all.index = df_all.index.tz_localize(None)
+        df_all, _= self.transform_data_for_ml(df_all, predicted_column='longtime_mean')
+
+        return df_all
         
-        # # keep last 2 rows
         
-        # # plot data
-        # df_all[f"consumed_heat_kJ"] = (
-        #     df_all[f"water_flow_L_per_hour_mean"]
-        #     * (df_all[f"water_temperature_mean"] - 10)
-        #     * 4.186
-        #     / 2
-        # ) 
-        # return self.transform_data_for_ml(df_all, predicted_column=predicted_column)
+        return self.transform_data_for_ml(df_all, predicted_column=predicted_column)
         
-        df_predict = pd.DataFrame({'datetime': pd.date_range(left_time_interval, right_time_interval, freq='30min')})
-        df_predict[predicted_column] = 0
-        df_predict['weekday_sin'] = np.sin(2 * np.pi * df_predict['datetime'].dt.weekday / 7)
-        df_predict['weekday_cos'] = np.cos(2 * np.pi * df_predict['datetime'].dt.weekday / 7)
-        df_predict['hour_sin'] = np.sin(2 * np.pi * df_predict['datetime'].dt.hour / 24)
-        df_predict['hour_cos'] = np.cos(2 * np.pi * df_predict['datetime'].dt.hour / 24)
-        df_predict['minute_sin'] = np.sin(2 * np.pi * df_predict['datetime'].dt.minute / 60)
-        df_predict['minute_cos'] = np.cos(2 * np.pi * df_predict['datetime'].dt.minute / 60)
-        # delete column datetime
-        df_predict = df_predict.drop(columns='datetime')
+        # df_predict = pd.DataFrame({'datetime': pd.date_range(left_time_interval, right_time_interval, freq='30min')})
+        # df_predict[predicted_column] = 0
+        # df_predict['weekday_sin'] = np.sin(2 * np.pi * df_predict['datetime'].dt.weekday / 7)
+        # df_predict['weekday_cos'] = np.cos(2 * np.pi * df_predict['datetime'].dt.weekday / 7)
+        # df_predict['hour_sin'] = np.sin(2 * np.pi * df_predict['datetime'].dt.hour / 24)
+        # df_predict['hour_cos'] = np.cos(2 * np.pi * df_predict['datetime'].dt.hour / 24)
+        # df_predict['minute_sin'] = np.sin(2 * np.pi * df_predict['datetime'].dt.minute / 60)
+        # df_predict['minute_cos'] = np.cos(2 * np.pi * df_predict['datetime'].dt.minute / 60)
+        # # delete column datetime
+        # df_predict = df_predict.drop(columns='datetime')
+        
+        return df_predict
 
 
     def get_actual_data(self):
-        queries = self.get_database_queries(
-            "1m", left_time_interval=datetime.now() - timedelta(minutes=60)
-        )
+        queries = self.get_actual_zuka_boiler_stats(self.relay_entity_id, 'esphome_web_c771e8_tmp3')
         df = self.get_df_from_queries(queries)
         # return last row of dataframe ordered by time
         return df.iloc[-1]
@@ -169,13 +195,13 @@ class DataHandler:
         # delete first week data
         first_date = df.index[0] + pd.Timedelta(days=days_from_beginning_ignored)
         df = df.loc[first_date:]
-        df["weekday"] = df.index.weekday
-        df["hour"] = df.index.hour
-        df["minute"] = df.index.minute
+        df.loc[:,"weekday"] = df.index.weekday
+        df.loc[:,"hour"] = df.index.hour
+        df.loc[:,"minute"] = df.index.minute
         
         # delete rows with weekday nan
         df = df.dropna(subset=["weekday"])
-        df["consumed_heat_kJ"] = df["consumed_heat_kJ"].fillna(0)
+        df["consumed_heat_kWh"] = df["consumed_heat_kWh"].fillna(0)
 
 
         # fill na in df based on column
@@ -186,34 +212,34 @@ class DataHandler:
             "device_presence_distinct_count"
         ].fillna(method="ffill")
 
-        # add to column 'consumed_heat_kJ' 1,25/6 to each row
-        df["consumed_heat_kJ"] += 1.25 / (24 // freq)
+        # add to column 'consumed_heat_kWh' 1,25/6 to each row
+        df["consumed_heat_kWh"] += 1.25 / (24 // freq)
 
         window = 6
 
         df["longtime_mean"] = (
-            df["consumed_heat_kJ"]
+            df["consumed_heat_kWh"]
             .rolling(window=window, min_periods=1, center=True)
             .mean()
         )
         df["longtime_std"] = (
-            df["consumed_heat_kJ"].rolling(window=window, min_periods=1).std()
+            df["consumed_heat_kWh"].rolling(window=window, min_periods=1).std()
         )
         df["longtime_min"] = (
-            df["consumed_heat_kJ"].rolling(window=window, min_periods=1).min()
+            df["consumed_heat_kWh"].rolling(window=window, min_periods=1).min()
         )
         df["longtime_max"] = (
-            df["consumed_heat_kJ"].rolling(window=window, min_periods=1).max()
+            df["consumed_heat_kWh"].rolling(window=window, min_periods=1).max()
         )
         df["longtime_median"] = (
-            df["consumed_heat_kJ"].rolling(window=window, min_periods=1).median()
+            df["consumed_heat_kWh"].rolling(window=window, min_periods=1).median()
         )
         df["longtime_skew"] = (
-            df["consumed_heat_kJ"].rolling(window=window, min_periods=1).skew()
+            df["consumed_heat_kWh"].rolling(window=window, min_periods=1).skew()
         )
         
-        # drop consumed_heat_kJ
-        df = df.drop(columns=["consumed_heat_kJ"])
+        # drop consumed_heat_kWh
+        df = df.drop(columns=["consumed_heat_kWh"])
 
 
         df["longtime_std"] = df["longtime_std"].fillna(method="ffill")
@@ -222,11 +248,9 @@ class DataHandler:
 
         # transform weekday, minute, hour to sin cos
         df["weekday_sin"] = np.sin(2 * df["weekday"] * np.pi / 7)
-
         df["weekday_cos"] = np.cos(2 * df["weekday"] * np.pi / 7)
 
         df["hour_sin"] = np.sin(2 * df["hour"] * np.pi / 24)
-
         df["hour_cos"] = np.cos(2 * df["hour"] * np.pi / 24)
 
         df["minute_sin"] = np.sin(2 * df["minute"] * np.pi / 60)
@@ -240,6 +264,8 @@ class DataHandler:
         # extract datetimes from index
         datetimes = df.index
         
+        df['longtime_mean'] = df['longtime_mean'] *  100
+        
         return (df.reset_index(drop=True), datetimes)
 
     def write_data(self, data):
@@ -251,10 +277,11 @@ if __name__ == "__main__":
     # test
     data_handler = DataHandler(
         "localhost",
-        "smart_home_formankovi",
+        "smart_home_zukalovi",
         "root",
         "root",
         "shelly1pm_34945475a969",
+        "esphome_web_c771e8_tmp3"
     )
     # df_from_db = data_handler.get_data_for_training_model()
     # dropna - remove rows with NaN

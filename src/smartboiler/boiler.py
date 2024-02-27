@@ -35,8 +35,10 @@ class Boiler(Switch):
         self.one_shower_volume = one_shower_volume
         self.shower_temperature = shower_temperature
         self.min_tmp = min_tmp
+        self.area_tmp = 13
+        self.boiler_measured_max = 35.6
 
-    def time_needed_to_heat_up_minutes(self, consumption_kJ):
+    def time_needed_to_heat_up_minutes(self, consumption_kWh):
         """
         Calculates the time needed for heating water in boiler by temperature delta.
             time = (m * c) * d'(tmp) / P * effectivity_coef
@@ -44,7 +46,7 @@ class Boiler(Switch):
             https://vytapeni.tzb-info.cz/tabulky-a-vypocty/97-vypocet-doby-ohrevu-teple-vody
         """
 
-        return (consumption_kJ*1000*60) / (self.real_wattage)
+        return (consumption_kWh) / (self.real_wattage)
 
     def is_needed_to_heat(self, tmp_act:int, prediction_of_consumption:ndarray):
         """Conciders if it is needed to heat.
@@ -69,7 +71,7 @@ class Boiler(Switch):
             sum_of_consumption = prediction_of_consumption.iloc[:i].sum()
             time_to_consumption_minutes = i*30
             
-            time_needed_to_heat = self.time_needed_to_heat_up_minutes(consumption_kJ=sum_of_consumption)
+            time_needed_to_heat = self.time_needed_to_heat_up_minutes(consumption_kWh=sum_of_consumption)
             
             if(time_to_consumption_minutes < time_needed_to_heat):
                 return True

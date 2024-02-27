@@ -69,8 +69,8 @@ class Controller:
         # self.tmp_water_flow = settings['tmp_water_flow']
         
         
-        # self.tmp_min = settings['tmp_min']
-        # self.consumption_tmp_min = settings['consumption_tmp_min']
+        self.tmp_min = 5
+        self.consumption_tmp_min = 40
 
         self.start_date = datetime.now()
         
@@ -106,17 +106,15 @@ class Controller:
 
 
     def _check_data(self):
-        """ Refreshs data every day
+        """ Retrain model if the last data update is older than 7 days.
         """
         pass
-        if self.last_data_update - datetime.now() > timedelta(days=1):
+        if self.last_data_update - datetime.now() > timedelta(days=7):
             print(datetime.now())
             print("actualizing data")
 
-            actualized_data = self._actualize_data()
-            if actualized_data is not None:
-                self.data_db = actualized_data
-                self.WeekPlanner.week_plan(self.data_db)
+            self.forecast.train_model()
+            self.last_data_update = datetime.now()
 
     def _learning(self):
         """ After one week of only measuring the data starts heating based on historical data.
@@ -139,16 +137,16 @@ class Controller:
 
         last_entry = self.dataHandler.get_actual_data()
 
-        # checks whether the water in boiler should be even ready 
-        if self.eventChecker.check_off_event():
-            print("naplanovana udalost")
-            self.boiler.turn_off()
-            time.sleep(600)
-            return
+        # # checks whether the water in boiler should be even ready 
+        # if self.eventChecker.check_off_event():
+        #     print("naplanovana udalost")
+        #     self.boiler.turn_off()
+        #     time.sleep(600)
+        #     return
 
         # last measured entry in DB
         if last_entry is None:
-            self.boiler.turn_off()
+            self.boiler.turn_on()
             return
 
         
@@ -193,8 +191,6 @@ class Controller:
                     self.boiler.turn_on()
             return
 
-
-        # get prediction of of consumption
         
         consumption_forecast = self.forecast.get_forecast_next_steps(time_now, time_now_plus_12_hours) # step has 30 minutes, so 24 steps is 12 hours
         
@@ -202,7 +198,11 @@ class Controller:
         if need_to_heat:
             if not is_on:
                 self.boiler.turn_on()
-            return
+            
+        else:
+            if is_on:
+                self.boiler.turn_off()
+            
         
         
         # helping variables for changing day coefs
@@ -224,19 +224,7 @@ class Controller:
                 self.last_legionella_heating = datetime.now()
                 print("legionella was eliminated, see you in 3 weeks")
 
-        # if is scheduled event for heating, there is evaluated if it is needed to heat
-        if next_calendar_heat_up_event['hours_to_event'] is not None:
-            time_to_without_DTO = self.WeekPlanner.duration_of_low_tarif_to_next_heating(
-                next_calendar_heat_up_event['hours_to_event'])
-            tmp_goal = next_calendar_heat_up_event['degree_target']
-            print("time to next heating without DTO: ", time_to_without_DTO)
-            print("tmp goal : ", tmp_goal)
-            if(self.Boiler.is_needed_to_heat(tmp_act, tmp_goal=tmp_goal, time_to_consumption=time_to_without_DTO)):
-                print("planned event to heat up with target {} Celsius occurs in {} hours".format(
-                    next_calendar_heat_up_event['degree_target'], next_calendar_heat_up_event['hours_to_event']))
-                if not is_on:
-                    self.boiler.turn_on()
-                return
+
 
         # if is actual tmp lower than tmp min, there is need to heat
         if (tmp_act < self.tmp_min):
@@ -245,91 +233,81 @@ class Controller:
             return
 
 
-        if (self.WeekPlanner.is_in_heating()):
+        # if (self.WeekPlanner.is_in_heating()):
 
-            current_heating = self.WeekPlanner.next_heating_event('end')
-            if (current_heating is None):
-                return
-            current_heating_half_duration = current_heating['duration'] / 2
-            how_long_to_current_heating_end = current_heating['will_occur_in']
+        #     current_heating = self.WeekPlanner.next_heating_event('end')
+        #     if (current_heating is None):
+        #         return
+        #     current_heating_half_duration = current_heating['duration'] / 2
+        #     how_long_to_current_heating_end = current_heating['will_occur_in']
             
-            if(tmp_act < self.consumption_tmp_min):
+        #     if(tmp_act < self.consumption_tmp_min):
 
-                print("in heating, needed to increase tmp({}°C) above tmp min({}°C)".format(
-                    tmp_act, self.consumption_tmp_min))
-                if not is_on:
-                    self.boiler.turn_on()
+        #         print("in heating, needed to increase tmp({}°C) above tmp min({}°C)".format(
+        #             tmp_act, self.consumption_tmp_min))
+        #         if not is_on:
+        #             self.boiler.turn_on()
 
-                if((how_long_to_current_heating_end > current_heating_half_duration) and not self.coef_up_in_current_heating_cycle_changed):
-                    #changing the coefs if the temperature during predicted consumption is too low
-                    self.coef_up_in_current_heating_cycle_changed = True
-                    self.WeekPlanner.week_days_coefs[day_of_week] *= 1.015
-                    print("changing day ({}) coef to {}".format(
-                        (day_of_week + 1), self.WeekPlanner.week_days_coefs[day_of_week]))
+        #         if((how_long_to_current_heating_end > current_heating_half_duration) and not self.coef_up_in_current_heating_cycle_changed):
+        #             #changing the coefs if the temperature during predicted consumption is too low
+        #             self.coef_up_in_current_heating_cycle_changed = True
+        #             self.WeekPlanner.week_days_coefs[day_of_week] *= 1.015
+        #             print("changing day ({}) coef to {}".format(
+        #                 (day_of_week + 1), self.WeekPlanner.week_days_coefs[day_of_week]))
 
-            else:
-                if is_on:
-                    print("turning off in heating, actual_tmp = {}".format(tmp_act))
+        #     else:
+        #         if is_on:
+        #             print("turning off in heating, actual_tmp = {}".format(tmp_act))
 
-                    self.to
+        #             self.to
 
-            return
-        else:
-            # checking whether it is needed to heat before the next predicted consumption
-            next_heating = self.WeekPlanner. next_heating_event('start')
-            if (next_heating is None):
-                return
-            time_to_next_heating = self.WeekPlanner.duration_of_low_tarif_to_next_heating(
-                next_heating['will_occur_in'])
+        #     return
+        # else:
+        #     # checking whether it is needed to heat before the next predicted consumption
+        #     next_heating = self.WeekPlanner. next_heating_event('start')
+        #     if (next_heating is None):
+        #         return
+        #     time_to_next_heating = self.WeekPlanner.duration_of_low_tarif_to_next_heating(
+        #         next_heating['will_occur_in'])
 
-            next_heating_goal_temperature = next_heating['peak'] * \
-                self.WeekPlanner.week_days_coefs[day_of_week]
+        #     next_heating_goal_temperature = next_heating['peak'] * \
+        #         self.WeekPlanner.week_days_coefs[day_of_week]
 
-            if(self.Boiler.is_needed_to_heat(tmp_act, tmp_goal=next_heating_goal_temperature, time_to_consumption=time_to_next_heating)):
-                print("need to heat up before consumption, time to coms:{} , time without DTO: {}".format(
-                    next_heating['will_occur_in'], time_to_next_heating))
-                if not is_on:
-                    print("boiler is needed to heat up from {} to {}. turning socket on".format(
-                        tmp_act, next_heating_goal_temperature))
-                    self.boiler.turn_on()
+        #     if(self.Boiler.is_needed_to_heat(tmp_act, tmp_goal=next_heating_goal_temperature, time_to_consumption=time_to_next_heating)):
+        #         print("need to heat up before consumption, time to coms:{} , time without DTO: {}".format(
+        #             next_heating['will_occur_in'], time_to_next_heating))
+        #         if not is_on:
+        #             print("boiler is needed to heat up from {} to {}. turning socket on".format(
+        #                 tmp_act, next_heating_goal_temperature))
+        #             self.boiler.turn_on()
 
-                return
-            # te day coef is changed whether the temperature is too high outside of the predicted consumption
-            if ((tmp_act > (self.consumption_tmp_min + 3)) and not self.coef_down_in_current_heating_cycle_changed):
-                self.coef_down_in_current_heating_cycle_changed = True
-                print("actual tmp is greater than consumption tmp min")
-                self.WeekPlanner.week_days_coefs[day_of_week] *= 0.985
-                print("changing day ({}) coef to {}".format(
-                    (day_of_week + 1), self.WeekPlanner.week_days_coefs[day_of_week]))
+        #         return
+        #     # te day coef is changed whether the temperature is too high outside of the predicted consumption
+        #     if ((tmp_act > (self.consumption_tmp_min + 3)) and not self.coef_down_in_current_heating_cycle_changed):
+        #         self.coef_down_in_current_heating_cycle_changed = True
+        #         print("actual tmp is greater than consumption tmp min")
+        #         self.WeekPlanner.week_days_coefs[day_of_week] *= 0.985
+        #         print("changing day ({}) coef to {}".format(
+        #             (day_of_week + 1), self.WeekPlanner.week_days_coefs[day_of_week]))
 
-            # if boiler need to heat tmp act, tmp act + delta, time to next high tarif
-            next_high_tarif_interval = self.WeekPlanner.next_high_tarif_interval(
-                'start')
-            if next_high_tarif_interval is not None:
-                tmp_delta = next_high_tarif_interval['tmp_delta']
-                if tmp_delta > 0:
-                    time_to_next_high_tarif_interval = next_high_tarif_interval['next_high_tarif_in']
-                    if (self.Boiler.is_needed_to_heat(tmp_act, tmp_goal=tmp_act + tmp_delta, time_to_consumption=time_to_next_high_tarif_interval)):
-                        if not is_on:
-                            print("heating up before in high tarif consumption from {} to {}".format(
-                                tmp_act, tmp_act + tmp_delta))
-                        return
-            if is_on:
-                print("turning off outside of heating, actual_tmp = {}".format(tmp_act))
-                self.to
+        #     # if boiler need to heat tmp act, tmp act + delta, time to next high tarif
+        #     next_high_tarif_interval = self.WeekPlanner.next_high_tarif_interval(
+        #         'start')
+        #     if next_high_tarif_interval is not None:
+        #         tmp_delta = next_high_tarif_interval['tmp_delta']
+        #         if tmp_delta > 0:
+        #             time_to_next_high_tarif_interval = next_high_tarif_interval['next_high_tarif_in']
+        #             if (self.Boiler.is_needed_to_heat(tmp_act, tmp_goal=tmp_act + tmp_delta, time_to_consumption=time_to_next_high_tarif_interval)):
+        #                 if not is_on:
+        #                     print("heating up before in high tarif consumption from {} to {}".format(
+        #                         tmp_act, tmp_act + tmp_delta))
+        #                 return
+        #     if is_on:
+        #         print("turning off outside of heating, actual_tmp = {}".format(tmp_act))
+        #         self.to
 
     
-    def toggle_shelly_relay(self, action, headers, base_url):
-        # service = 'switch.turn_' + action
-        data = {'entity_id': self.switch_entity_id}
-        print("Setting shelly relay to {}".format(action))
-        response = requests.post(
-            f"{base_url}/services/switch/turn_{action}", headers=headers, json=data
-        )
-        if response.status_code == 200:
-            print(f"Shelly turned {action} successfully")
-        else:
-            print("Failed to toggle Shelly")
+
 
 if __name__ == '__main__':
 
@@ -369,8 +347,8 @@ if __name__ == '__main__':
 
     # settings_file = options.settings_file
     setting_file = 'settings.json'
-    boiler = Boiler(base_url, token, headers, boiler_switch_entity_id='switch.smartboiler') 
-    data_handler = DataHandler(influxdb_host='localhost', influxdb_port=8086, influxdb_user='root', influxdb_pass='root', influxdb_db='smart_home_formankovi', switch_entity_id='switch.smartboiler')
+    boiler = Boiler(base_url, token, headers, boiler_switch_entity_id='shelly1pm_34945475a969') 
+    data_handler = DataHandler(influxdb_host='localhost', influxdb_port=8086, influxdb_user='root', influxdb_pass='root', influxdb_db='smart_home_formankovi', switch_entity_id='shelly1pm_34945475a969', tmp_boiler_case_entity_id='esphome_web_c771e8_tmp3')
     
     controller = Controller()
 
