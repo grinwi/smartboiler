@@ -53,7 +53,7 @@ COPY src/smartboiler/web_server.py /app/src/smartboiler/web_server.py
 COPY src/smartboiler/templates/index.html /app/src/smartboiler/templates/index.html
 COPY src/smartboiler/static/style.css /app/src/smartboiler/static/style.css
 
-# COPY options.json /app/
+COPY options.json /app/
 
 COPY config_smartboiler.yaml /app/config_smartboiler.yaml
 COPY secrets_smartboiler.yaml /app/secrets_smartboiler.yaml
