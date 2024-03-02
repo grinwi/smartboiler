@@ -42,10 +42,9 @@ from scipy.misc import electrocardiogram
 import numpy as np
 
 
-from data_handler import DataHandler
-from forecast import Forecast
-from .boiler import Boiler
-from switch import Switch
+from smartboiler.data_handler import DataHandler
+from smartboiler.forecast import Forecast
+from smartboiler.boiler import Boiler
 
 class Controller:
     """Main class which makes decisions about about heating
@@ -310,88 +309,87 @@ class Controller:
     
 
 
-if __name__ == '__main__':
+# if __name__ == '__main__':
 
-    import sys
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--url', type=str, help='The URL to your Home Assistant instance, ex the external_url in your hass configuration')
-    parser.add_argument('--key', type=str, help='Your access key. If using EMHASS in standalone this should be a Long-Lived Access Token')
-    parser.add_argument('--addon', type=strtobool, default='False', help='Define if we are usinng EMHASS with the add-on or in standalone mode')
-    args = parser.parse_args()
+import sys
+parser = argparse.ArgumentParser()
+parser.add_argument('--url', type=str, help='The URL to your Home Assistant instance, ex the external_url in your hass configuration')
+parser.add_argument('--key', type=str, help='Your access key. If using EMHASS in standalone this should be a Long-Lived Access Token')
+parser.add_argument('--addon', type=strtobool, default='False', help='Define if we are usinng EMHASS with the add-on or in standalone mode')
+args = parser.parse_args()
+
+OPTIONS_PATH = os.getenv('OPTIONS_PATH', default="/app/options.json")
+options_json = Path(OPTIONS_PATH)
+
+# Read options info
+if options_json.exists():
+    with options_json.open('r') as data:
+        options = json.load(data)
+
+DATA_PATH = os.getenv("DATA_PATH", default="/app/data/")
+data_path = Path(DATA_PATH)
+
+hass_url = options['hass_url']
+long_lived_token = options['long_lived_token']
+influxdb_host = options['influxdb_host']
+influxdb_port: 8086
+influxdb_user = options['influxdb_user']
+influxdb_pass = options['influxdb_pass']
+influxdb_name = options['influxdb_name']
+boiler_entidy_id = options['boiler_entidy_id']
+boiler_socket_id = options['boiler_socket_id']
+boiler_case_tmp_entity_id = options['boiler_case_tmp_entity_id']
+boiler_case_tmp_measurement = options['boiler_case_tmp_measurement']
+boiler_water_flow_entity_id = options['boiler_water_flow_entity_id']
+boiler_water_flow_measurement = options['boiler_water_flow_measurement']
+boiler_water_temp_entity_id = options['boiler_water_temp_entity_id']
+boiler_water_temp_measurement = options['boiler_water_temp_measurement']
+boiler_volume = options['boiler_volume']
+boiler_set_tmp = options['boiler_set_tmp']
+boiler_min_operation_tmp = options['boiler_min_operation_tmp']
+one_shower_volume = options['one_shower_volume']
+boiler_watt_power = options['boiler_watt_power']
+household_floor_size = options['household_floor_size']
+household_members = options['household_members']
+thermostat_entity_id = options['thermostat_entity_id']
+logging_level = options['logging_level']
     
-    OPTIONS_PATH = os.getenv('OPTIONS_PATH', default="/app/options.json")
-    options_json = Path(OPTIONS_PATH)
 
-    # Read options info
-    if options_json.exists():
-        with options_json.open('r') as data:
-            options = json.load(data)
-    else:
-        app.logger.error("options.json does not exists")
-    DATA_PATH = os.getenv("DATA_PATH", default="/app/data/")
-    data_path = Path(DATA_PATH)
+
+base_url = args.url
+url = base_url + '/config'
+key = args.key
+web_ui = "0.0.0.0"
+
+headers = {
+        "Authorization": f"Bearer {long_lived_token}",
+        "content-type": "application/json"
+    }
+response = requests.get(url, headers=headers)
+config_hass = response.json()
+params_secrets = {
+    'hass_url': base_url,
+    'long_lived_token': key,
+    'time_zone': config_hass['time_zone'],
+    'lat': config_hass['latitude'],
+    'lon': config_hass['longitude'],
+    'alt': config_hass['elevation']
+    }
+
+
+
+boiler = Boiler(base_url, long_lived_token, headers, boiler_switch_entity_id=boiler_socket_id)
+data_handler = DataHandler(influxdb_host=influxdb_host, influxdb_port=8086, influxdb_user=influxdb_user, influxdb_pass=influxdb_pass, influxdb_db=influxdb_name, switch_entity_id=boiler_socket_id, tmp_boiler_case_entity_id=boiler_case_tmp_entity_id)
+forecast = Forecast(data_handler=data_handler)
+controller = Controller(data_handler=data_handler, boiler=boiler, forecast=forecast)
+
+while (1):
     
-    hass_url = options['hass_url']
-    long_lived_token = options['long_lived_token']
-    influxdb_host = options['influxdb_host']
-    influxdb_port: 8086
-    influxdb_user = options['influxdb_user']
-    influxdb_pass = options['influxdb_pass']
-    influxdb_name = options['influxdb_name']
-    boiler_entidy_id = options['boiler_entidy_id']
-    boiler_socket_id = options['boiler_socket_id']
-    boiler_case_tmp_entity_id = options['boiler_case_tmp_entity_id']
-    boiler_case_tmp_measurement = options['boiler_case_tmp_measurement']
-    boiler_water_flow_entity_id = options['boiler_water_flow_entity_id']
-    boiler_water_flow_measurement = options['boiler_water_flow_measurement']
-    boiler_water_temp_entity_id = options['boiler_water_temp_entity_id']
-    boiler_water_temp_measurement = options['boiler_water_temp_measurement']
-    boiler_volume = options['boiler_volume']
-    boiler_set_tmp = options['boiler_set_tmp']
-    boiler_min_operation_tmp = options['boiler_min_operation_tmp']
-    one_shower_volume = options['one_shower_volume']
-    boiler_watt_power = options['boiler_watt_power']
-    household_floor_size = options['household_floor_size']
-    household_members = options['household_members']
-    thermostat_entity_id = options['thermostat_entity_id']
-    logging_level = options['logging_level']
-        
+    controller.control()
+    # c.toggle_shelly_relay('on', headers, base_url)
     
+    # time.sleep(60)
+    # c.toggle_shelly_relay('off', headers, base_url)
     
-    base_url = args.url
-    url = base_url + '/config'
-    key = args.key
-    web_ui = "0.0.0.0"
-    
-    headers = {
-            "Authorization": f"Bearer {long_lived_token}",
-            "content-type": "application/json"
-        }
-    response = requests.get(url, headers=headers)
-    config_hass = response.json()
-    params_secrets = {
-        'hass_url': base_url,
-        'long_lived_token': key,
-        'time_zone': config_hass['time_zone'],
-        'lat': config_hass['latitude'],
-        'lon': config_hass['longitude'],
-        'alt': config_hass['elevation']
-        }
-
-
-
-    boiler = Boiler(base_url, long_lived_token, headers, boiler_switch_entity_id=boiler_socket_id)
-    data_handler = DataHandler(influxdb_host=influxdb_host, influxdb_port=8086, influxdb_user=influxdb_user, influxdb_pass=influxdb_pass, influxdb_db=influxdb_name, switch_entity_id=boiler_socket_id, tmp_boiler_case_entity_id=boiler_case_tmp_entity_id)
-    forecast = Forecast(data_handler=data_handler)
-    controller = Controller(data_handler=data_handler, boiler=boiler, forecast=forecast)
-
-    while (1):
-        
-        controller.control()
-        # c.toggle_shelly_relay('on', headers, base_url)
-        
-        # time.sleep(60)
-        # c.toggle_shelly_relay('off', headers, base_url)
-        
-        # time.sleep(60)
+    # time.sleep(60)
 

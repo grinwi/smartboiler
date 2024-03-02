@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 import matplotlib.pyplot as plt
-from data_handler import DataHandler
+from smartboiler.data_handler import DataHandler
 
 class Forecast:
     def __init__(self, dataHandler: DataHandler):

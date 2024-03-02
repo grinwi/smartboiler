@@ -4,7 +4,6 @@ from operator import le
 from click import group
 from matplotlib.dates import drange
 import pandas as pd
-from influxdb import InfluxDBClient
 from influxdb import DataFrameClient
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta

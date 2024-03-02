@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 import time
 
 from numpy import ndarray
-from switch import Switch
+from smartboiler.switch import Switch
 import pandas as pd
 
 

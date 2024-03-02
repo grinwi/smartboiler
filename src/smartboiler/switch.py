@@ -1,5 +1,4 @@
 import requests
-from boiler import Boiler
 
 class Switch:
     def __init__(self, entity_id, base_url, token, headers):
