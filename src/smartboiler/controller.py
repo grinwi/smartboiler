@@ -356,9 +356,8 @@ logging_level = options['logging_level']
     
 
 
-base_url = args.url
+base_url = hass_url
 url = base_url + '/config'
-key = args.key
 web_ui = "0.0.0.0"
 
 headers = {
@@ -367,16 +366,6 @@ headers = {
     }
 response = requests.get(url, headers=headers)
 config_hass = response.json()
-params_secrets = {
-    'hass_url': base_url,
-    'long_lived_token': key,
-    'time_zone': config_hass['time_zone'],
-    'lat': config_hass['latitude'],
-    'lon': config_hass['longitude'],
-    'alt': config_hass['elevation']
-    }
-
-
 
 boiler = Boiler(base_url, long_lived_token, headers, boiler_switch_entity_id=boiler_socket_id)
 data_handler = DataHandler(influxdb_host=influxdb_host, influxdb_port=8086, influxdb_user=influxdb_user, influxdb_pass=influxdb_pass, influxdb_db=influxdb_name, switch_entity_id=boiler_socket_id, tmp_boiler_case_entity_id=boiler_case_tmp_entity_id)
