@@ -1,6 +1,6 @@
 {
  "hass_url" : "empty",
-"longlived_token" : "empty",
+"long_lived_token" : "empty",
 "influxdb_host" : "empty",
 "influxdb_port" : "8086",
 "influxdb_user" : "empty",
@@ -14,7 +14,7 @@
 "boiler_water_flow_measurement" : "empty",
 "boiler_water_temp_entity_id" : "empty",
 "boiler_water_temp_measurement" : "empty",
-"boiler_volume" : "120",
+"boiler_volume" : "121",
 "boiler_set_tmp" : "60",
 "boiler_min_operation_tmp" : "37",
 "one_shower_volume" : "40",
