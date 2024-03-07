@@ -51,7 +51,7 @@ class Controller:
     """Main class which makes decisions about about heating
     """
 
-    def __init__(self, data_handler : DataHandler, boiler : Boiler, forecast : Forecast, ):
+    def __init__(self, dataHandler : DataHandler, boiler : Boiler, forecast : Forecast, ):
         """Inits class of Controller. Loads settings from a settings file
 
         Args:
@@ -77,7 +77,7 @@ class Controller:
         self.start_date = datetime.now()
         
         # self.Hass = remote.API('localhost', 'smart_boiler01')
-        self.dataHandler = data_handler
+        self.dataHandler = dataHandler
         self.boiler = boiler
         self.forecast = forecast
 
@@ -103,7 +103,7 @@ class Controller:
         # self.coef_down_in_current_heating_cycle_changed = False
 
     def _last_entry(self):
-        self.data_handler.get_actual_data()
+        self.dataHandler.get_actual_data()
 
 
     def _check_data(self):
@@ -373,8 +373,8 @@ if __name__ == '__main__':
     dataHandler = DataHandler(influx_id=influxdb_host, db_name=influxdb_name, db_username=influxdb_user, db_password=influxdb_pass, relay_entity_id=boiler_socket_id, relay_power_entity_id=boiler_socket_power_id, tmp_boiler_case_entity_id=boiler_case_tmp_entity_id, tmp_output_water_entity_id=boiler_water_temp_entity_id, start_of_data=start_of_data_measurement)
     
     boiler = Boiler(base_url, long_lived_token, headers, boiler_switch_entity_id=boiler_socket_id, dataHandler=dataHandler)
-    forecast = Forecast(data_handler=dataHandler)
-    controller = Controller(data_handler=dataHandler, boiler=boiler, forecast=forecast)
+    forecast = Forecast(dataHandler=dataHandler)
+    controller = Controller(dataHandler=dataHandler, boiler=boiler, forecast=forecast)
 
     while (1):
         

@@ -146,3 +146,7 @@ api.token
 influxdb/config/influx-configs
 .vscode/settings.json
 Screenshot 2023-11-18 204400.png
+
+*tar
+*secrets*
+.DS_Store
