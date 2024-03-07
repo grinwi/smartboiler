@@ -1,5 +1,7 @@
 from calendar import week
 from pathlib import Path
+
+from smartboiler.data_handler import DataHandler
 print('Running' if __name__ == '__main__' else 'Importing', Path(__file__).resolve())
 
 ##########################################################
@@ -24,13 +26,13 @@ import pandas as pd
 
 
 class Boiler(Switch):
-    def __init__(self,  base_url, token, headers, switch_entity_id, dataHandler, capacity=100, wattage=2000, set_tmp=60, one_shower_volume=40, shower_temperature=40, min_tmp=37, heater_efficiency=0.98):
+    def __init__(self,  base_url, token, headers, boiler_switch_entity_id, dataHandler : DataHandler, capacity=100, wattage=2000, set_tmp=60, one_shower_volume=40, shower_temperature=40, min_tmp=37, heater_efficiency=0.98):
 
         print("------------------------------------------------------\n")
         print('initializing of control...\n\tCapacity of Boiler = {}\n\t Wattage of boiler = {}\n'.format(
             capacity, wattage))
         print("------------------------------------------------------\n")
-        super.__init__(self, ntity_id=switch_entity_id, url=base_url, token=token, headers=headers)
+        super.__init__(self, ntity_id=boiler_switch_entity_id, url=base_url, token=token, headers=headers)
         self.boiler_heat_cap = capacity * 1.163
         self.real_wattage = wattage * heater_efficiency
         self.high_tarif_schedule = dataHandler.get_high_tarif_schedule()
