@@ -1,5 +1,8 @@
 from calendar import week
+from math import inf
 from pathlib import Path
+
+import influxdb
 
 from smartboiler.data_handler import DataHandler
 print('Running' if __name__ == '__main__' else 'Importing', Path(__file__).resolve())
@@ -32,7 +35,9 @@ class Boiler(Switch):
         print('initializing of control...\n\tCapacity of Boiler = {}\n\t Wattage of boiler = {}\n'.format(
             capacity, wattage))
         print("------------------------------------------------------\n")
-        super.__init__(self, ntity_id=boiler_switch_entity_id, url=base_url, token=token, headers=headers)
+        #    def __init__(self, entity_id, base_url, token, headers):
+
+        Switch.__init__(self, entity_id=boiler_switch_entity_id, base_url=base_url, token=token, headers=headers)
         self.boiler_heat_cap = capacity * 1.163
         self.real_wattage = wattage * heater_efficiency
         self.high_tarif_schedule = dataHandler.get_high_tarif_schedule()
@@ -164,5 +169,14 @@ if __name__ == '__main__':
     tmp_act = 30
     tmp_goal = 52
     time_to_consumption = 1
-    b = Boiler(capacity=80, wattage=2000)
-    print(b.is_needed_to_heat(tmp_act, tmp_goal, time_to_consumption))
+    influxdb_host = 'localhost'
+    influxdb_name = 'smart_home_zukalovi'
+    influxdb_user = 'root'
+    influxdb_pass = 'root'
+    boiler_socket_id = 'shelly1pm_34945475a969'
+    boiler_socket_power_id = 'esphome_web_c771e8_power'
+    boiler_case_tmp_entity_id = 'esphome_web_c771e8_tmp3'
+    boiler_water_temp_entity_id = 'esphome_web_c771e8_tmp2'
+    start_of_data_measurement = datetime(2023, 11, 1)
+    dataHandler = DataHandler(influx_id=influxdb_host, db_name=influxdb_name, db_username=influxdb_user, db_password=influxdb_pass, relay_entity_id=boiler_socket_id, relay_power_entity_id=boiler_socket_power_id, tmp_boiler_case_entity_id=boiler_case_tmp_entity_id, tmp_output_water_entity_id=boiler_water_temp_entity_id, start_of_data=start_of_data_measurement)
+    boiler = Boiler('test', 'test2', 'dem', boiler_switch_entity_id='nkew', dataHandler=dataHandler)
