@@ -1,4 +1,5 @@
 from pathlib import Path
+from turtle import left
 
 import influxdb
 print('Running' if __name__ == '__main__' else 'Importing', Path(__file__).resolve())
@@ -80,6 +81,10 @@ class Controller:
         self.dataHandler = dataHandler
         self.boiler = boiler
         self.forecast = forecast
+        self.forecast.build_model()
+        forecast.train_model()
+        self.forecast.fit_model()     
+        self.last_model_training = datetime.now()   
 
 
         # print("------------------------------------------------------\n")
@@ -95,12 +100,11 @@ class Controller:
         # #                    wattage=boiler_wattage, set_tmp=boiler_set_tmp)
 
         # #self.data_db = self._actualize_data()
-        # self.last_data_update = datetime.now()
-        # self.last_legionella_heating = datetime.now()
+        self.last_legionella_heating = datetime.now()
 
         # #self.WeekPlanner = WeekPlanner(self.data_db)
-        # self.coef_up_in_current_heating_cycle_changed = False
-        # self.coef_down_in_current_heating_cycle_changed = False
+        self.coef_up_in_current_heating_cycle_changed = False
+        self.coef_down_in_current_heating_cycle_changed = False
 
     def _last_entry(self):
         self.dataHandler.get_actual_data()
@@ -110,12 +114,13 @@ class Controller:
         """ Retrain model if the last data update is older than 7 days.
         """
         pass
-        if self.last_data_update - datetime.now() > timedelta(days=7):
+        if self.last_model_training - datetime.now() > timedelta(days=7):
             print(datetime.now())
             print("actualizing data")
 
             self.forecast.train_model()
-            self.last_data_update = datetime.now()
+            self.forecast.fit_model()
+            self.last_model_training = datetime.now()
 
     def _learning(self):
         """ After one week of only measuring the data starts heating based on historical data.
@@ -199,7 +204,6 @@ class Controller:
         if need_to_heat:
             if not is_on:
                 self.boiler.turn_on()
-            
         else:
             if is_on:
                 self.boiler.turn_off()
@@ -384,5 +388,5 @@ if __name__ == '__main__':
         # time.sleep(60)
         # c.toggle_shelly_relay('off', headers, base_url)
         
-        # time.sleep(60)
+        time.sleep(600)
 
