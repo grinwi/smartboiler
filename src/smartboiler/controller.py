@@ -46,7 +46,6 @@ import numpy as np
 from smartboiler.data_handler import DataHandler
 from smartboiler.forecast import Forecast
 from smartboiler.boiler import Boiler
-from smartboiler.week_planner import WeekPlanner
 
 class Controller:
     """Main class which makes decisions about about heating
