@@ -205,7 +205,7 @@ class DataHandler:
         df_reset['time'] = df_reset['level_1'].astype(str) + ':' + df_reset['level_2'].astype(str)
         df_reset['time'] = pd.to_datetime(df_reset['time'], format='%H:%M').dt.time
         df_reset['weekday'] = df_reset['level_0']
-        df_reset['unavailable_minutes'] = abs(30 - df_reset[0])
+        df_reset['unavailable_minutes'] = abs(30 - df_reset['boiler_relay_status'])
         df_reset = df_reset.drop(columns=['level_0', 'level_1', 'level_2', 'boiler_relay_status'])
         
 
