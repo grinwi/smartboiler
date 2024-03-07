@@ -79,8 +79,8 @@ class Controller:
         self.dataHandler = dataHandler
         self.boiler = boiler
         self.forecast = forecast
-        self.forecast.build_model()
         forecast.train_model()
+        self.forecast.build_model()
         self.forecast.fit_model()     
         self.last_model_training = datetime.now()   
 
