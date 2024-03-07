@@ -1,5 +1,4 @@
 from pathlib import Path
-from turtle import left
 print('Running' if __name__ == '__main__' else 'Importing', Path(__file__).resolve())
 from operator import le
 from click import group
