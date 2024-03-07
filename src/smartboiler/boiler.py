@@ -1,3 +1,4 @@
+from calendar import week
 from pathlib import Path
 print('Running' if __name__ == '__main__' else 'Importing', Path(__file__).resolve())
 
@@ -23,7 +24,7 @@ import pandas as pd
 
 
 class Boiler(Switch):
-    def __init__(self,  base_url, token, headers, switch_entity_id, capacity=100, wattage=2000, set_tmp=60, one_shower_volume=40, shower_temperature=40, min_tmp=37, heater_efficiency=0.98):
+    def __init__(self,  base_url, token, headers, switch_entity_id, dataHandler, capacity=100, wattage=2000, set_tmp=60, one_shower_volume=40, shower_temperature=40, min_tmp=37, heater_efficiency=0.98):
 
         print("------------------------------------------------------\n")
         print('initializing of control...\n\tCapacity of Boiler = {}\n\t Wattage of boiler = {}\n'.format(
@@ -32,7 +33,7 @@ class Boiler(Switch):
         super.__init__(self, ntity_id=switch_entity_id, url=base_url, token=token, headers=headers)
         self.boiler_heat_cap = capacity * 1.163
         self.real_wattage = wattage * heater_efficiency
-        
+        self.high_tarif_schedule = dataHandler.get_high_tarif_schedule()
         self.set_tmp = set_tmp
         self.capacity = capacity
         self.one_shower_volume = one_shower_volume
@@ -69,12 +70,25 @@ class Boiler(Switch):
         # if it is, return True
         # if not, pop last row and continue with reduced df
         # if df is empty, return False
+        actual_time = datetime.now().time()
+        actual_time = actual_time.time()
+        actual_schedule = self.high_tarif_schedule[(self.high_tarif_schedule['time'] > actual_time) & (self.high_tarif_schedule['weekday'] >= actual_time.weekday())]
+        # get first 6*12 rows
+        actual_schedule = actual_schedule.head(2*12)
+
+        if (len(actual_schedule) < 2*12):
+            #concat actual schedule with beggining of df_reset
+            actual_schedule = pd.concat([actual_schedule, self.high_tarif_schedule.head(2*12 - len(actual_schedule))])
+            
+                
         len_of_df = len(prediction_of_consumption)
         for i in range(len_of_df, 0):
             sum_of_consumption = prediction_of_consumption.iloc[:i].sum()
             time_to_consumption_minutes = i*30
             
-            time_needed_to_heat = self.time_needed_to_heat_up_minutes(consumption_kWh=sum_of_consumption)
+            unavailible_minutes = actual_schedule.iloc[:i]['unavailible_minutes'].sum()
+            
+            time_needed_to_heat = self.time_needed_to_heat_up_minutes(consumption_kWh=sum_of_consumption) + unavailible_minutes
             
             if(time_to_consumption_minutes < time_needed_to_heat):
                 return True

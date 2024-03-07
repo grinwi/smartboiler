@@ -1,4 +1,5 @@
 from pathlib import Path
+from turtle import left
 print('Running' if __name__ == '__main__' else 'Importing', Path(__file__).resolve())
 from operator import le
 from click import group
@@ -9,7 +10,7 @@ import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 import numpy as np
 import json
-
+import logging
 
 data_zukalovi_actual_boiler_stats = {
     "boiler_temperature": {
@@ -32,7 +33,9 @@ class DataHandler:
         db_username,
         db_password,
         relay_entity_id,
+        relay_power_entity_id,
         tmp_boiler_case_entity_id,
+        tmp_output_water_entity_id,
         start_of_data=datetime(2023, 1, 1, 0, 0, 0, 0),
     ):
         self.influx_id = influx_id
@@ -41,6 +44,9 @@ class DataHandler:
         self.db_password = db_password
         self.group_by_time_interval = "30min"
         self.relay_entity_id = relay_entity_id
+        self.relay_power_entity_id = relay_power_entity_id
+        self.tmp_boiler_case_entity_id = tmp_boiler_case_entity_id
+        self.tmp_output_water_entity_id = tmp_output_water_entity_id
         self.dataframe_client = DataFrameClient(
             host=self.influx_id,
             port=8086,
@@ -81,11 +87,11 @@ class DataHandler:
 
         queries = {
             "water_flow": {
-                "sql_query": f'SELECT mean("value") AS "water_flow_L_per_minute_mean" FROM "{self.db_name}"."autogen"."L/min" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "entity_id"=\'esphome_boiler_temps_current_water_usage\' GROUP BY time({group_by_time_interval}) FILL(0)',
+                "sql_query": f'SELECT mean("value") AS "water_flow_L_per_minute_mean" FROM "{self.db_name}"."autogen"."L/min" WHERE time > {left_time_interval} AND time < {right_time_interval} GROUP BY time({group_by_time_interval}) FILL(0)',
                 "measurement": "L/min",
             },
             "water_temperature": {
-                "sql_query": f'SELECT mean("value") AS "water_temperature_mean" FROM "{self.db_name}"."autogen"."°C" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "entity_id"=\'esphome_boiler_temps_ntc_temperature_b_constant\' GROUP BY time({group_by_time_interval}) FILL(null)',
+                "sql_query": f'SELECT mean("value") AS "water_temperature_mean" FROM "{self.db_name}"."autogen"."°C" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "entity_id"=\'{self.tmp_output_water_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(null)',
                 "measurement": "°C",
             },
             "temperature": {
@@ -105,18 +111,21 @@ class DataHandler:
                 "measurement": "state",
             },
             "boiler_water_temperature": {
-                "sql_query": f'SELECT mean("value") AS "boiler_water_temperature_mean" FROM "{self.db_name}"."autogen"."°C" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "entity_id"=\'{self.relay_entity_id}_temperature\' GROUP BY time({group_by_time_interval}) FILL(null)',
+                "sql_query": f'SELECT mean("value") AS "boiler_water_temperature_mean" FROM "{self.db_name}"."autogen"."°C" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "entity_id"=\'{self.tmp_boiler_case_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(null)',
                 "measurement": "°C",
             },
-            # "boiler_relay_status": {"sql_query": f'SELECT last("value") AS "boiler_relay_status" FROM "{self.db_name}"."autogen"."state" WHERE time > {time_interval_left} AND time < {time_interval_right} AND "entity_id"=\'{self.relay_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(previous)',
-            #                        "measurement": "state"},
+            "boiler_relay_status": {"sql_query": f'SELECT last("value") AS "boiler_relay_status" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "entity_id"=\'{self.relay_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(null)',
+                                    "measurement": "state"},
         }
         return queries
 
     def get_df_from_queries(self, queries):
         df_all_list = []
-        # iterate over key an value in data_formankovi
+        # iterate over key an value in data
         for key, value in queries.items():
+            print(key)
+            print(value["sql_query"])
+            logging.info(f"Getting data from influxdb for {key}")
             # get data from influxdb
             result = self.dataframe_client.query(value["sql_query"])[
                 value["measurement"]
@@ -179,7 +188,31 @@ class DataHandler:
         
         return df_predict
 
+    def get_high_tarif_schedule(self):
+        left_time_interval = datetime.now() - timedelta(days=14)
+        queries = self.get_database_queries(left_time_interval=left_time_interval)
+        df_all = self.get_df_from_queries(queries)
+        df_all.index = df_all.index.tz_localize(None)
+        data_resampled = df_all.resample('10T').max()
+        data_resampled = data_resampled['boiler_relay_status']
+        data_resampled = data_resampled.notna().astype(int)
+        data_resampled = data_resampled.resample('30T').sum() * 10
+        # group by weekday and hour and minute and calculate max
+        grouped = data_resampled.groupby([data_resampled.index.weekday, data_resampled.index.hour, data_resampled.index.minute]).max()
 
+        # not null values to 1, null as 0
+        grouped = grouped.notna().astype(int)
+        df_reset = grouped.reset_index()
+        df_reset['time'] = df_reset['level_1'].astype(str) + ':' + df_reset['level_2'].astype(str)
+        df_reset['time'] = pd.to_datetime(df_reset['time'], format='%H:%M').dt.time
+        df_reset['weekday'] = df_reset['level_0']
+        df_reset['unavailable_minutes'] = abs(30 - df_reset[0])
+        df_reset = df_reset.drop(columns=['level_0', 'level_1', 'level_2', 'boiler_relay_status'])
+        
+
+        return df_reset
+    
+    
     def get_actual_data(self):
         queries = self.get_actual_zuka_boiler_stats(self.relay_entity_id, 'esphome_web_c771e8_tmp3')
         df = self.get_df_from_queries(queries)
@@ -276,18 +309,21 @@ class DataHandler:
 
 if __name__ == "__main__":
     # test
-    data_handler = DataHandler(
-        "localhost",
-        "smart_home_zukalovi",
-        "root",
-        "root",
-        "shelly1pm_34945475a969",
-        "esphome_web_c771e8_tmp3"
-    )
+
+    dataHandler = DataHandler(
+    influx_id="localhost",
+    db_name="smart_home_zukalovi",
+    db_username="root",
+    db_password="root",
+    relay_entity_id="shelly1pm_84cca8b07eae",
+    relay_power_entity_id="shelly1pm_84cca8b07eae_power",
+    tmp_boiler_case_entity_id="esphome_web_c771e8_tmp3",
+    tmp_output_water_entity_id="esphome_web_c771e8_ntc_temperature_b_constant_2",
+    start_of_data=datetime(2024, 3, 1, 0, 0, 0, 0))
     # df_from_db = data_handler.get_data_for_training_model()
     # dropna - remove rows with NaN
     # result = data_handler.transform_data_for_ml(df_from_db)
-    data_handler.get_data_for_prediction()
+    dataHandler = dataHandler.get_data_for_high_tarif_info()
 
     # data_handler.get_data_for_prediction()
     # data_handler.get_actual_data()

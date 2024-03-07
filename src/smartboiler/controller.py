@@ -46,6 +46,7 @@ import numpy as np
 from smartboiler.data_handler import DataHandler
 from smartboiler.forecast import Forecast
 from smartboiler.boiler import Boiler
+from smartboiler.week_planner import WeekPlanner
 
 class Controller:
     """Main class which makes decisions about about heating
@@ -182,15 +183,15 @@ class Controller:
             return
 
 
-        # if last entry is older than 10 minutes and not because of high tarif, water in a boiler is heated for sure
-        time_of_last_entry = last_entry['time_of_last_entry']
-        if (time_now - time_of_last_entry > timedelta(minutes=10)):
-            if not self.weekPlanner.is_in_DTO():
-                print("too old last entry ({}), need to heat".format(
-                    time_of_last_entry))
-                if not is_on:
-                    self.boiler.turn_on()
-            return
+        # # if last entry is older than 10 minutes and not because of high tarif, water in a boiler is heated for sure
+        # time_of_last_entry = last_entry['time_of_last_entry']
+        # if (time_now - time_of_last_entry > timedelta(minutes=10)):
+        #     if not self.weekPlanner.is_in_DTO():
+        #         print("too old last entry ({}), need to heat".format(
+        #             time_of_last_entry))
+        #         if not is_on:
+        #             self.boiler.turn_on()
+        #     return
 
         
         consumption_forecast = self.forecast.get_forecast_next_steps(time_now, time_now_plus_12_hours) # step has 30 minutes, so 24 steps is 12 hours
@@ -206,11 +207,11 @@ class Controller:
             
         
         
-        # helping variables for changing day coefs
-        if(self.weekPlanner.is_in_heating()):
-            self.coef_down_in_current_heating_cycle_changed = False
-        else:
-            self.coef_up_in_current_heating_cycle_changed = False
+        # # helping variables for changing day coefs
+        # if(self.weekPlanner.is_in_heating()):
+        #     self.coef_down_in_current_heating_cycle_changed = False
+        # else:
+        #     self.coef_up_in_current_heating_cycle_changed = False
 
 
         # once a three weeks is water in boiler heated on max for ellimination of Legionella
@@ -330,6 +331,8 @@ if __name__ == '__main__':
     DATA_PATH = os.getenv("DATA_PATH", default="/app/data/")
     data_path = Path(DATA_PATH)
 
+    start_of_data_measurement = datetime(2023,10,1,0,0,0,0)
+
     hass_url = options['hass_url']
     long_lived_token = options['long_lived_token']
     influxdb_host = options['influxdb_host']
@@ -339,6 +342,7 @@ if __name__ == '__main__':
     influxdb_name = options['influxdb_name']
     boiler_entidy_id = options['boiler_entidy_id']
     boiler_socket_id = options['boiler_socket_id']
+    boiler_socket_power_id = options['boiler_socket_power_id']
     boiler_case_tmp_entity_id = options['boiler_case_tmp_entity_id']
     boiler_case_tmp_measurement = options['boiler_case_tmp_measurement']
     boiler_water_flow_entity_id = options['boiler_water_flow_entity_id']
@@ -367,10 +371,11 @@ if __name__ == '__main__':
         }
 
 
-    boiler = Boiler(base_url, long_lived_token, headers, boiler_switch_entity_id=boiler_socket_id)
-    data_handler = DataHandler(influxdb_host=influxdb_host, influxdb_port=8086, influxdb_user=influxdb_user, influxdb_pass=influxdb_pass, influxdb_db=influxdb_name, switch_entity_id=boiler_socket_id, tmp_boiler_case_entity_id=boiler_case_tmp_entity_id)
-    forecast = Forecast(data_handler=data_handler)
-    controller = Controller(data_handler=data_handler, boiler=boiler, forecast=forecast)
+    dataHandler = DataHandler(influx_id=influxdb_host, db_name=influxdb_name, db_username=influxdb_user, db_password=influxdb_pass, relay_entity_id=boiler_socket_id, relay_power_entity_id=boiler_socket_power_id, tmp_boiler_case_entity_id=boiler_case_tmp_entity_id, tmp_output_water_entity_id=boiler_water_temp_entity_id, start_of_data=start_of_data_measurement)
+    
+    boiler = Boiler(base_url, long_lived_token, headers, boiler_switch_entity_id=boiler_socket_id, dataHandler=dataHandler)
+    forecast = Forecast(data_handler=dataHandler)
+    controller = Controller(data_handler=dataHandler, boiler=boiler, forecast=forecast)
 
     while (1):
         

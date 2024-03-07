@@ -24,15 +24,8 @@ class WeekPlanner:
         print('initializing of WeekPlanner\n')
         print("------------------------------------------------------\n")
         self.TimeHandler = TimeHandler()
-        self.week_days_consumptions = self._create_days_average(data)
-        print(self.week_days_consumptions)
         self.week_days_high_tarifs_intervals = self._find_empty_intervals(data)
 
-
-        #creating of dictionary of day coefficients
-        self.week_days_coefs = dict.fromkeys(range(0, 7))
-        for key in self.week_days_coefs:
-            self.week_days_coefs[key] = 1.3
 
     def _find_empty_intervals(self, data):
         """Finds an empty intervals in measured dataframe, 
