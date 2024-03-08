@@ -57,17 +57,19 @@ class DataHandler:
         self.last_time_data_update = datetime.now()
         
         
-    def get_actual_zuka_boiler_stats(self, group_by_time_interval = "1min"):
-        data_zukalovi_actual_boiler_stats = {
+    def get_actual_boiler_stats(self, group_by_time_interval = "1min", limit = 6):
+        actual_boiler_stats = {
         "boiler_temperature": {
-            "sql_query": f'SELECT mean("value") AS "mean_value" FROM "smart_home_zukalovi"."autogen"."°C" WHERE "entity_id"=\'{self.tmp_boiler_case_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(null) ORDER BY DESC LIMIT {6}',
+            "sql_query": f'SELECT mean("value") AS "mean_value" FROM "{self.db_name}"."autogen"."°C" WHERE "entity_id"=\'{self.tmp_boiler_case_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(null) ORDER BY DESC LIMIT {limit}',
             "measurement": "°C",
         },
         "is_boiler_on": {
-            "sql_query": f'SELECT last("value") AS "mean_value" FROM "smart_home_zukalovi"."autogen"."state" WHERE "entity_id"=\'{self.relay_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(null) ORDER BY DESC LIMIT {6}',
+            "sql_query": f'SELECT last("value") AS "mean_value" FROM "{self.db_name}"."autogen"."state" WHERE "entity_id"=\'{self.relay_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(null) ORDER BY DESC LIMIT {limit}',
             "measurement": "state",
         },
-}
+        }
+        return self.get_df_from_queries(actual_boiler_stats).iloc[-1]
+
 
     def get_database_queries(
         self,
@@ -122,8 +124,6 @@ class DataHandler:
         df_all_list = []
         # iterate over key an value in data
         for key, value in queries.items():
-            print(key)
-            print(value["sql_query"])
             logging.info(f"Getting data from influxdb for {key}")
             # get data from influxdb
             result = self.dataframe_client.query(value["sql_query"])[
@@ -212,11 +212,7 @@ class DataHandler:
         return df_reset
     
     
-    def get_actual_data(self):
-        queries = self.get_actual_zuka_boiler_stats(self.relay_entity_id, 'esphome_web_c771e8_tmp3')
-        df = self.get_df_from_queries(queries)
-        # return last row of dataframe ordered by time
-        return df.iloc[-1]
+ 
 
     def transform_data_for_ml(self, df, days_from_beginning_ignored = 0, predicted_column = 'longtime_mean'):
         # read pickles from data/pickles
@@ -297,7 +293,7 @@ class DataHandler:
         # extract datetimes from index
         datetimes = df.index
         
-        df['longtime_mean'] = df['longtime_mean'] *  100
+        df['longtime_mean'] = df['longtime_mean']
         
         return (df.reset_index(drop=True), datetimes)
 

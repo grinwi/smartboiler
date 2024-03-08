@@ -105,7 +105,7 @@ class Controller:
         self.coef_down_in_current_heating_cycle_changed = False
 
     def _last_entry(self):
-        self.dataHandler.get_actual_data()
+        self.dataHandler.get_actual_boiler_stats()
 
 
     def _check_data(self):

@@ -1,7 +1,6 @@
 from pathlib import Path
 print('Running' if __name__ == '__main__' else 'Importing', Path(__file__).resolve())
-from datetime import timedelta
-import datetime
+from datetime import timedelta, datetime
 from sklearn.preprocessing import RobustScaler
 from tensorflow.keras.models import Sequential 
 import tensorflow as tf
