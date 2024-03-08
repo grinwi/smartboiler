@@ -1,6 +1,5 @@
 from distutils.command import build
 from pathlib import Path
-from turtle import left
 print('Running' if __name__ == '__main__' else 'Importing', Path(__file__).resolve())
 from datetime import timedelta, datetime
 from sklearn.preprocessing import RobustScaler
@@ -14,7 +13,6 @@ from keras.layers import Input, Dense
 from keras.models import load_model
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 import keras.backend as K
-
 import numpy as np
 import pandas as pd
 from scipy import stats
