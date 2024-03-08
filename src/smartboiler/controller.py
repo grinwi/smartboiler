@@ -136,10 +136,10 @@ class Controller:
         time_now = datetime.now()
         time_now_plus_12_hours = time_now + timedelta(hours=12)
         day_of_week = time_now.weekday()
-
+        print("controling boiler")
         self._check_data()
 
-        last_entry = self.dataHandler.get_actual_data()
+        last_entry = self._last_entry()
 
         # # checks whether the water in boiler should be even ready 
         # if self.eventChecker.check_off_event():
@@ -163,9 +163,10 @@ class Controller:
 
         # actual tmp of water in boiler
         tmp_act = self.boiler.real_tmp(last_entry['boiler_water_temperature_mean'])
-
+        print("actual tmp: {}".format(tmp_act))
         # state of smart socket
         is_on = last_entry['boiler_relay_status']
+        print("is_on: {}".format(is_on))
         # in first week is water in boiler hold around 60 degrees
 
         #protection from freezing
@@ -200,9 +201,11 @@ class Controller:
         
         need_to_heat = self.boiler.is_needed_to_heat(tmp_act, consumption_forecast)
         if need_to_heat:
+            print("need to heat, turning on")
             if not is_on:
                 self.boiler.turn_on()
         else:
+            print("no need to heat, turning off")
             if is_on:
                 self.boiler.turn_off()
             

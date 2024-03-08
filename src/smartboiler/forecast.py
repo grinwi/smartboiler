@@ -115,12 +115,12 @@ class Forecast:
         self.model = model
     
     def fit_model(self):
-        callbacks = [EarlyStopping(monitor='loss', min_delta = 0, patience=10, verbose=1, mode='auto', restore_best_weights=True),
+        callbacks = [EarlyStopping(monitor='loss', min_delta = 0, patience=10, verbose=2, mode='auto', restore_best_weights=True),
              ModelCheckpoint(filepath='lstm_model.h5', monitor='val_loss', save_best_only=True)]
 
         self.model.compile(loss='mae', optimizer='adam',metrics=[self.r2_keras])
         # history = model.fit(train_gen, epochs=50, batch_size=72, validation_data=valid_gen, verbose=2, shuffle=False, use_multiprocessing=True)
-
+        print("Start training")
         history = self.model.fit(self.train_gen,
                                     steps_per_epoch=self.train_steps,
                                     epochs=70,
@@ -128,13 +128,13 @@ class Forecast:
                                     validation_data=self.valid_gen,
                                     validation_steps=self.val_steps,
                                     callbacks = callbacks)
-        
+        print("End training")
     def get_forecast_next_steps(self, left_time_interval = None, right_time_interval = None, predicted_column = 'longtime_mean'):
         
-        if (left_time_interval is None):
-            left_time_interval = datetime.now() - timedelta(days=2)
         if (right_time_interval is None):
             right_time_interval = datetime.now()        
+        if (left_time_interval is None):
+            left_time_interval = right_time_interval - timedelta(days=2)
         
         df_all = self.dataHandler.get_data_for_prediction(left_time_interval=left_time_interval, right_time_interval=right_time_interval, predicted_column=self.predicted_column)
 
