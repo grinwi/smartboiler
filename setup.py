@@ -40,9 +40,9 @@ setup(
     python_requires='>=3.9, <=3.10',
     install_requires=[
         'wheel', 
-        'numpy==1.22.2',
+        'numpy>=1.22.2',
         'scipy<1.9.0',
-        'pandas==1.4.1',
+        'pandas>=1.4.1',
         'pvlib>=0.10.1',
         'protobuf>=3.0.0',
         'pytz>=2021.1',
