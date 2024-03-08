@@ -86,7 +86,6 @@ class Controller:
             self.forecast.build_model()
             self.forecast.fit_model()    
         else:
-            self.forecast.build_model()
             self.forecast.load_model() 
             
         self.last_model_training = datetime.now()   

@@ -1,5 +1,6 @@
 from distutils.command import build
 from pathlib import Path
+from turtle import left
 print('Running' if __name__ == '__main__' else 'Importing', Path(__file__).resolve())
 from datetime import timedelta, datetime
 from sklearn.preprocessing import RobustScaler
@@ -30,7 +31,6 @@ class Forecast:
         self.model_path = model_path
 
         
-
 
     
     def train_model(self, begin_of_training = None, end_of_training = None):
@@ -71,6 +71,12 @@ class Forecast:
 
 
     def load_model(self):
+        left_time_interval = datetime.now() - timedelta(days=2)
+        df, _ = self.dataHandler.get_data_for_training_model(left_time_interval=left_time_interval, predicted_column=self.predicted_column)
+        self.num_of_features = len(df.columns) - 1
+        self.df_train_norm = df.copy()
+        
+        self.build_model()
         
         self.model.load_weights(self.model_path)
                 
