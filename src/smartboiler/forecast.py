@@ -113,6 +113,7 @@ class Forecast:
         model.add(Dense(1))
 
         self.model = model
+        return model
     
     def fit_model(self):
         callbacks = [EarlyStopping(monitor='loss', min_delta = 0, patience=10, verbose=2, mode='auto', restore_best_weights=True),
@@ -127,7 +128,7 @@ class Forecast:
                                     shuffle=False,
                                     validation_data=self.valid_gen,
                                     validation_steps=self.val_steps,
-                                    callbacks = callbacks)
+                                    callbacks = callbacks, verbose=2)
         print("End training")
     def get_forecast_next_steps(self, left_time_interval = None, right_time_interval = None, predicted_column = 'longtime_mean'):
         
