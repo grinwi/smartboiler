@@ -1,4 +1,5 @@
 from pathlib import Path
+from pyexpat import model
 
 print('Running' if __name__ == '__main__' else 'Importing', Path(__file__).resolve())
 
@@ -50,7 +51,7 @@ class Controller:
     """Main class which makes decisions about about heating
     """
 
-    def __init__(self, dataHandler : DataHandler, boiler : Boiler, forecast : Forecast, ):
+    def __init__(self, dataHandler : DataHandler, boiler : Boiler, forecast : Forecast, load_model = False):
         """Inits class of Controller. Loads settings from a settings file
 
         Args:
@@ -79,9 +80,15 @@ class Controller:
         self.dataHandler = dataHandler
         self.boiler = boiler
         self.forecast = forecast
-        forecast.train_model()
-        self.forecast.build_model()
-        self.forecast.fit_model()     
+        if load_model:
+            
+            forecast.train_model()
+            self.forecast.build_model()
+            self.forecast.fit_model()    
+        else:
+            self.forecast.build_model()
+            self.forecast.load_model() 
+            
         self.last_model_training = datetime.now()   
 
 
@@ -333,8 +340,11 @@ if __name__ == '__main__':
             options = json.load(data)
 
     DATA_PATH = os.getenv("DATA_PATH", default="/app/data/")
+    MODEL_PATH = os.getenv("MODEL_PATH", default="/app/data/lstm_model_zukalovi.h5")
+    
     data_path = Path(DATA_PATH)
-
+    model_path = Path(MODEL_PATH)
+    
     start_of_data_measurement = datetime(2023,10,1,0,0,0,0)
 
     hass_url = options['hass_url']
@@ -362,7 +372,8 @@ if __name__ == '__main__':
     household_members = options['household_members']
     thermostat_entity_id = options['thermostat_entity_id']
     logging_level = options['logging_level']
-        
+    load_model = bool(options['load_model'])
+    
 
     logging.info(f"Starting SmartBoiler Controller with the following settings: {options}")
     base_url = hass_url
@@ -378,8 +389,8 @@ if __name__ == '__main__':
     dataHandler = DataHandler(influx_id=influxdb_host, db_name=influxdb_name, db_username=influxdb_user, db_password=influxdb_pass, relay_entity_id=boiler_socket_id, relay_power_entity_id=boiler_socket_power_id, tmp_boiler_case_entity_id=boiler_case_tmp_entity_id, tmp_output_water_entity_id=boiler_water_temp_entity_id, start_of_data=start_of_data_measurement)
     
     boiler = Boiler(base_url, long_lived_token, headers, boiler_switch_entity_id=boiler_socket_id, dataHandler=dataHandler)
-    forecast = Forecast(dataHandler=dataHandler)
-    controller = Controller(dataHandler=dataHandler, boiler=boiler, forecast=forecast)
+    forecast = Forecast(dataHandler=dataHandler, model_path=model_path)
+    controller = Controller(dataHandler=dataHandler, boiler=boiler, forecast=forecast, load_model=load_model)
 
     while (1):
         

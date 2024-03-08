@@ -40,6 +40,7 @@ RUN pip install --trusted-host pypi.python.org -r requirements.txt
 COPY src/smartboiler/ /app/src/smartboiler/
 
 
+
 COPY src/smartboiler/optimization.py /app/src/smartboiler/optimization.py
 COPY src/smartboiler/retrieve_hass.py /app/src/smartboiler/retrieve_hass.py
 COPY src/smartboiler/utils.py /app/src/smartboiler/utils.py
@@ -48,6 +49,7 @@ COPY src/smartboiler/templates/index.html /app/src/smartboiler/templates/index.h
 COPY src/smartboiler/static/style.css /app/src/smartboiler/static/style.css
 
 COPY options.json /app/
+COPY src/smartboiler/lstm_model.h5 /app/data/lstm_model.h5
 
 COPY config_smartboiler.yaml /app/config_smartboiler.yaml
 COPY secrets_smartboiler.yaml /app/secrets_smartboiler.yaml

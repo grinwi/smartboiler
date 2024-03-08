@@ -1,3 +1,4 @@
+from distutils.command import build
 from pathlib import Path
 print('Running' if __name__ == '__main__' else 'Importing', Path(__file__).resolve())
 from datetime import timedelta, datetime
@@ -19,13 +20,16 @@ from scipy import stats
 from smartboiler.data_handler import DataHandler
 
 class Forecast:
-    def __init__(self, dataHandler: DataHandler):
+    def __init__(self, dataHandler: DataHandler, model_path):
         self.batch_size = 3
         self.lookback = 10
         self.delay = 1
         self.predicted_column = 'longtime_mean'
         self.dataHandler = dataHandler
         self.scaler = RobustScaler()
+        self.model_path = model_path
+
+        
 
 
     
@@ -66,6 +70,10 @@ class Forecast:
         self.train_steps = int((self.df_train_norm.shape[0]*0.9 - self.lookback) // self.batch_size)
 
 
+    def load_model(self):
+        
+        self.model.load_weights(self.model_path)
+                
         
     def generator(self, dataframe, target_name, lookback, delay, min_index, max_index,shuffle=False, batch_size=128, step=6):
     
