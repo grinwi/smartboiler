@@ -6,7 +6,7 @@ from matplotlib.dates import drange
 import pandas as pd
 from influxdb import DataFrameClient
 import matplotlib.pyplot as plt
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 import numpy as np
 import json
 import logging
@@ -58,13 +58,15 @@ class DataHandler:
         
         
     def get_actual_boiler_stats(self, group_by_time_interval = "1min", limit = 6):
+        right_time_interval = datetime.now()
+        left_time_interval = right_time_interval - timedelta(minutes=60)
         actual_boiler_stats = {
         "boiler_temperature": {
-            "sql_query": f'SELECT mean("value") AS "mean_value" FROM "{self.db_name}"."autogen"."°C" WHERE "entity_id"=\'{self.tmp_boiler_case_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(null) ORDER BY DESC LIMIT {limit}',
+            "sql_query": f'SELECT mean("value") AS "mean_value" FROM "{self.db_name}"."autogen"."°C" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "entity_id"=\'{self.tmp_boiler_case_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(null) ORDER BY DESC LIMIT {limit}',
             "measurement": "°C",
         },
         "is_boiler_on": {
-            "sql_query": f'SELECT last("value") AS "mean_value" FROM "{self.db_name}"."autogen"."state" WHERE "entity_id"=\'{self.relay_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(null) ORDER BY DESC LIMIT {limit}',
+            "sql_query": f'SELECT last("value") AS "mean_value" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "entity_id"=\'{self.relay_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(null) ORDER BY DESC LIMIT {limit}',
             "measurement": "state",
         },
         }
