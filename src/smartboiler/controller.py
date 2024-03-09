@@ -339,7 +339,7 @@ if __name__ == '__main__':
             options = json.load(data)
 
     DATA_PATH = os.getenv("DATA_PATH", default="/app/data/")
-    MODEL_PATH = os.getenv("MODEL_PATH", default="/app/data/lstm_model_zukalovi.h5")
+    MODEL_PATH = os.getenv("MODEL_PATH", default="/app/lstm_model_zukalovi.h5")
     
     data_path = Path(DATA_PATH)
     model_path = Path(MODEL_PATH)
