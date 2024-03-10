@@ -71,11 +71,12 @@ class Boiler(Switch):
             [boolean]: [boolean value of needed to heat]
         """
         if(tmp_act < self.min_tmp):
+            print(f'tmp_act ({tmp_act}) < self.min_tmp ({self.min_tmp})')
             return True
         
         # get actual kWh in boiler from volume and tmp
         boiler_kWh_above_set = (self.capacity * 1.163 * (self.set_tmp - tmp_act)) / 3600
-        
+        print(f'boiler_kWh_above_set: {boiler_kWh_above_set}')
         
         # get whole dataframe and check if it is needed to heat
         # if it is, return True
@@ -91,19 +92,20 @@ class Boiler(Switch):
             #concat actual schedule with beggining of df_reset
             actual_schedule = pd.concat([actual_schedule, self.high_tarif_schedule.head(2*12 - len(actual_schedule))])
             
-                
         len_of_df = len(prediction_of_consumption)
         for i in range(len_of_df, 0):
             sum_of_consumption = prediction_of_consumption.iloc[:i].sum() - boiler_kWh_above_set # todo add computation of water coldering = time * coef of coldering
             time_to_consumption_minutes = i*30
             
             unavailible_minutes = actual_schedule.iloc[:i]['unavailible_minutes'].sum()
-            
+            print(f'unavailible_minutes: {unavailible_minutes}')
             time_needed_to_heat = self.time_needed_to_heat_up_minutes(consumption_kWh=sum_of_consumption) + unavailible_minutes
-            
+            print(f'time_needed_to_heat: {time_needed_to_heat}')
             if(time_to_consumption_minutes < time_needed_to_heat):
+                print(f'time_to_consumption_minutes ({time_to_consumption_minutes}) < time_needed_to_heat ({time_needed_to_heat})')
                 return True
-            
+        
+        print('no need to heat, returning false')
         return False
             
 
@@ -138,7 +140,11 @@ class Boiler(Switch):
         Returns:
             [float]: [the real temperature of water in boiler]
         """
-
+        print("measured_max: ", self.boiler_measured_max,)
+        print("area_tmp: ", self.area_tmp)
+        print("set_tmp: ", self.set_tmp)
+        print("tmp_act: ", tmp_act)
+        
         if((tmp_act is None) or (self.area_tmp is None) or (self.set_tmp is None)):
             return 50
 
@@ -151,6 +157,7 @@ class Boiler(Switch):
         p1 = tmp_act_and_area_delta / tmp_max_and_area_delta
 
         tmp = p1 * (self.set_tmp - self.area_tmp) + self.area_tmp
+        print("real_tmp: ", tmp)
         return tmp
 
     def set_measured_tmp(self, df):
