@@ -111,7 +111,7 @@ class Controller:
         self.coef_down_in_current_heating_cycle_changed = False
 
     def _last_entry(self):
-        self.dataHandler.get_actual_boiler_stats()
+        self.dataHandler.get_actual_boiler_stats()[-1:]
 
 
     def _check_data(self):
@@ -140,9 +140,9 @@ class Controller:
         """
         
         time_now = datetime.now()
-        time_now_plus_12_hours = time_now + timedelta(hours=12)
-        day_of_week = time_now.weekday()
         print("controling boiler")
+        print(time_now)
+        time_now_plus_12_hours = time_now + timedelta(hours=12)
         self._check_data()
 
         last_entry = self._last_entry()
@@ -168,11 +168,11 @@ class Controller:
    
 
         # actual tmp of water in boiler
-        tmp_act = self.boiler.real_tmp(last_entry['boiler_water_temperature_mean'])
+        tmp_act = self.boiler.real_tmp(last_entry['boiler_case_tmp'])
         print("actual tmp: {}".format(tmp_act))
         # state of smart socket
-        is_on = last_entry['boiler_relay_status']
-        print("is_on: {}".format(is_on))
+        is_on = last_entry['is_boiler_on']
+        print("is_on: {}".format(bool(is_on)))
         # in first week is water in boiler hold around 60 degrees
 
         #protection from freezing
@@ -180,16 +180,16 @@ class Controller:
             if not is_on:
                 self.boiler.turn_on()
 
-        if self._learning():
-            if tmp_act > 60:
-                if is_on:
-                    self.boiler.turn_off()
-            else:
-                if tmp_act < 57:
-                    if not is_on:
-                        self.boiler.turn_on()
+        # if self._learning():
+        #     if tmp_act > 60:
+        #         if is_on:
+        #             self.boiler.turn_off()
+        #     else:
+        #         if tmp_act < 57:
+        #             if not is_on:
+        #                 self.boiler.turn_on()
 
-            return
+        #     return
 
 
         # # if last entry is older than 10 minutes and not because of high tarif, water in a boiler is heated for sure
@@ -238,11 +238,7 @@ class Controller:
 
 
 
-        # if is actual tmp lower than tmp min, there is need to heat
-        if (tmp_act < self.tmp_min):
-            if not is_on:
-                self.boiler.turn_on()
-            return
+
 
 
         # if (self.WeekPlanner.is_in_heating()):
