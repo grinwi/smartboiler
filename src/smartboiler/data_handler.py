@@ -57,7 +57,7 @@ class DataHandler:
         self.last_time_data_update = datetime.now()
         
         
-    def get_actual_boiler_stats(self, group_by_time_interval = "1min", limit = 6):
+    def get_actual_boiler_stats(self, group_by_time_interval = "1m", limit = 6):
         right_time_interval = datetime.now()
         left_time_interval = right_time_interval - timedelta(minutes=60)
         
