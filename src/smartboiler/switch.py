@@ -9,18 +9,24 @@ class Switch:
 
 
     def turn_on(self):
-        self._turn_action("on")
+        self._turn_action("turn_on")
             
     def turn_off(self):
-        self._turn_action("off")
+        self._turn_action("turn_off")
             
     def _turn_action(self, action):
-        data = {'entity_id': self.entity_id}
-        print("Setting shelly relay to OFF")
-        response = requests.post(
-            f"{self.base_url}/services/switch/{action}", headers=self.headers, json=data
-        )
-        if response.status_code == 200:
-            print(f"Shelly turned {action} successfully")
-        else:
-            print("Failed to turn {action} Shelly")
+        try:
+            data = {'entity_id': self.entity_id}
+            print("Setting shelly relay to OFF")
+            call_url = f"{self.base_url}/services/switch/{action}"
+            print(f"Calling {call_url} with data {data}")
+            response = requests.post(
+                call_url, headers=self.headers, json=data
+            )
+            if response.status_code == 200:
+                print(f"Shelly turned {action} successfully")
+            else:
+                print("Failed to turn {action} Shelly")
+        except Exception as e:
+            print("Failed to turn {action} Shelly with exception: {e}, {response.text}, {data}")
+            pass
