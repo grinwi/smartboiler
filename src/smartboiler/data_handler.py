@@ -75,7 +75,7 @@ class DataHandler:
             "measurement": "state",
         },
         }
-        return self.get_df_from_queries(actual_boiler_stats).iloc[-1]
+        return self.get_df_from_queries(actual_boiler_stats)
 
 
     def get_database_queries(
