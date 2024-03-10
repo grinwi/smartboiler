@@ -121,7 +121,7 @@ class DataHandler:
         df_all_list = []
         # iterate over key an value in data
         for key, value in queries.items():
-            logging.info(f"Getting data from influxdb for {key}")
+            print("Querying: ", key, value["sql_query"])
             # get data from influxdb
             result = self.dataframe_client.query(value["sql_query"])[
                 value["measurement"]
