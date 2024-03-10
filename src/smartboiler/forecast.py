@@ -19,7 +19,7 @@ from scipy import stats
 from smartboiler.data_handler import DataHandler
 
 class Forecast:
-    def __init__(self, dataHandler: DataHandler, model_path):
+    def __init__(self, dataHandler: DataHandler, model_path = None):
         self.batch_size = 3
         self.lookback = 10
         self.delay = 1
@@ -27,8 +27,6 @@ class Forecast:
         self.dataHandler = dataHandler
         self.scaler = RobustScaler()
         self.model_path = model_path
-
-        
 
     
     def train_model(self, begin_of_training = None, end_of_training = None):
@@ -210,6 +208,8 @@ class Forecast:
             current_forecast_end_date = current_forecast_end_date + timedelta(hours=0.5)
         
         # create a dataframe with forecast and datetime as index
+        
+        
         return forecast_future
     
 

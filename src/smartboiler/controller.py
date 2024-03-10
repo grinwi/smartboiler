@@ -349,7 +349,7 @@ if __name__ == '__main__':
     influxdb_user = options['influxdb_user']
     influxdb_pass = options['influxdb_pass']
     influxdb_name = options['influxdb_name']
-    boiler_entidy_id = options['boiler_entidy_id']
+    boiler_socket_switch_id = options['boiler_entidy_id']
     boiler_socket_id = options['boiler_socket_id']
     boiler_socket_power_id = options['boiler_socket_power_id']
     boiler_case_tmp_entity_id = options['boiler_case_tmp_entity_id']
@@ -367,24 +367,33 @@ if __name__ == '__main__':
     household_members = options['household_members']
     thermostat_entity_id = options['thermostat_entity_id']
     logging_level = options['logging_level']
-    load_model = bool(options['load_model'])
+    load_model = options['load_model']
+    
+    print(type(load_model))
+    print(load_model)
+    
+    for value, key in options.items():
+        print(f'{value}: {key}')
     
 
-    logging.info(f"Starting SmartBoiler Controller with the following settings: {options}")
+    print(f'Starting SmartBoiler Controller with the following settings: {options}')
     base_url = hass_url
     url = base_url + '/config'
     web_ui = "0.0.0.0"
 
     headers = {
-            "Authorization": f"Bearer {long_lived_token}",
+            "Authorization": f'Bearer {long_lived_token}',
             "content-type": "application/json"
         }
 
 
     dataHandler = DataHandler(influx_id=influxdb_host, db_name=influxdb_name, db_username=influxdb_user, db_password=influxdb_pass, relay_entity_id=boiler_socket_id, relay_power_entity_id=boiler_socket_power_id, tmp_boiler_case_entity_id=boiler_case_tmp_entity_id, tmp_output_water_entity_id=boiler_water_temp_entity_id, start_of_data=start_of_data_measurement)
-    
-    boiler = Boiler(base_url, long_lived_token, headers, boiler_switch_entity_id=boiler_socket_id, dataHandler=dataHandler)
+    boiler_switch_entity_id = 'switch.' + boiler_socket_id
+    print("inicializing boiler from controller __main__")
+    boiler = Boiler(base_url, long_lived_token, headers, boiler_switch_entity_id=boiler_socket_switch_id, dataHandler=dataHandler)
+    print("inicializing forecast from controller __main__   ")
     forecast = Forecast(dataHandler=dataHandler, model_path=model_path)
+    print("inicializing controller from controller __main__")
     controller = Controller(dataHandler=dataHandler, boiler=boiler, forecast=forecast, load_model=load_model)
 
     while (1):
@@ -395,5 +404,5 @@ if __name__ == '__main__':
         # time.sleep(60)
         # c.toggle_shelly_relay('off', headers, base_url)
         
-        time.sleep(600)
+        time.sleep(60)
 

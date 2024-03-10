@@ -4,7 +4,8 @@ from operator import le
 from click import group
 from matplotlib.dates import drange
 import pandas as pd
-from influxdb import DataFrameClient
+from influxdb import DataFrameClient, InfluxDBClient
+
 import matplotlib.pyplot as plt
 from datetime import date, datetime, timedelta
 import numpy as np
@@ -44,6 +45,8 @@ class DataHandler:
             password=self.db_password,
             database=self.db_name,
         )
+        self.influxdb_client = InfluxDBClient(host = self.influx_id, port=8086, username=self.db_username, password=self.db_password, database=self.db_name,retries=5, timeout=1)
+
         self.start_of_data = start_of_data
         self.last_time_data_update = datetime.now()
         
@@ -180,6 +183,16 @@ class DataHandler:
         # df_predict = df_predict.drop(columns='datetime')
         
         return df_predict
+    
+    def write_forecast_to_influxdb(self, df, measurement_name):
+        df = df.reset_index()
+        df['time'] = df['time'].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+        df = df.rename(columns={'time': 'time', 'longtime_mean': 'value'})
+        df['measurement'] = measurement_name
+        json_body = df.to_dict(orient='records')
+        print(json_body)
+        self.influxdb_client.write_points(json_body)
+        return json_body
 
     def get_high_tarif_schedule(self):
         left_time_interval = datetime.now() - timedelta(days=14)
@@ -206,8 +219,6 @@ class DataHandler:
         return df_reset
     
     
- 
-
     def transform_data_for_ml(self, df, days_from_beginning_ignored = 0, predicted_column = 'longtime_mean'):
         # read pickles from data/pickles
 

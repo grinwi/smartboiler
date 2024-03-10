@@ -28,5 +28,5 @@ class Switch:
             else:
                 print("Failed to turn {action} Shelly")
         except Exception as e:
-            print("Failed to turn {action} Shelly with exception: {e}, {response.text}, {data}")
+            print(f'Failed to turn {action} Shelly with exception: {e}, {response.text}, {data}')
             pass
