@@ -401,7 +401,7 @@ if __name__ == '__main__':
     dataHandler = DataHandler(influx_id=influxdb_host, db_name=influxdb_name, db_username=influxdb_user, db_password=influxdb_pass, relay_entity_id=boiler_socket_id, relay_power_entity_id=boiler_socket_power_id, tmp_boiler_case_entity_id=boiler_case_tmp_entity_id, tmp_output_water_entity_id=boiler_water_temp_entity_id, start_of_data=start_of_data_measurement)
     boiler_switch_entity_id = 'switch.' + boiler_socket_id
     print("inicializing boiler from controller __main__")
-    boiler = Boiler(base_url, long_lived_token, headers, boiler_switch_entity_id=boiler_socket_switch_id, dataHandler=dataHandler, boiler_volume=boiler_volume, wattage=boiler_watt_power ,boiler_set_tmp=boiler_set_tmp, )
+    boiler = Boiler(base_url, long_lived_token, headers, boiler_switch_entity_id=boiler_socket_switch_id, dataHandler=dataHandler, capacity=boiler_volume, wattage=boiler_watt_power, set_tmp=boiler_set_tmp)
     print("inicializing forecast from controller __main__   ")
     forecast = Forecast(dataHandler=dataHandler, model_path=model_path)
     print("inicializing controller from controller __main__")
