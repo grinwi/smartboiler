@@ -171,15 +171,16 @@ class Controller:
         #     self.Boiler)
 
    
-
+        tmp_measured = last_entry.loc[0, 'boiler_case_tmp']
+        print("measured tmp: {}".format(tmp_measured))
         # actual tmp of water in boiler
-        tmp_act = self.boiler.real_tmp(last_entry['boiler_case_tmp'])
+        tmp_act = self.boiler.real_tmp(tmp_measured)
         print("actual tmp: {}".format(tmp_act))
+        
+        is_on = last_entry.loc[0, 'is_boiler_on']
         # state of smart socket
-        is_on = last_entry['is_boiler_on']
         print("is_on: {}".format(bool(is_on)))
-        # in first week is water in boiler hold around 60 degrees
-
+        
         #protection from freezing
         if tmp_act < 5:
             if not is_on:
