@@ -159,8 +159,9 @@ class DataHandler:
         
         return df
     
-    def get_data_for_training_model(self, left_time_interval=None, right_time_interval=None, predicted_column = 'longtime_mean'):
-
+    def get_data_for_training_model(self, left_time_interval=None, right_time_interval=datetime.now(), predicted_column = 'longtime_mean'):
+        if left_time_interval is None:
+            left_time_interval = self.start_of_data
         queries = self.get_database_queries(left_time_interval=left_time_interval, right_time_interval=right_time_interval)
         df_all = self.get_df_from_queries(queries)
         df_all = self.process_kWh_water_consumption(df_all)
