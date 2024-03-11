@@ -1,5 +1,6 @@
 from pathlib import Path
 from pyexpat import model
+import re
 
 print('Running' if __name__ == '__main__' else 'Importing', Path(__file__).resolve())
 
@@ -80,13 +81,14 @@ class Controller:
         self.dataHandler = dataHandler
         self.boiler = boiler
         self.forecast = forecast
-        if load_model:
-            
+        if (load_model):
+            print("loading model")
+            self.forecast.load_model() 
+        else:
+            print("training model")
             forecast.train_model()
             self.forecast.build_model()
             self.forecast.fit_model()    
-        else:
-            self.forecast.load_model() 
             
         self.last_model_training = datetime.now()   
 
@@ -111,7 +113,9 @@ class Controller:
         self.coef_down_in_current_heating_cycle_changed = False
 
     def _last_entry(self):
-        self.dataHandler.get_actual_boiler_stats()[-1:]
+        last_entry = self.dataHandler.get_actual_boiler_stats()[-1:]
+        print (last_entry)
+        return last_entry
 
 
     def _check_data(self):
@@ -156,6 +160,7 @@ class Controller:
 
         # last measured entry in DB
         if last_entry is None:
+            print("last entry is None, turning on")
             self.boiler.turn_on()
             return
 

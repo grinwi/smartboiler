@@ -17,7 +17,7 @@ class Switch:
     def _turn_action(self, action):
         try:
             data = {'entity_id': self.entity_id}
-            print("Setting shelly relay to OFF")
+            print(f'Setting shelly relay to {action}')
             call_url = f"{self.base_url}/services/switch/{action}"
             print(f"Calling {call_url} with data {data}")
             response = requests.post(
@@ -26,7 +26,7 @@ class Switch:
             if response.status_code == 200:
                 print(f"Shelly turned {action} successfully")
             else:
-                print("Failed to turn {action} Shelly")
+                print(f'Failed to turn {action} Shelly, {response.text}, {data}, {response.status_code}')
         except Exception as e:
             print(f'Failed to turn {action} Shelly with exception: {e}, {response.text}, {data}')
             pass
