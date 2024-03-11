@@ -162,11 +162,14 @@ class Controller:
         tmp_measured = last_entry['boiler_case_tmp']
         is_on = last_entry['is_boiler_on']
         
-        # in case of too old data, the boiler is turned on
-        if ( ( time_now.microsecond - (last_entry['boiler_case_last_time_entry']).microsecond)/1000000 > timedelta(minutes=10)):
-            print("too old data, turning on")
-            boiler.turn_on()
-            return
+        print("tmp_measured: {}".format(tmp_measured))
+        print("is_on: {}".format(is_on))
+        
+        # # in case of too old data, the boiler is turned on
+        # if ( ( time_now.microsecond - (last_entry['boiler_case_last_time_entry']).microsecond)/1000000 > timedelta(minutes=10)):
+        #     print("too old data, turning on")
+        #     boiler.turn_on()
+        #     return
         
         # TODO - heatup events from calendar
         # # looks for the next heat up event from a calendar    
