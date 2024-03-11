@@ -113,15 +113,15 @@ class Controller:
         self.coef_down_in_current_heating_cycle_changed = False
 
     def _last_entry(self):
+        print("getting last entry")
         last_entry = self.dataHandler.get_actual_boiler_stats()[-1:]
-        print (last_entry)
+        print ("last entry: {}".format(last_entry))
         return last_entry
 
 
     def _check_data(self):
         """ Retrain model if the last data update is older than 7 days.
         """
-        pass
         if self.last_model_training - datetime.now() > timedelta(days=7):
             print(datetime.now())
             print("actualizing data")
@@ -147,7 +147,7 @@ class Controller:
         print("controling boiler")
         print(time_now)
         time_now_plus_12_hours = time_now + timedelta(hours=12)
-        self._check_data()
+        # self._check_data()
 
         last_entry = self._last_entry()
 
@@ -163,7 +163,8 @@ class Controller:
             print("last entry is None, turning on")
             self.boiler.turn_on()
             return
-
+        tmp_measured = last_entry['boiler_case_tmp'].values[0]
+        is_on = last_entry['is_boiler_on'].values[0]
         
         # TODO - heatup events from calendar
         # # looks for the next heat up event from a calendar    
@@ -171,13 +172,15 @@ class Controller:
         #     self.Boiler)
 
    
-        tmp_measured = last_entry.loc[0, 'boiler_case_tmp']
+
         print("measured tmp: {}".format(tmp_measured))
         # actual tmp of water in boiler
         tmp_act = self.boiler.real_tmp(tmp_measured)
         print("actual tmp: {}".format(tmp_act))
         
-        is_on = last_entry.loc[0, 'is_boiler_on']
+        if is_on is None:
+            print("boiler state is unknown")
+            is_on = False
         # state of smart socket
         print("is_on: {}".format(bool(is_on)))
         
