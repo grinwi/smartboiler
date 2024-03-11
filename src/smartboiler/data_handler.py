@@ -204,8 +204,9 @@ class DataHandler:
         return json_body
 
     def get_high_tarif_schedule(self):
+        print("Getting high tarif schedule")
         left_time_interval = datetime.now() - timedelta(days=14)
-        queries = self.get_database_queries(left_time_interval=left_time_interval)
+        queries = self.get_database_queries(left_time_interval=left_time_interval, right_time_interval=datetime.now())
         df_all = self.get_df_from_queries(queries)
         df_all.index = df_all.index.tz_localize(None)
         data_resampled = df_all.resample('10T').max()
