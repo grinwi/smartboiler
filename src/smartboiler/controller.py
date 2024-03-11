@@ -1,6 +1,6 @@
 from pathlib import Path
 from pyexpat import model
-import re
+import re, pytz
 
 print('Running' if __name__ == '__main__' else 'Importing', Path(__file__).resolve())
 
@@ -114,7 +114,7 @@ class Controller:
 
     def _last_entry(self):
         print("getting last entry")
-        last_entry = self.dataHandler.get_actual_boiler_stats()[-1:]
+        last_entry = self.dataHandler.get_actual_boiler_stats()
         print ("last entry: {}".format(last_entry))
         return last_entry
 
@@ -143,7 +143,7 @@ class Controller:
         """ Method which decides about turning on or off the heating of a boiler.
         """
         
-        time_now = datetime.now()
+        time_now = datetime.now().astimezone(pytz.timezone('Europe/Prague'))
         print("controling boiler")
         print(time_now)
         time_now_plus_12_hours = time_now + timedelta(hours=12)
@@ -158,13 +158,15 @@ class Controller:
         #     time.sleep(600)
         #     return
 
-        # last measured entry in DB
-        if last_entry is None:
-            print("last entry is None, turning on")
-            self.boiler.turn_on()
+
+        tmp_measured = last_entry['boiler_case_tmp']
+        is_on = last_entry['is_boiler_on']
+        
+        # in case of too old data, the boiler is turned on
+        if ( ( time_now.microsecond - (last_entry['boiler_case_last_time_entry']).microsecond)/1000000 > timedelta(minutes=10)):
+            print("too old data, turning on")
+            boiler.turn_on()
             return
-        tmp_measured = last_entry['boiler_case_tmp'].values[0]
-        is_on = last_entry['is_boiler_on'].values[0]
         
         # TODO - heatup events from calendar
         # # looks for the next heat up event from a calendar    

@@ -140,12 +140,8 @@ class Forecast:
                                     validation_steps=self.val_steps,
                                     callbacks = callbacks, verbose=2)
         print("End training")
-    def get_forecast_next_steps(self, left_time_interval = None, right_time_interval = None, predicted_column = 'longtime_mean'):
+    def get_forecast_next_steps(self, left_time_interval = datetime.now() - timedelta(days=2), right_time_interval = datetime.now() , predicted_column = 'longtime_mean'):
         
-        if (right_time_interval is None):
-            right_time_interval = datetime.now()        
-        if (left_time_interval is None):
-            left_time_interval = right_time_interval - timedelta(days=2)
         
         df_all = self.dataHandler.get_data_for_prediction(left_time_interval=left_time_interval, right_time_interval=right_time_interval, predicted_column=self.predicted_column)
 

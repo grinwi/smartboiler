@@ -57,26 +57,35 @@ class DataHandler:
         right_time_interval = f"'{right_time_interval.strftime('%Y-%m-%dT%H:%M:%SZ')}'"
         actual_boiler_stats = {
         "boiler_temperature": {
-            "sql_query": f'SELECT mean("value") AS "boiler_case_tmp" FROM "{self.db_name}"."autogen"."°C" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "entity_id"=\'{self.tmp_boiler_case_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(previous) ORDER BY DESC LIMIT {limit}',
+            "sql_query": f'SELECT last("value") AS "boiler_case_tmp" FROM "{self.db_name}"."autogen"."°C" WHERE  "entity_id"=\'{self.tmp_boiler_case_entity_id}\' ',
             "measurement": "°C",
         },
         "is_boiler_on": {
-            "sql_query": f'SELECT max("value") AS "is_boiler_on" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "entity_id"=\'{self.relay_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(null) ORDER BY DESC LIMIT {limit}',
+            "sql_query": f'SELECT last("value") AS "is_boiler_on" FROM "{self.db_name}"."autogen"."state" WHERE "entity_id"=\'{self.relay_entity_id}\' ',
             "measurement": "state",
         },
         }
-        return self.get_df_from_queries(actual_boiler_stats)
+        data = self.get_df_from_queries(actual_boiler_stats)
+        
+        boiler_case_tmp = data['boiler_case_tmp'].dropna().reset_index()
+        is_boiler_on = data['is_boiler_on'].dropna().reset_index()
+        
+        boiler_case_tmp['index'] = pd.to_datetime(boiler_case_tmp['index'])
+        is_boiler_on['index'] = pd.to_datetime(is_boiler_on['index'])
+        
+        boiler_case_last_time_entry = boiler_case_tmp['index'].iloc[-1]
+        is_boiler_on_last_time_entry = is_boiler_on['index'].iloc[-1]
+        
+        return {'boiler_case_tmp': boiler_case_tmp, 'is_boiler_on': is_boiler_on, 'boiler_case_last_time_entry': boiler_case_last_time_entry, 'is_boiler_on_last_time_entry': is_boiler_on_last_time_entry}
+        
 
 
     def get_database_queries(
         self,
-        left_time_interval=None,
-        right_time_interval=None,
+        left_time_interval,
+        right_time_interval,
     ):
-        if (left_time_interval == None):
-            left_time_interval = self.start_of_data
-        if (right_time_interval == None):
-            right_time_interval = datetime.now()
+
         group_by_time_interval = '5s'
         
         # format datetime to YYYY-MM-DDTHH:MM:SSZ
