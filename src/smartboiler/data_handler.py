@@ -74,7 +74,9 @@ class DataHandler:
         is_boiler_on['index'] = pd.to_datetime(is_boiler_on['index'])
         
         boiler_case_last_time_entry = boiler_case_tmp['index'].iloc[-1]
+        boiler_case_tmp = boiler_case_tmp['boiler_case_tmp'].iloc[-1]
         is_boiler_on_last_time_entry = is_boiler_on['index'].iloc[-1]
+        is_boiler_on = bool(is_boiler_on['is_boiler_on'].iloc[-1])
         
         return {'boiler_case_tmp': boiler_case_tmp, 'is_boiler_on': is_boiler_on, 'boiler_case_last_time_entry': boiler_case_last_time_entry, 'is_boiler_on_last_time_entry': is_boiler_on_last_time_entry}
         
