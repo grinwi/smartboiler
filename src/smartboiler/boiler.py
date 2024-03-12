@@ -59,7 +59,7 @@ class Boiler(Switch):
 
         return (consumption_kWh) / (self.real_wattage)
 
-    def is_needed_to_heat(self, tmp_act:int, prediction_of_consumption:ndarray):
+    def is_needed_to_heat(self, tmp_act:int, prediction_of_consumption):
         """Conciders if it is needed to heat.
 
         Args:
