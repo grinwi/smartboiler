@@ -176,28 +176,14 @@ class DataHandler:
     def get_data_for_prediction(self, left_time_interval=datetime.now() - timedelta(days=2), right_time_interval=datetime.now(), predicted_column = 'longtime_mean'):
         queries = self.get_database_queries(left_time_interval=left_time_interval, right_time_interval=right_time_interval)
         df_all = self.get_df_from_queries(queries)
-        print(df_all)
         df_all = self.process_kWh_water_consumption(df_all)
         df_all.index = df_all.index.tz_localize(None)
         df_all, _= self.transform_data_for_ml(df_all, predicted_column='longtime_mean')
 
+        print(f"data_for_prediction: {df_all}")
         return df_all
         
-        
-        return self.transform_data_for_ml(df_all, predicted_column=predicted_column)
-        
-        # df_predict = pd.DataFrame({'datetime': pd.date_range(left_time_interval, right_time_interval, freq='30min')})
-        # df_predict[predicted_column] = 0
-        # df_predict['weekday_sin'] = np.sin(2 * np.pi * df_predict['datetime'].dt.weekday / 7)
-        # df_predict['weekday_cos'] = np.cos(2 * np.pi * df_predict['datetime'].dt.weekday / 7)
-        # df_predict['hour_sin'] = np.sin(2 * np.pi * df_predict['datetime'].dt.hour / 24)
-        # df_predict['hour_cos'] = np.cos(2 * np.pi * df_predict['datetime'].dt.hour / 24)
-        # df_predict['minute_sin'] = np.sin(2 * np.pi * df_predict['datetime'].dt.minute / 60)
-        # df_predict['minute_cos'] = np.cos(2 * np.pi * df_predict['datetime'].dt.minute / 60)
-        # # delete column datetime
-        # df_predict = df_predict.drop(columns='datetime')
-        
-        return df_predict
+
     
     def write_forecast_to_influxdb(self, df, measurement_name):
         df = df.reset_index()

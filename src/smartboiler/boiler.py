@@ -78,10 +78,6 @@ class Boiler(Switch):
         boiler_kWh_above_set = (self.capacity * 1.163 * (self.set_tmp - tmp_act)) / 3600
         print(f'boiler_kWh_above_set: {boiler_kWh_above_set}')
         
-        # get whole dataframe and check if it is needed to heat
-        # if it is, return True
-        # if not, pop last row and continue with reduced df
-        # if df is empty, return False
         datetime_now = datetime.now()
         actual_time = datetime_now.time()
         actual_schedule = self.high_tarif_schedule[(self.high_tarif_schedule['time'] > actual_time) & (self.high_tarif_schedule['weekday'] >= datetime_now.weekday())]
@@ -93,6 +89,7 @@ class Boiler(Switch):
             actual_schedule = pd.concat([actual_schedule, self.high_tarif_schedule.head(2*12 - len(actual_schedule))])
             
         len_of_df = len(prediction_of_consumption)
+        print(f'len_of_df: {len_of_df}')
         for i in range(len_of_df, 0):
             sum_of_consumption = prediction_of_consumption.iloc[:i].sum() - boiler_kWh_above_set # todo add computation of water coldering = time * coef of coldering
             time_to_consumption_minutes = i*30
@@ -157,7 +154,7 @@ class Boiler(Switch):
         p1 = tmp_act_and_area_delta / tmp_max_and_area_delta
 
         tmp = p1 * (self.set_tmp - self.area_tmp) + self.area_tmp
-        print("real_tmp: ", tmp)
+        
         return tmp
 
     def set_measured_tmp(self, df):
