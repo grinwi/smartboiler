@@ -146,7 +146,7 @@ class Forecast:
                                     validation_steps=self.val_steps,
                                     callbacks = callbacks, verbose=2)
         print("End training")
-    def get_forecast_next_steps(self, left_time_interval = datetime.now() - timedelta(days=2), right_time_interval = datetime.now() , predicted_column = 'longtime_mean'):
+    def get_forecast_next_steps(self, left_time_interval = datetime.now() - timedelta(days=2), right_time_interval = datetime.now() , predicted_column = 'longtime_mean') -> pd.DataFrame:
         
         
         df_all = self.dataHandler.get_data_for_prediction(left_time_interval=left_time_interval, right_time_interval=right_time_interval, predicted_column=self.predicted_column)
@@ -193,7 +193,7 @@ class Forecast:
 
             (X, y_truth) = next(predict_gen)
 
-            y_pred = self.model.predict(X)
+            y_pred = self.model.predict(X, verbose=2)
 
             # np.expand_dims(y_truth,axis=1).shape
             y_pred_inv = np.concatenate((y_pred,np.zeros((y_pred.shape[0],self.num_of_features))),axis=1)
@@ -202,7 +202,6 @@ class Forecast:
             
             # set df_all last len_df_predict values to y_pred_inv
             df_all.iloc[-len_df_predict:, df_all.columns.get_loc(predicted_column)] = y_pred_inv
-            # plt.plot(df_all.iloc[-len_df_predict:, df_all.columns.get_loc('longtime_mean')], color = 'green', label = 'Predicted data')
             df_all = df_all[len_df_predict:]
             forecast_future = pd.concat([forecast_future, df_all[-len_df_predict:]], axis=0)
             forecast_future = forecast_future.reset_index(drop=True)
@@ -212,7 +211,7 @@ class Forecast:
         
         # create a dataframe with forecast and datetime as index
         
-        
+        print("forecast_future: ", forecast_future)
         return forecast_future
     
 
