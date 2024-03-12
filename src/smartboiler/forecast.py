@@ -133,7 +133,7 @@ class Forecast:
     
     def fit_model(self):
         callbacks = [EarlyStopping(monitor='loss', min_delta = 0, patience=10, verbose=2, mode='auto', restore_best_weights=True),
-             ModelCheckpoint(filepath='lstm_model.h5', monitor='val_loss', save_best_only=True)]
+             ModelCheckpoint(filepath=self.model_path, monitor='val_loss', save_best_only=True)]
 
         self.model.compile(loss='mae', optimizer='adam',metrics=[self.r2_keras])
         # history = model.fit(train_gen, epochs=50, batch_size=72, validation_data=valid_gen, verbose=2, shuffle=False, use_multiprocessing=True)

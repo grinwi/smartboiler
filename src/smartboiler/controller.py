@@ -146,8 +146,6 @@ class Controller:
         time_now = datetime.now().astimezone(pytz.timezone('Europe/Prague'))
         print("controling boiler")
         print(time_now)
-        time_now_plus_12_hours = time_now + timedelta(hours=12)
-        # self._check_data()
 
         last_entry = self._last_entry()
 
@@ -187,12 +185,11 @@ class Controller:
             print("boiler state is unknown")
             is_on = False
         # state of smart socket
-        print("is_on: {}".format(bool(is_on)))
+        print("is_on: {}".format(is_on))
         
         #protection from freezing
         if tmp_act < 5:
-            if not is_on:
-                self.boiler.turn_on()
+            self.boiler.turn_on()
 
         # if self._learning():
         #     if tmp_act > 60:
@@ -225,12 +222,10 @@ class Controller:
         print("need to heat: {}".format(need_to_heat))
         if need_to_heat:
             print("need to heat, turning on")
-            if not is_on:
-                self.boiler.turn_on()
+            self.boiler.turn_on()
         else:
             print("no need to heat, turning off")
-            if is_on:
-                self.boiler.turn_off()
+            self.boiler.turn_off()
             
         
         
@@ -244,9 +239,8 @@ class Controller:
         # once a three weeks is water in boiler heated on max for ellimination of Legionella
         if self.last_legionella_heating - datetime.now() > timedelta(days=21):
             self.coef_down_in_current_heating_cycle_changed = True
-            if not is_on:
-                print("starting heating for reduce legionella, this occurs every 3 weeks")
-                self.boiler.turn_on()
+            print("starting heating for reduce legionella, this occurs every 3 weeks")
+            self.boiler.turn_on()
 
             if tmp_act >= (65):
                 time.sleep(1200)

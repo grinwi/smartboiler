@@ -76,6 +76,7 @@ class DataHandler:
         boiler_case_last_time_entry = boiler_case_tmp['index'].iloc[-1]
         boiler_case_tmp = boiler_case_tmp['boiler_case_tmp'].iloc[-1]
         is_boiler_on_last_time_entry = is_boiler_on['index'].iloc[-1]
+        print(is_boiler_on)
         is_boiler_on = bool(is_boiler_on['is_boiler_on'].iloc[-1])
         
         return {'boiler_case_tmp': boiler_case_tmp, 'is_boiler_on': is_boiler_on, 'boiler_case_last_time_entry': boiler_case_last_time_entry, 'is_boiler_on_last_time_entry': is_boiler_on_last_time_entry}
@@ -156,8 +157,7 @@ class DataHandler:
         df = df.groupby(pd.Grouper(freq='30T'))
         df = df.agg({'consumed_heat_kJ': 'sum', 'water_flow_L_per_minute_mean': 'mean', 'water_temperature_mean': 'mean', 'outside_temperature_mean': 'mean', 'outside_humidity_mean': 'mean', 'outside_wind_speed_mean': 'mean', 'device_presence_distinct_count': 'mean'})
         df["consumed_heat_kWh"] = df["consumed_heat_kJ"] / 3600
-        df[f"consumed_heat_kWh"] += 0.4*7
-
+        df = df.drop(columns=["consumed_heat_kJ"])
         
         return df
     
@@ -176,6 +176,7 @@ class DataHandler:
     def get_data_for_prediction(self, left_time_interval=datetime.now() - timedelta(days=2), right_time_interval=datetime.now(), predicted_column = 'longtime_mean'):
         queries = self.get_database_queries(left_time_interval=left_time_interval, right_time_interval=right_time_interval)
         df_all = self.get_df_from_queries(queries)
+        print(df_all)
         df_all = self.process_kWh_water_consumption(df_all)
         df_all.index = df_all.index.tz_localize(None)
         df_all, _= self.transform_data_for_ml(df_all, predicted_column='longtime_mean')
@@ -241,9 +242,7 @@ class DataHandler:
         freq_hour = f"{freq}H"
 
         df.index = pd.to_datetime(df.index)
-        # delete first week data
-        first_date = df.index[0] + pd.Timedelta(days=days_from_beginning_ignored)
-        df = df.loc[first_date:]
+
         df.loc[:,"weekday"] = df.index.weekday
         df.loc[:,"hour"] = df.index.hour
         df.loc[:,"minute"] = df.index.minute
