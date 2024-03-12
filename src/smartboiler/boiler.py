@@ -83,7 +83,6 @@ class Boiler(Switch):
         # if not, pop last row and continue with reduced df
         # if df is empty, return False
         actual_time = datetime.now().time()
-        actual_time = actual_time.time()
         actual_schedule = self.high_tarif_schedule[(self.high_tarif_schedule['time'] > actual_time) & (self.high_tarif_schedule['weekday'] >= actual_time.weekday())]
         # get first 6*12 rows
         actual_schedule = actual_schedule.head(2*12)
