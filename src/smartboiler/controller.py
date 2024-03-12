@@ -217,7 +217,7 @@ class Controller:
         #     return
 
         
-        consumption_forecast = self.forecast.get_forecast_next_steps(time_now, time_now_plus_12_hours) # step has 30 minutes, so 24 steps is 12 hours
+        consumption_forecast = self.forecast.get_forecast_next_steps() # step has 30 minutes, so 24 steps is 12 hours
         
         need_to_heat = self.boiler.is_needed_to_heat(tmp_act, consumption_forecast)
         if need_to_heat:
