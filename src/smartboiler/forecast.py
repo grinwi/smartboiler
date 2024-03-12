@@ -19,7 +19,7 @@ from scipy import stats
 from smartboiler.data_handler import DataHandler
 
 class Forecast:
-    def __init__(self, dataHandler: DataHandler, model_path = None):
+    def __init__(self, dataHandler: DataHandler, start_of_data:datetime, model_path = None):
         self.batch_size = 3
         self.lookback = 10
         self.delay = 1
@@ -27,10 +27,14 @@ class Forecast:
         self.dataHandler = dataHandler
         self.scaler = RobustScaler()
         self.model_path = model_path
+        self.start_of_data = start_of_data
 
     
-    def train_model(self, begin_of_training = None, end_of_training = None):
-        
+    def train_model(self, begin_of_training = None, end_of_training = datetime.now()):
+        if begin_of_training is None:
+            begin_of_training = self.start_of_data
+        print("begin of training: ", begin_of_training)
+        print("end of training : ", end_of_training)
         df, _ = self.dataHandler.get_data_for_training_model(left_time_interval=begin_of_training, right_time_interval=end_of_training, predicted_column=self.predicted_column)
         self.num_of_features = len(df.columns) - 1
         self.df_train_norm = df.copy()
@@ -66,12 +70,13 @@ class Forecast:
         self.train_steps = int((self.df_train_norm.shape[0]*0.9 - self.lookback) // self.batch_size)
 
 
-    def load_model(self):
-        left_time_interval = datetime.now() - timedelta(days=2)
-        right_time_interval = datetime.now()
+    def load_model(self, left_time_interval = datetime.now() - timedelta(days=2), right_time_interval = datetime.now()):
+
         df, _ = self.dataHandler.get_data_for_training_model(left_time_interval=left_time_interval, right_time_interval=right_time_interval, predicted_column=self.predicted_column)
         self.num_of_features = len(df.columns) - 1
         self.df_train_norm = df.copy()
+        self.df_train_norm[df.columns] = self.scaler.fit_transform(df)
+
         
         self.build_model()
         
@@ -150,7 +155,8 @@ class Forecast:
 
         current_forecast_begin_date = left_time_interval
         current_forecast_end_date = left_time_interval + timedelta(minutes=30)
-        for i in range(0, 48):
+        #prediction for next 6 hours
+        for i in range(0, 6):
             print("-----")
 
             df_predict = pd.DataFrame({'datetime': pd.date_range(current_forecast_begin_date, current_forecast_end_date, freq='30min')})
@@ -201,8 +207,8 @@ class Forecast:
             forecast_future = pd.concat([forecast_future, df_all[-len_df_predict:]], axis=0)
             forecast_future = forecast_future.reset_index(drop=True)
             
-            current_forecast_begin_date = current_forecast_begin_date + timedelta(hours=0.5)
-            current_forecast_end_date = current_forecast_end_date + timedelta(hours=0.5)
+            current_forecast_begin_date += timedelta(hours=1)
+            current_forecast_end_date += timedelta(hours=1)
         
         # create a dataframe with forecast and datetime as index
         

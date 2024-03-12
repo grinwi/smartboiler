@@ -406,7 +406,7 @@ if __name__ == '__main__':
     print("inicializing boiler from controller __main__")
     boiler = Boiler(base_url, long_lived_token, headers, boiler_switch_entity_id=boiler_socket_switch_id, dataHandler=dataHandler, capacity=boiler_volume, wattage=boiler_watt_power, set_tmp=boiler_set_tmp)
     print("inicializing forecast from controller __main__   ")
-    forecast = Forecast(dataHandler=dataHandler, model_path=model_path)
+    forecast = Forecast(dataHandler=dataHandler, start_of_data=start_of_data_measurement,model_path=model_path)
     print("inicializing controller from controller __main__")
     controller = Controller(dataHandler=dataHandler, boiler=boiler, forecast=forecast, load_model=load_model)
 
