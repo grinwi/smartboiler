@@ -216,10 +216,13 @@ class Controller:
         #             self.boiler.turn_on()
         #     return
 
-        
+        print("getting forecast")
         consumption_forecast = self.forecast.get_forecast_next_steps() # step has 30 minutes, so 24 steps is 12 hours
-        
+        print("forecast: {}".format(consumption_forecast))
+        # if the boiler is needed to heat up before the next predicted consumption
+        print("checking if boiler is needed to heat")
         need_to_heat = self.boiler.is_needed_to_heat(tmp_act, consumption_forecast)
+        print("need to heat: {}".format(need_to_heat))
         if need_to_heat:
             print("need to heat, turning on")
             if not is_on:
