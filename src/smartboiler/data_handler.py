@@ -173,7 +173,7 @@ class DataHandler:
         return self.transform_data_for_ml(df_all, predicted_column=predicted_column)
 
 
-    def get_data_for_prediction(self, left_time_interval=None, right_time_interval=None, predicted_column = 'longtime_mean'):
+    def get_data_for_prediction(self, left_time_interval=datetime.now() - timedelta(days=2), right_time_interval=datetime.now(), predicted_column = 'longtime_mean'):
         queries = self.get_database_queries(left_time_interval=left_time_interval, right_time_interval=right_time_interval)
         df_all = self.get_df_from_queries(queries)
         df_all = self.process_kWh_water_consumption(df_all)

@@ -211,7 +211,6 @@ class Forecast:
         
         # create a dataframe with forecast and datetime as index
         
-        print("forecast_future: ", forecast_future)
         return forecast_future
     
 
