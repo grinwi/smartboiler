@@ -273,9 +273,10 @@ class Forecast:
             y_pred_inv = y_pred_inv[:, 0]
 
             # set df_all last len_df_predict values to y_pred_inv
-            df_all.iloc[-len_df_predict:, df_all.columns.get_loc(predicted_column)] = (
-                y_pred_inv
-            )
+            df_all.iloc[
+                -len_df_predict:, df_all.columns.get_loc(self.predicted_column)
+            ] = y_pred_inv
+
             df_all = df_all[len_df_predict:]
             forecast_future = pd.concat(
                 [forecast_future, df_all[-len_df_predict:]], axis=0
