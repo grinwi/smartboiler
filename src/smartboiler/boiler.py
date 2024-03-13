@@ -130,12 +130,14 @@ class Boiler(Switch):
 
         len_of_df = len(prediction_of_consumption)
         print(f"len_of_df: {len_of_df}")
-        for i in range(len_of_df, 0):
+        for i in range(len_of_df, 0, -1):
+            print(f"i: {i}")
             sum_of_consumption = (
                 prediction_of_consumption.iloc[:i].sum() - boiler_kWh_above_set
             )  # todo add computation of water coldering = time * coef of coldering
+            print(f"sum_of_consumption: {sum_of_consumption}")
             time_to_consumption_minutes = i * 30
-
+            print(f"time_to_consumption_minutes: {time_to_consumption_minutes}")
             unavailible_minutes = actual_schedule.iloc[:i]["unavailible_minutes"].sum()
             print(f"unavailible_minutes: {unavailible_minutes}")
             time_needed_to_heat = (
@@ -143,6 +145,7 @@ class Boiler(Switch):
                 + unavailible_minutes
             )
             print(f"time_needed_to_heat: {time_needed_to_heat}")
+            
             if time_to_consumption_minutes < time_needed_to_heat:
                 print(
                     f"time_to_consumption_minutes ({time_to_consumption_minutes}) < time_needed_to_heat ({time_needed_to_heat})"
