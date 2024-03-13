@@ -69,7 +69,7 @@ class Boiler(Switch):
         self.boiler_heat_cap = capacity * 1.163
         self.real_wattage = wattage * heater_efficiency
         self.hdo = hdo
-        self.high_tarif_schedule = dataHandler.get_high_tarif_schedule(hdo=hdo)
+        self.high_tarif_schedule = dataHandler.get_high_tarif_schedule()
         self.set_tmp = set_tmp
         self.capacity = capacity
         self.one_shower_volume = one_shower_volume
@@ -129,6 +129,8 @@ class Boiler(Switch):
                     self.high_tarif_schedule.head(2 * 12 - len(actual_schedule)),
                 ]
             )
+        if self.hdo:
+            actual_schedule['unavailable_minutes'] = 0
 
         len_of_df = len(prediction_of_consumption)
         
@@ -153,7 +155,7 @@ class Boiler(Switch):
                 print(
                     f"time_to_consumption_minutes ({time_to_consumption_minutes}) < time_needed_to_heat ({time_needed_to_heat})"
                 )
-                return True
+                return True #TODO return also time needed to heat, for which it can sleep after
 
         print("no need to heat, returning false")
         return False
