@@ -229,10 +229,8 @@ class Controller:
 
         # once a three weeks is water in boiler heated on max for ellimination of Legionella
         if self.last_legionella_heating - datetime.now() > timedelta(days=21):
-            self.coef_down_in_current_heating_cycle_changed = True
             print("starting heating for reduce legionella, this occurs every 3 weeks")
             self.boiler.turn_on()
-
             if tmp_act >= (65):
                 time.sleep(1200)
                 self.last_legionella_heating = datetime.now()
@@ -441,5 +439,4 @@ if __name__ == "__main__":
 
             time.sleep(60)
         # except Exception as e:
-            print(f"Error in main loop: {e}")
             time.sleep(60)
