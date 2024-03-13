@@ -279,7 +279,7 @@ class Forecast:
 
             df_all = df_all[len_df_predict:]
             forecast_future = pd.concat(
-                [forecast_future, df_all[-len_df_predict:]], axis=0
+                [forecast_future, df_all['longtime_mean'].iloc[-len_df_predict:]], axis=0
             )
             forecast_future = forecast_future.reset_index(drop=True)
 

@@ -102,6 +102,7 @@ class Boiler(Switch):
         Returns:
             [boolean]: [boolean value of needed to heat]
         """
+        print("is_needed_to_heat: prediction_of_consumption: ", prediction_of_consumption)
         if tmp_act < self.min_tmp:
             print(f"tmp_act ({tmp_act}) < self.min_tmp ({self.min_tmp})")
             return True
@@ -129,11 +130,12 @@ class Boiler(Switch):
             )
 
         len_of_df = len(prediction_of_consumption)
+        
         print(f"len_of_df: {len_of_df}")
         for i in range(len_of_df, 0, -1):
             print(f"i: {i}")
             sum_of_consumption = (
-                prediction_of_consumption.iloc[:i].sum() - boiler_kWh_above_set
+                prediction_of_consumption.iloc[:i].sum().values[0] - boiler_kWh_above_set
             )  # todo add computation of water coldering = time * coef of coldering
             print(f"sum_of_consumption: {sum_of_consumption}")
             time_to_consumption_minutes = i * 30
