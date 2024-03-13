@@ -156,7 +156,6 @@ class Controller:
         is_on = last_entry["is_boiler_on"]
 
         print("tmp_measured: {}".format(tmp_measured))
-        print("is_on: {}".format(is_on))
 
         # # in case of too old data, the boiler is turned on
         # if ( ( time_now.microsecond - (last_entry['boiler_case_last_time_entry']).microsecond)/1000000 > timedelta(minutes=10)):

@@ -203,17 +203,12 @@ class Forecast:
         forecast_future = pd.DataFrame()
 
         current_forecast_begin_date = left_time_interval
-        current_forecast_end_date = left_time_interval + timedelta(minutes=30)
         # prediction for next 6 hours
-        for i in range(0, 6):
-            print("-----")
-
+        for i in range(0, 12):
             df_predict = pd.DataFrame(
                 {
-                    "datetime": pd.date_range(
+                    "datetime": (
                         current_forecast_begin_date,
-                        current_forecast_end_date,
-                        freq="30min",
                     )
                 }
             )
@@ -263,7 +258,7 @@ class Forecast:
 
             (X, y_truth) = next(predict_gen)
 
-            y_pred = self.model.predict(X, verbose=2)
+            y_pred = self.model.predict(X, verbose=0)
 
             # np.expand_dims(y_truth,axis=1).shape
             y_pred_inv = np.concatenate(
@@ -283,11 +278,10 @@ class Forecast:
             )
             forecast_future = forecast_future.reset_index(drop=True)
 
-            current_forecast_begin_date += timedelta(hours=1)
-            current_forecast_end_date += timedelta(hours=1)
+            current_forecast_begin_date += timedelta(hours=0.5)
 
         # create a dataframe with forecast and datetime as index
-
+        dataHandler.write_forecast_to_influxdb(forecast_future, 'prediction_longtime_mean')
         return forecast_future
 
 

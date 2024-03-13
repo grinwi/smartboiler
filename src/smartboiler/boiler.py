@@ -134,7 +134,7 @@ class Boiler(Switch):
 
         len_of_df = len(prediction_of_consumption)
         
-        print(f"len_of_df: {len_of_df}")
+        
         for i in range(len_of_df, 0, -1):
             print(f"i: {i}")
             sum_of_consumption = (
@@ -194,13 +194,7 @@ class Boiler(Switch):
         Returns:
             [float]: [the real temperature of water in boiler]
         """
-        print(
-            "measured_max: ",
-            self.boiler_case_max_tmp,
-        )
-        print("area_tmp: ", self.area_tmp)
-        print("set_tmp: ", self.set_tmp)
-        print("tmp_act: ", tmp_act)
+
 
         if (tmp_act is None) or (self.area_tmp is None) or (self.set_tmp is None):
             return 50
@@ -228,7 +222,6 @@ class Boiler(Switch):
         self.area_tmp = df_of_last_week["tmp1"].nsmallest(100).mean()
         self.boiler_case_max_tmp = df_of_last_week["tmp2"].nlargest(100).mean()
 
-        print("area_tmp: ", self.area_tmp, "\nboiler_max: ", self.boiler_case_max_tmp)
 
 
 if __name__ == "__main__":

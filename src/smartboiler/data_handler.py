@@ -87,7 +87,6 @@ class DataHandler:
         boiler_case_last_time_entry = boiler_case_tmp["index"].iloc[-1]
         boiler_case_tmp = boiler_case_tmp["boiler_case_tmp"].iloc[-1]
         is_boiler_on_last_time_entry = is_boiler_on["index"].iloc[-1]
-        print(is_boiler_on)
         is_boiler_on = bool(is_boiler_on["is_boiler_on"].iloc[-1])
 
         return {
@@ -160,7 +159,6 @@ class DataHandler:
         df_all_list = []
         # iterate over key an value in data
         for key, value in queries.items():
-            print("Querying: ", key, value["sql_query"])
             # get data from influxdb
             result = self.dataframe_client.query(value["sql_query"])[
                 value["measurement"]
@@ -207,8 +205,6 @@ class DataHandler:
     ):
         if left_time_interval is None:
             left_time_interval = self.start_of_data
-        print("left_time_interval", left_time_interval)
-        print("right_time_interval", right_time_interval)
         queries = self.get_database_queries(
             left_time_interval=left_time_interval,
             right_time_interval=right_time_interval,
@@ -233,18 +229,26 @@ class DataHandler:
         df_all.index = df_all.index.tz_localize(None)
         df_all, _ = self.transform_data_for_ml(df_all, predicted_column="longtime_mean")
 
-        print(f"data_for_prediction: {df_all}")
         return df_all
 
     def write_forecast_to_influxdb(self, df, measurement_name):
-        df = df.reset_index()
-        df["time"] = df["time"].dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-        df = df.rename(columns={"time": "time", "longtime_mean": "value"})
-        df["measurement"] = measurement_name
-        json_body = df.to_dict(orient="records")
-        print(json_body)
-        self.influxdb_client.write_points(json_body)
-        return json_body
+        current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
+        
+        df.index = df.index.astype(str)
+
+        # Create dictionary
+        result_dict = df.squeeze().to_dict()
+
+        # Create a dictionary
+        measurement_dict = {
+            "measurement": "prediction",
+            "time": current_time,
+            "fields": result_dict
+        }
+
+        print([measurement_dict])
+        self.influxdb_client.write_points([measurement_dict])
+        # return measurement_dict
 
     def get_high_tarif_schedule(self):
         print("Getting high tarif schedule")
