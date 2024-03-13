@@ -432,7 +432,7 @@ if __name__ == "__main__":
     )
 
     while 1:
-        try:
+        # try:
             controller.control()
             # c.toggle_shelly_relay('on', headers, base_url)
 
@@ -440,6 +440,6 @@ if __name__ == "__main__":
             # c.toggle_shelly_relay('off', headers, base_url)
 
             time.sleep(60)
-        except Exception as e:
+        # except Exception as e:
             print(f"Error in main loop: {e}")
             time.sleep(60)
