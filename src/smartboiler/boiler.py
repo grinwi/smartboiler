@@ -140,7 +140,7 @@ class Boiler(Switch):
             print(f"sum_of_consumption: {sum_of_consumption}")
             time_to_consumption_minutes = i * 30
             print(f"time_to_consumption_minutes: {time_to_consumption_minutes}")
-            unavailible_minutes = actual_schedule.iloc[:i]["unavailible_minutes"].sum()
+            unavailible_minutes = actual_schedule.iloc[:i]["unavailable_minutes"].sum()
             print(f"unavailible_minutes: {unavailible_minutes}")
             time_needed_to_heat = (
                 self.time_needed_to_heat_up_minutes(consumption_kWh=sum_of_consumption)

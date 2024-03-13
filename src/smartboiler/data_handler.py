@@ -268,7 +268,6 @@ class DataHandler:
         ).max()
 
         # not null values to 1, null as 0
-        grouped = grouped.notna().astype(int)
         df_reset = grouped.reset_index()
         df_reset["time"] = (
             df_reset["level_1"].astype(str) + ":" + df_reset["level_2"].astype(str)
