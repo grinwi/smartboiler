@@ -46,6 +46,7 @@ class Boiler(Switch):
         heater_efficiency=0.98,
         average_boiler_surroundings_temp=15,
         boiler_case_max_tmp=40,
+        hdo=False
     ):
 
         print("------------------------------------------------------\n")
@@ -67,8 +68,8 @@ class Boiler(Switch):
         self.dataHandler = dataHandler
         self.boiler_heat_cap = capacity * 1.163
         self.real_wattage = wattage * heater_efficiency
-
-        self.high_tarif_schedule = dataHandler.get_high_tarif_schedule()
+        self.hdo = hdo
+        self.high_tarif_schedule = dataHandler.get_high_tarif_schedule(hdo=hdo)
         self.set_tmp = set_tmp
         self.capacity = capacity
         self.one_shower_volume = one_shower_volume

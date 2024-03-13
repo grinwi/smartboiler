@@ -376,6 +376,7 @@ if __name__ == "__main__":
     thermostat_entity_id = options["thermostat_entity_id"]
     logging_level = options["logging_level"]
     load_model = options["load_model"]
+    hdo = options["hdo"]
 
     print(type(load_model))
     print(load_model)
@@ -417,6 +418,7 @@ if __name__ == "__main__":
         set_tmp=boiler_set_tmp,
         average_boiler_surroundings_temp=average_boiler_surroundings_temp,
         boiler_case_max_tmp=boiler_case_max_tmp,
+        hdo=hdo,
     )
     print("inicializing forecast from controller __main__   ")
     forecast = Forecast(
