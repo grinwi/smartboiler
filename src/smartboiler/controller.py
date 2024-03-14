@@ -332,6 +332,7 @@ if __name__ == "__main__":
         capacity=boiler_volume,
         wattage=boiler_watt_power,
         set_tmp=boiler_set_tmp,
+        min_tmp=boiler_min_operation_tmp,
         average_boiler_surroundings_temp=average_boiler_surroundings_temp,
         boiler_case_max_tmp=boiler_case_max_tmp,
         hdo=hdo,
