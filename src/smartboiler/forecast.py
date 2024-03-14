@@ -281,7 +281,7 @@ class Forecast:
             current_forecast_begin_date += timedelta(hours=0.5)
 
         # create a dataframe with forecast and datetime as index
-        dataHandler.write_forecast_to_influxdb(forecast_future, 'prediction_longtime_mean')
+        self.dataHandler.write_forecast_to_influxdb(forecast_future, 'prediction_longtime_mean')
         return forecast_future
 
 
