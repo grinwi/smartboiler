@@ -158,8 +158,9 @@ class Boiler(Switch):
             unavailible_minutes = actual_schedule.iloc[:i]["unavailable_minutes"].sum()
             time_needed_to_heat = (
                 self.time_needed_to_heat_up_minutes(consumption_kWh=sum_of_consumption)
-                + unavailible_minutes
             )
+            if time_needed_to_heat > 0:
+                time_needed_to_heat += unavailible_minutes
             print(
                 f"time_needed_to_heat: {time_needed_to_heat}, time_to_consumption_minutes: {time_to_consumption_minutes}, sum_of_consumption: {sum_of_consumption}, unavailible_minutes: {unavailible_minutes}"
             )
