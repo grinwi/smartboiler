@@ -42,8 +42,8 @@ class Boiler(Switch):
         set_tmp=60,
         one_shower_volume=40,
         shower_temperature=40,
-        min_tmp=37,
-        heater_efficiency=0.98,
+        min_tmp=40,
+        heater_efficiency=0.88,
         average_boiler_surroundings_temp=15,
         boiler_case_max_tmp=40,
         hdo=False,
@@ -104,7 +104,7 @@ class Boiler(Switch):
             https://vytapeni.tzb-info.cz/tabulky-a-vypocty/97-vypocet-doby-ohrevu-teple-vody
         """
 
-        return (consumption_kWh) / (self.real_wattage)
+        return ( consumption_kWh / (self.real_wattage / 1000)) * 60
 
     def is_needed_to_heat(self, tmp_act: int, prediction_of_consumption)->tuple[bool, int]:
         """Conciders if it is needed to heat.
