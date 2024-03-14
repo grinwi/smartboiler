@@ -107,6 +107,9 @@ class Boiler(Switch):
         """
 
         return ( consumption_kWh / (self.real_wattage / 1000)) * 60
+    
+    def get_kWh_needed_to_heat(self, tmp_act: int, tmp_goal: int):
+        return  4,186 * self.capacity * (tmp_goal - tmp_act) / 3600
 
     def is_needed_to_heat(self, tmp_act: int, prediction_of_consumption)->tuple[bool, int]:
         """Conciders if it is needed to heat.
@@ -122,7 +125,7 @@ class Boiler(Switch):
 
         if tmp_act < self.min_tmp:
             print(f"tmp_act ({tmp_act}) < self.min_tmp ({self.min_tmp})")
-            return True
+            return (True, self.time_needed_to_heat_up_minutes(consumption_kWh=self.get_kWh_needed_to_heat(tmp_act, self.set_tmp)))
 
         # get actual kWh in boiler from volume and tmp
         boiler_kWh_above_set = (self.capacity * 1.163 * (self.set_tmp - tmp_act)) / 3600

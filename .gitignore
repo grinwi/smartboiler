@@ -150,3 +150,5 @@ Screenshot 2023-11-18 204400.png
 *tar
 *secrets*
 .DS_Store
+
+*.pkl
