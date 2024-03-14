@@ -47,6 +47,7 @@ class Boiler(Switch):
         average_boiler_surroundings_temp=15,
         boiler_case_max_tmp=40,
         hdo=False,
+        cooldown_coef_B = 1.12
     ):
 
         print("------------------------------------------------------\n")
@@ -77,11 +78,24 @@ class Boiler(Switch):
         self.min_tmp = min_tmp
         self.area_tmp = average_boiler_surroundings_temp
         self.boiler_case_max_tmp = boiler_case_max_tmp
+        self.cooldown_coef_B = cooldown_coef_B
 
         # if (average_boiler_surroundings_temp is None or boiler_case_max_tmp is None):
         #     boiler_data_stats = dataHandler.get_boiler_data_stats(left_time_interval=datetime.now() - timedelta(days=21))
         #     self.set_measured_tmp(boiler_data_stats)
+    def get_kWh_loss_in_time(self, time_minutes, tmp_act=60):
+        """Calculates the kWh loss in time.
 
+        Args:
+            time_minutes ([int]): [time in minutes]
+
+        Returns:
+            [float]: [kWh loss in time]
+        """
+        tmp_delta = tmp_act - self.area_tmp
+        return (time_minutes * self.cooldown_coef_B * tmp_delta) / 60
+        
+        
     def time_needed_to_heat_up_minutes(self, consumption_kWh):
         """
         Calculates the time needed for heating water in boiler by temperature delta.
@@ -92,7 +106,7 @@ class Boiler(Switch):
 
         return (consumption_kWh) / (self.real_wattage)
 
-    def is_needed_to_heat(self, tmp_act: int, prediction_of_consumption):
+    def is_needed_to_heat(self, tmp_act: int, prediction_of_consumption)->tuple[bool, int]:
         """Conciders if it is needed to heat.
 
         Args:
@@ -103,9 +117,7 @@ class Boiler(Switch):
         Returns:
             [boolean]: [boolean value of needed to heat]
         """
-        print(
-            "is_needed_to_heat: prediction_of_consumption: ", prediction_of_consumption
-        )
+
         if tmp_act < self.min_tmp:
             print(f"tmp_act ({tmp_act}) < self.min_tmp ({self.min_tmp})")
             return True
@@ -137,12 +149,12 @@ class Boiler(Switch):
         len_of_df = len(prediction_of_consumption)
 
         for i in range(len_of_df, 0, -1):
+            time_to_consumption_minutes = i * 30
             sum_of_consumption = (
                 prediction_of_consumption.iloc[:i].sum().values[0]
                 - boiler_kWh_above_set
-            )  # todo add computation of water coldering = time * coef of coldering
+            ) + self.get_kWh_loss_in_time(time_minutes=time_to_consumption_minutes, tmp_act=tmp_act) 
 
-            time_to_consumption_minutes = i * 30
             unavailible_minutes = actual_schedule.iloc[:i]["unavailable_minutes"].sum()
             time_needed_to_heat = (
                 self.time_needed_to_heat_up_minutes(consumption_kWh=sum_of_consumption)
@@ -156,10 +168,10 @@ class Boiler(Switch):
                 print(
                     f"time_to_consumption_minutes ({time_to_consumption_minutes}) < time_needed_to_heat ({time_needed_to_heat})"
                 )
-                return True  # TODO return also time needed to heat, for which it can sleep afterwards
+                return (True, time_needed_to_heat)  # TODO return also time needed to heat, for which it can sleep afterwards
 
         print("no need to heat, returning false")
-        return False
+        return (False, 0)
 
     def showers_degrees(self, number_of_showers):
         """Recalculates number of showers to temperature
