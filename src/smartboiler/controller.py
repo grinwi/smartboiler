@@ -120,7 +120,6 @@ class Controller:
     def _check_data(self):
         """Retrain model if the last data update is older than 7 days."""
         if self.last_model_training - datetime.now() > timedelta(days=7):
-            print(datetime.now())
             print("actualizing data")
 
             self.forecast.train_model()
@@ -168,10 +167,9 @@ class Controller:
         # next_calendar_heat_up_event = self.eventChecker.next_calendar_heat_up_event(
         #     self.Boiler)
 
-        print("measured tmp: {}".format(tmp_measured))
         # actual tmp of water in boiler
         tmp_act = self.boiler.real_tmp(tmp_measured)
-        print("actual tmp: {}".format(tmp_act))
+        print(f'actual tmp: {tmp_act}, measured: {tmp_measured}')
 
         if is_on is None:
             print("boiler state is unknown")
@@ -376,12 +374,6 @@ if __name__ == "__main__":
     logging_level = options["logging_level"]
     load_model = options["load_model"]
     hdo = options["hdo"]
-
-    print(type(load_model))
-    print(load_model)
-
-    for value, key in options.items():
-        print(f"{value}: {key}")
 
     print(f"Starting SmartBoiler Controller with the following settings: {options}")
     base_url = hass_url

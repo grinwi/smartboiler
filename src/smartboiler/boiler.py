@@ -46,7 +46,7 @@ class Boiler(Switch):
         heater_efficiency=0.98,
         average_boiler_surroundings_temp=15,
         boiler_case_max_tmp=40,
-        hdo=False
+        hdo=False,
     ):
 
         print("------------------------------------------------------\n")
@@ -103,7 +103,9 @@ class Boiler(Switch):
         Returns:
             [boolean]: [boolean value of needed to heat]
         """
-        print("is_needed_to_heat: prediction_of_consumption: ", prediction_of_consumption)
+        print(
+            "is_needed_to_heat: prediction_of_consumption: ", prediction_of_consumption
+        )
         if tmp_act < self.min_tmp:
             print(f"tmp_act ({tmp_act}) < self.min_tmp ({self.min_tmp})")
             return True
@@ -129,33 +131,32 @@ class Boiler(Switch):
                     self.high_tarif_schedule.head(2 * 12 - len(actual_schedule)),
                 ]
             )
-        if self.hdo:
-            actual_schedule['unavailable_minutes'] = 0
+        if not self.hdo:
+            actual_schedule["unavailable_minutes"] = 0
 
         len_of_df = len(prediction_of_consumption)
-        
-        
+
         for i in range(len_of_df, 0, -1):
-            print(f"i: {i}")
             sum_of_consumption = (
-                prediction_of_consumption.iloc[:i].sum().values[0] - boiler_kWh_above_set
+                prediction_of_consumption.iloc[:i].sum().values[0]
+                - boiler_kWh_above_set
             )  # todo add computation of water coldering = time * coef of coldering
-            print(f"sum_of_consumption: {sum_of_consumption}")
+
             time_to_consumption_minutes = i * 30
-            print(f"time_to_consumption_minutes: {time_to_consumption_minutes}")
             unavailible_minutes = actual_schedule.iloc[:i]["unavailable_minutes"].sum()
-            print(f"unavailible_minutes: {unavailible_minutes}")
             time_needed_to_heat = (
                 self.time_needed_to_heat_up_minutes(consumption_kWh=sum_of_consumption)
                 + unavailible_minutes
             )
-            print(f"time_needed_to_heat: {time_needed_to_heat}")
-            
+            print(
+                f"time_needed_to_heat: {time_needed_to_heat}, time_to_consumption_minutes: {time_to_consumption_minutes}, sum_of_consumption: {sum_of_consumption}, unavailible_minutes: {unavailible_minutes}"
+            )
+
             if time_to_consumption_minutes < time_needed_to_heat:
                 print(
                     f"time_to_consumption_minutes ({time_to_consumption_minutes}) < time_needed_to_heat ({time_needed_to_heat})"
                 )
-                return True #TODO return also time needed to heat, for which it can sleep after
+                return True  # TODO return also time needed to heat, for which it can sleep afterwards
 
         print("no need to heat, returning false")
         return False
@@ -195,7 +196,6 @@ class Boiler(Switch):
             [float]: [the real temperature of water in boiler]
         """
 
-
         if (tmp_act is None) or (self.area_tmp is None) or (self.set_tmp is None):
             return 50
 
@@ -221,7 +221,6 @@ class Boiler(Switch):
 
         self.area_tmp = df_of_last_week["tmp1"].nsmallest(100).mean()
         self.boiler_case_max_tmp = df_of_last_week["tmp2"].nlargest(100).mean()
-
 
 
 if __name__ == "__main__":
