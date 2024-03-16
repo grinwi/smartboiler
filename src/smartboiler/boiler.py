@@ -129,7 +129,7 @@ class Boiler(Switch):
             return (True, self.time_needed_to_heat_up_minutes(consumption_kWh=kWh_needed_to_heat))
 
         # get actual kWh in boiler from volume and tmp
-        boiler_kWh_above_set = (self.capacity * 1.163 * (self.set_tmp - tmp_act)) / 3600
+        boiler_kWh_above_set = (self.capacity * 1.163 * (self.min_tmp - tmp_act)) / 3600
         print(f"boiler_kWh_above_set: {boiler_kWh_above_set}")
 
         datetime_now = datetime.now()
@@ -167,15 +167,12 @@ class Boiler(Switch):
             )
             if time_needed_to_heat > 0:
                 time_needed_to_heat += unavailible_minutes
-            print(
-                f"time_needed_to_heat: {time_needed_to_heat}, time_to_consumption_minutes: {time_to_consumption_minutes}, sum_of_consumption: {sum_of_consumption}, unavailible_minutes: {unavailible_minutes}"
-            )
 
             if time_to_consumption_minutes < time_needed_to_heat:
                 print(
-                    f"time_to_consumption_minutes ({time_to_consumption_minutes}) < time_needed_to_heat ({time_needed_to_heat})"
+                    f"time_needed_to_heat: {time_needed_to_heat}, time_to_consumption_minutes: {time_to_consumption_minutes}, sum_of_consumption: {sum_of_consumption}, unavailible_minutes: {unavailible_minutes}"
                 )
-                return (True, time_needed_to_heat)  # TODO return also time needed to heat, for which it can sleep afterwards
+                return (True, time_needed_to_heat)  
 
         print("no need to heat, returning false")
         return (False, 0)

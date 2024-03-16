@@ -205,40 +205,7 @@ class Forecast:
         current_forecast_begin_date = left_time_interval
         # prediction for next 6 hours
         for i in range(0, 12):
-            df_predict = pd.DataFrame(
-                {
-                    "datetime": (
-                        current_forecast_begin_date,
-                    )
-                }
-            )
-            df_predict["longtime_mean"] = 0
-            df_predict["weekday_sin"] = np.sin(
-                2 * np.pi * df_predict["datetime"].dt.weekday / 7
-            )
-            df_predict["weekday_cos"] = np.cos(
-                2 * np.pi * df_predict["datetime"].dt.weekday / 7
-            )
-            df_predict["hour_sin"] = np.sin(
-                2 * np.pi * df_predict["datetime"].dt.hour / 24
-            )
-            df_predict["hour_cos"] = np.cos(
-                2 * np.pi * df_predict["datetime"].dt.hour / 24
-            )
-            df_predict["minute_sin"] = np.sin(
-                2 * np.pi * df_predict["datetime"].dt.minute / 60
-            )
-            df_predict["minute_cos"] = np.cos(
-                2 * np.pi * df_predict["datetime"].dt.minute / 60
-            )
-            # delete column datetime
-            df_predict = df_predict.drop(columns="datetime")
-            len_df_predict = df_predict.shape[0]
-
-            # concar df_all and df_predict
-
-            df_all = pd.concat([df_all, df_predict], axis=0)
-            df_all = df_all.reset_index(drop=True)
+            
 
             df_predict_norm = df_all.copy()
             df_predict_norm[df_all.columns] = self.scaler.transform(df_all)
@@ -253,7 +220,7 @@ class Forecast:
                 max_index=None,
                 step=1,
                 shuffle=False,
-                batch_size=df_predict.shape[0],
+                batch_size=df_all.shape[0],
             )
 
             (X, y_truth) = next(predict_gen)
@@ -266,15 +233,25 @@ class Forecast:
             )
             y_pred_inv = self.scaler.inverse_transform(y_pred_inv)
             y_pred_inv = y_pred_inv[:, 0]
+            
+            df_predict = pd.DataFrame({
+                "longtime_mean": y_pred_inv,
+                "weekday_sin": np.sin(2 * np.pi * current_forecast_begin_date.weekday() / 7),
+                "weekday_cos": np.cos(2 * np.pi * current_forecast_begin_date.weekday() / 7),
+                "hour_sin": np.sin(2 * np.pi * current_forecast_begin_date.hour / 24),
+                "hour_cos": np.cos(2 * np.pi * current_forecast_begin_date.hour / 24),
+                "minute_sin": np.sin(2 * np.pi * current_forecast_begin_date.minute / 60),
+                "minute_cos": np.cos(2 * np.pi * current_forecast_begin_date.minute / 60)
+            })
+            
 
-            # set df_all last len_df_predict values to y_pred_inv
-            df_all.iloc[
-                -len_df_predict:, df_all.columns.get_loc(self.predicted_column)
-            ] = y_pred_inv
+            # concat df_all and df_predict
+            df_all = pd.concat([df_all, df_predict], axis=0)
+            df_all = df_all.reset_index(drop=True)
 
-            df_all = df_all[len_df_predict:]
+            df_all = df_all[1:]
             forecast_future = pd.concat(
-                [forecast_future, df_all['longtime_mean'].iloc[-len_df_predict:]], axis=0
+                [forecast_future, df_all['longtime_mean'].iloc[-1:]], axis=0
             )
             forecast_future = forecast_future.reset_index(drop=True)
 

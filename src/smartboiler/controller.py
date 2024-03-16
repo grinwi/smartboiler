@@ -65,11 +65,7 @@ class Controller:
         """
         # TODO - load settings from config file or home assistant
 
-        # self.socket_url = settings['socket_url']
 
-        # self.tmp_output = settings['tmp_output']
-        # self.tmp_boiler = settings['tmp_boiler']
-        # self.tmp_boiler_room = settings['tmp_boiler_room']
 
         # self.how_water_flow = settings['how_water_flow']
         # self.tmp_water_flow = settings['tmp_water_flow']
@@ -83,6 +79,7 @@ class Controller:
         self.dataHandler = dataHandler
         self.boiler = boiler
         self.forecast = forecast
+        
         if load_model:
             print("loading model")
             self.forecast.load_model()
@@ -93,11 +90,6 @@ class Controller:
             self.forecast.fit_model()
 
         self.last_model_training = datetime.now()
-
-        # print("------------------------------------------------------\n")
-        # print('initializing of Control...\n\tdb_name = {}\n\tsocker_url = {}\n\ttmp_output = {}\n\ttmp_boiler = {}\n\thost name = {}\n\tport = {}\n\tboiler capacity = {}\n\tboiler woltage = {}\n'.format(
-        #     self.db_name, self.socket_url, self.tmp_output, self.tmp_boiler, self.host, self.port, boiler_capacity, boiler_wattage))
-        # print("------------------------------------------------------\n")
 
         # #self.EventChecker = EventChecker()
         # #self.TimeHandler = TimeHandler()
@@ -206,7 +198,6 @@ class Controller:
         consumption_forecast = (
             self.forecast.get_forecast_next_steps()
         )  # step has 30 minutes, so 24 steps is 12 hours
-        print("forecast: {}".format(consumption_forecast))
         # if the boiler is needed to heat up before the next predicted consumption
         print("checking if boiler is needed to heat")
         is_needed_to_heat, minutes_needed_to_heat = self.boiler.is_needed_to_heat(tmp_act, consumption_forecast)
@@ -322,6 +313,7 @@ if __name__ == "__main__":
         start_of_data=start_of_data_measurement,
     )
     boiler_switch_entity_id = "switch." + boiler_socket_id
+    
     print("inicializing boiler from controller __main__")
     boiler = Boiler(
         base_url,
@@ -349,7 +341,7 @@ if __name__ == "__main__":
     )
 
     while 1:
-        # try:
+        try:
             controller.control()
             # c.toggle_shelly_relay('on', headers, base_url)
 
@@ -357,5 +349,6 @@ if __name__ == "__main__":
             # c.toggle_shelly_relay('off', headers, base_url)
 
             time.sleep(60)
-        # except Exception as e:
+        except Exception as e:
+            print(f"Error: {e}")
             time.sleep(60)
