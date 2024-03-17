@@ -205,7 +205,7 @@ class Forecast:
         current_forecast_begin_date = left_time_interval
         # prediction for next 6 hours
         for i in range(0, 12):
-            
+            df_all = df_all.reset_index(drop=True)
 
             df_predict_norm = df_all.copy()
             df_predict_norm[df_all.columns] = self.scaler.transform(df_all)
@@ -220,7 +220,7 @@ class Forecast:
                 max_index=None,
                 step=1,
                 shuffle=False,
-                batch_size=df_all.shape[0],
+                batch_size=df_predict_norm.shape[0],
             )
 
             (X, y_truth) = next(predict_gen)
@@ -232,26 +232,21 @@ class Forecast:
                 (y_pred, np.zeros((y_pred.shape[0], self.num_of_features))), axis=1
             )
             y_pred_inv = self.scaler.inverse_transform(y_pred_inv)
-            y_pred_inv = y_pred_inv[:, 0]
             
-            df_predict = pd.DataFrame({
-                "longtime_mean": y_pred_inv,
-                "weekday_sin": np.sin(2 * np.pi * current_forecast_begin_date.weekday() / 7),
-                "weekday_cos": np.cos(2 * np.pi * current_forecast_begin_date.weekday() / 7),
-                "hour_sin": np.sin(2 * np.pi * current_forecast_begin_date.hour / 24),
-                "hour_cos": np.cos(2 * np.pi * current_forecast_begin_date.hour / 24),
-                "minute_sin": np.sin(2 * np.pi * current_forecast_begin_date.minute / 60),
-                "minute_cos": np.cos(2 * np.pi * current_forecast_begin_date.minute / 60)
-            })
+            # get last predicted value
+            y_pred_inv = y_pred_inv[-1, :]
+
+            # append y_pred_inv to df_all
+            new_row_df = pd.DataFrame([y_pred_inv], columns=df_all.columns)
+
+            # Append the new row DataFrame to the existing DataFrame
+            df_all = pd.concat([df_all, new_row_df], ignore_index=True)            
             
-
-            # concat df_all and df_predict
-            df_all = pd.concat([df_all, df_predict], axis=0)
-            df_all = df_all.reset_index(drop=True)
-
+            # drop first row
             df_all = df_all[1:]
+            
             forecast_future = pd.concat(
-                [forecast_future, df_all['longtime_mean'].iloc[-1:]], axis=0
+                [forecast_future, new_row_df['longtime_mean']], axis=0
             )
             forecast_future = forecast_future.reset_index(drop=True)
 

@@ -94,7 +94,7 @@ class Boiler(Switch):
         """
         tmp_delta = tmp_act - self.area_tmp
         kWh_loss = (time_minutes * self.cooldown_coef_B * tmp_delta / 1000) / 60
-        print(f"kWh_loss: {kWh_loss}, time_minutes: {time_minutes}, tmp_act: {tmp_act}, tmp_delta: {tmp_delta}")
+        # print(f"kWh_loss: {kWh_loss}, time_minutes: {time_minutes}, tmp_act: {tmp_act}, tmp_delta: {tmp_delta}")
         return kWh_loss
         
         
@@ -129,7 +129,7 @@ class Boiler(Switch):
             return (True, self.time_needed_to_heat_up_minutes(consumption_kWh=kWh_needed_to_heat))
 
         # get actual kWh in boiler from volume and tmp
-        boiler_kWh_above_set = self.get_kWh_delta_from_temperatures(tmp_act - self.min_tmp)#(self.capacity * 4.186 * (self.min_tmp - tmp_act)) / 3600
+        boiler_kWh_above_set = self.get_kWh_delta_from_temperatures(self.min_tmp, tmp_act)#(self.capacity * 4.186 * (self.min_tmp - tmp_act)) / 3600
         print(f"boiler_kWh_above_set: {boiler_kWh_above_set}")
 
         datetime_now = datetime.now()
@@ -174,7 +174,7 @@ class Boiler(Switch):
                 )
                 return (True, time_needed_to_heat)  
 
-        print("no need to heat, returning false")
+        print(f'no need to heat, returning false, time_needed_to_heat: {time_needed_to_heat}')
         return (False, 0)
 
     def showers_degrees(self, number_of_showers):
