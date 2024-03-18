@@ -202,6 +202,7 @@ class Forecast:
             left_time_interval=left_time_interval,
             right_time_interval=right_time_interval,
             predicted_column=self.predicted_column,
+            dropna=False,
         )
 
         forecast_future = pd.DataFrame()

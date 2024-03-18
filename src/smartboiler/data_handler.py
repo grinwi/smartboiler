@@ -223,7 +223,7 @@ class DataHandler:
         left_time_interval=datetime.now() - timedelta(days=2),
         right_time_interval=datetime.now(),
         predicted_column="longtime_mean",
-        dropna=True
+        dropna=False
     ):
         queries = self.get_database_queries(
             left_time_interval=left_time_interval,
