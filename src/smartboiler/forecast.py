@@ -43,6 +43,7 @@ class Forecast:
                 left_time_interval=begin_of_training,
                 right_time_interval=end_of_training,
                 predicted_column=self.predicted_column,
+                dropna=False
             )
             
         self.num_of_features = len(df_training_data.columns) - 1
@@ -93,6 +94,7 @@ class Forecast:
             left_time_interval=left_time_interval,
             right_time_interval=right_time_interval,
             predicted_column=self.predicted_column,
+            dropna=False,
         )
         self.num_of_features = len(df.columns) - 1
         self.df_train_norm = df.copy()

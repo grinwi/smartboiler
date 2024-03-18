@@ -171,11 +171,12 @@ class DataHandler:
 
         return df
 
-    def process_kWh_water_consumption(self, df):
+    def process_kWh_water_consumption(self, df, dropna=False):
         df = df.resample("1min").mean()
         # df = df.reset_index(drop=True)
         # drop rows with NaN in any of the rows
-        df = df.dropna()
+        if dropna:
+            df = df.dropna()
         df["consumed_heat_kJ"] = (
             df["water_flow_L_per_minute_mean"]
             * (df["water_temperature_mean"] - 10)
@@ -204,6 +205,7 @@ class DataHandler:
         left_time_interval=None,
         right_time_interval=datetime.now(),
         predicted_column="longtime_mean",
+        dropna=False
     ):
         if left_time_interval is None:
             left_time_interval = self.start_of_data
@@ -221,13 +223,14 @@ class DataHandler:
         left_time_interval=datetime.now() - timedelta(days=2),
         right_time_interval=datetime.now(),
         predicted_column="longtime_mean",
+        dropna=True
     ):
         queries = self.get_database_queries(
             left_time_interval=left_time_interval,
             right_time_interval=right_time_interval,
         )
         df_all = self.get_df_from_queries(queries)
-        df_all = self.process_kWh_water_consumption(df_all)
+        df_all = self.process_kWh_water_consumption(df_all, dropna=dropna)
         df_all.index = df_all.index.tz_localize(None)
         df_all, _ = self.transform_data_for_ml(df_all, predicted_column="longtime_mean")
 
