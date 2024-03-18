@@ -25,7 +25,7 @@ class Forecast:
         self, dataHandler: DataHandler, start_of_data: datetime, model_path=None
     ):
         self.batch_size = 3
-        self.lookback = 10
+        self.lookback = 5
         self.delay = 1
         self.predicted_column = "longtime_mean"
         self.dataHandler = dataHandler
@@ -33,20 +33,21 @@ class Forecast:
         self.model_path = model_path
         self.start_of_data = start_of_data
 
-    def train_model(self, begin_of_training=None, end_of_training=datetime.now()):
-        if begin_of_training is None:
-            begin_of_training = self.start_of_data
-        print("begin of training: ", begin_of_training)
-        print("end of training : ", end_of_training)
-        df, _ = self.dataHandler.get_data_for_training_model(
-            left_time_interval=begin_of_training,
-            right_time_interval=end_of_training,
-            predicted_column=self.predicted_column,
-        )
-        self.num_of_features = len(df.columns) - 1
-        self.df_train_norm = df.copy()
-
-        self.df_train_norm[df.columns] = self.scaler.fit_transform(df)
+    def train_model(self, begin_of_training=None, end_of_training=datetime.now(), df_training_data=None):
+        if df_training_data is None:
+            if begin_of_training is None:
+                begin_of_training = self.start_of_data
+            print("begin of training: ", begin_of_training)
+            print("end of training : ", end_of_training)
+            df_training_data, _ = self.dataHandler.get_data_for_training_model(
+                left_time_interval=begin_of_training,
+                right_time_interval=end_of_training,
+                predicted_column=self.predicted_column,
+            )
+            
+        self.num_of_features = len(df_training_data.columns) - 1
+        self.df_train_norm = df_training_data.copy()
+        self.df_train_norm[df_training_data.columns] = self.scaler.fit_transform(df_training_data)
 
         self.train_gen = self.generator(
             dataframe=self.df_train_norm,
@@ -54,7 +55,7 @@ class Forecast:
             lookback=self.lookback,
             delay=self.delay,
             min_index=0,
-            max_index=int(df.shape[0] * 0.8),
+            max_index=int(df_training_data.shape[0] * 0.8),
             step=1,
             shuffle=True,
             batch_size=self.batch_size,
@@ -65,7 +66,7 @@ class Forecast:
             target_name=self.predicted_column,
             lookback=self.lookback,
             delay=self.delay,
-            min_index=int(df.shape[0] * 0.8),
+            min_index=int(df_training_data.shape[0] * 0.8),
             max_index=None,
             step=1,
             shuffle=False,
@@ -80,7 +81,8 @@ class Forecast:
         self.train_steps = int(
             (self.df_train_norm.shape[0] * 0.9 - self.lookback) // self.batch_size
         )
-
+    def save_model(self):
+        self.model.save(self.model_path)
     def load_model(
         self,
         left_time_interval=datetime.now() - timedelta(days=2),
@@ -224,7 +226,6 @@ class Forecast:
             )
 
             (X, y_truth) = next(predict_gen)
-
             y_pred = self.model.predict(X, verbose=0)
 
             # np.expand_dims(y_truth,axis=1).shape

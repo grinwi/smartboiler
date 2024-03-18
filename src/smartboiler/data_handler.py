@@ -102,7 +102,7 @@ class DataHandler:
         right_time_interval,
     ):
 
-        group_by_time_interval = "5s"
+        group_by_time_interval = "10s"
 
         # format datetime to YYYY-MM-DDTHH:MM:SSZ
         left_time_interval = f"'{left_time_interval.strftime('%Y-%m-%dT%H:%M:%SZ')}'"
@@ -110,7 +110,7 @@ class DataHandler:
 
         queries = {
             "water_flow": {
-                "sql_query": f'SELECT mean("value") AS "water_flow_L_per_minute_mean" FROM "{self.db_name}"."autogen"."L/min" WHERE time > {left_time_interval} AND time < {right_time_interval} GROUP BY time({group_by_time_interval}) FILL(0)',
+                "sql_query": f'SELECT mean("value") AS "water_flow_L_per_minute_mean" FROM "{self.db_name}"."autogen"."L/min" WHERE time > {left_time_interval} AND time < {right_time_interval} GROUP BY time({group_by_time_interval}) FILL(null)',
                 "measurement": "L/min",
             },
             "water_temperature": {
@@ -174,6 +174,8 @@ class DataHandler:
     def process_kWh_water_consumption(self, df):
         df = df.resample("1min").mean()
         # df = df.reset_index(drop=True)
+        # drop rows with NaN in any of the rows
+        df = df.dropna()
         df["consumed_heat_kJ"] = (
             df["water_flow_L_per_minute_mean"]
             * (df["water_temperature_mean"] - 10)
