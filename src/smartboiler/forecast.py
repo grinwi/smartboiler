@@ -24,8 +24,8 @@ class Forecast:
     def __init__(
         self, dataHandler: DataHandler, start_of_data: datetime, model_path=None
     ):
-        self.batch_size = 128
-        self.lookback = 5
+        self.batch_size = 3
+        self.lookback = 6
         self.delay = 1
         self.predicted_column = "longtime_mean"
         self.dataHandler = dataHandler
@@ -193,11 +193,15 @@ class Forecast:
 
     def get_forecast_next_steps(
         self,
-        left_time_interval=datetime.now() - timedelta(days=2),
-        right_time_interval=datetime.now(),
+        left_time_interval=None,
+        right_time_interval=None,
         predicted_column="longtime_mean",
     ) -> pd.DataFrame:
-
+        if left_time_interval is None:
+            left_time_interval = datetime.now() - timedelta(days=2)
+        if right_time_interval is None:
+            right_time_interval = datetime.now()
+        
         df_all = self.dataHandler.get_data_for_prediction(
             left_time_interval=left_time_interval,
             right_time_interval=right_time_interval,
@@ -206,8 +210,9 @@ class Forecast:
         )
 
         forecast_future = pd.DataFrame()
+        
 
-        current_forecast_begin_date = left_time_interval
+        current_forecast_begin_date = right_time_interval
         # prediction for next 6 hours
         for i in range(0, 12):
             df_all = df_all.reset_index(drop=True)
@@ -230,7 +235,22 @@ class Forecast:
 
             (X, y_truth) = next(predict_gen)
             y_pred = self.model.predict(X, verbose=0)
-
+            # create new row with columns longtime_mean, weekday_cos, weekday_sin, hour_cos, hour_sin, minute_cos, minute_sin accorting to time_now
+            new_row_df = pd.DataFrame(
+                columns=df_all.columns,
+                data=[
+                    [
+                        0,
+                        np.sin(2 * np.pi * current_forecast_begin_date.weekday() / 7),
+                        np.cos(2 * np.pi * current_forecast_begin_date.weekday() / 7),
+                        np.sin(2 * np.pi * current_forecast_begin_date.hour / 24),
+                        np.cos(2 * np.pi * current_forecast_begin_date.hour / 24),
+                        np.sin(2 * np.pi * current_forecast_begin_date.minute / 60),
+                        np.cos(2 * np.pi * current_forecast_begin_date.minute / 60),
+                    ]
+                ],
+            )
+            
             # np.expand_dims(y_truth,axis=1).shape
             y_pred_inv = np.concatenate(
                 (y_pred, np.zeros((y_pred.shape[0], self.num_of_features))), axis=1
@@ -241,7 +261,7 @@ class Forecast:
             y_pred_inv = y_pred_inv[-1, :]
 
             # append y_pred_inv to df_all
-            new_row_df = pd.DataFrame([y_pred_inv], columns=df_all.columns)
+            new_row_df["longtime_mean"] = y_pred_inv[0]
 
             # Append the new row DataFrame to the existing DataFrame
             df_all = pd.concat([df_all, new_row_df], ignore_index=True)            

@@ -71,7 +71,6 @@ class Controller:
         # self.tmp_water_flow = settings['tmp_water_flow']
 
         self.tmp_min = 5
-        self.consumption_tmp_min = 40
 
         self.start_date = datetime.now()
 
@@ -194,14 +193,11 @@ class Controller:
         #             self.boiler.turn_on()
         #     return
 
-        print("getting forecast")
         consumption_forecast = (
             self.forecast.get_forecast_next_steps()
         )  # step has 30 minutes, so 24 steps is 12 hours
         # if the boiler is needed to heat up before the next predicted consumption
-        print("checking if boiler is needed to heat")
         is_needed_to_heat, minutes_needed_to_heat = self.boiler.is_needed_to_heat(tmp_act, consumption_forecast)
-        print("need to heat: {}".format(is_needed_to_heat))
         if is_needed_to_heat:
             print(f"need to heat for {minutes_needed_to_heat} minutes, turning on and sleeping")
             self.boiler.turn_on()
@@ -343,12 +339,7 @@ if __name__ == "__main__":
     while 1:
         try:
             controller.control()
-            # c.toggle_shelly_relay('on', headers, base_url)
-
-            # time.sleep(60)
-            # c.toggle_shelly_relay('off', headers, base_url)
-
-            time.sleep(60)
+            time.sleep(60*5)
         except Exception as e:
             print(f"Error: {e}")
             time.sleep(60)
