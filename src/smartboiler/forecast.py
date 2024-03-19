@@ -154,8 +154,8 @@ class Forecast:
         model = Sequential()
         model.add(tf.keras.Input(shape=(None, self.df_train_norm.shape[1])))
         model.add(tf.keras.layers.Conv1D(filters=6, kernel_size=5, activation="relu"))
-        model.add(LSTM(6, return_sequences=True, activation="relu"))
-        model.add(LSTM(6, return_sequences=False, activation="relu"))
+        model.add(LSTM(50, return_sequences=True, activation="relu"))
+        model.add(LSTM(50, return_sequences=False, activation="relu"))
         model.add(Dense(1))
 
         self.model = model
