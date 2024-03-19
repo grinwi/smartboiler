@@ -24,7 +24,7 @@ class Forecast:
     def __init__(
         self, dataHandler: DataHandler, start_of_data: datetime, model_path=None
     ):
-        self.batch_size = 3
+        self.batch_size = 128
         self.lookback = 5
         self.delay = 1
         self.predicted_column = "longtime_mean"
