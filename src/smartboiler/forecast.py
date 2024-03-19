@@ -193,10 +193,15 @@ class Forecast:
 
     def get_forecast_next_steps(
         self,
-        left_time_interval=datetime.now() - timedelta(days=2),
-        right_time_interval=datetime.now(),
+        left_time_interval=None,
+        right_time_interval=None,
         predicted_column="longtime_mean",
     ) -> pd.DataFrame:
+        if left_time_interval is None:
+            left_time_interval = datetime.now() - timedelta(days=2)
+        if right_time_interval is None:
+            right_time_interval = datetime.now()
+
 
         df_all = self.dataHandler.get_data_for_prediction(
             left_time_interval=left_time_interval,
