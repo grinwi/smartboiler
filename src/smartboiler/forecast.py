@@ -212,7 +212,7 @@ class Forecast:
         forecast_future = pd.DataFrame()
         
 
-        current_forecast_begin_date = right_time_interval
+        current_forecast_begin_date = right_time_interval + timedelta(hours=0.5)
         # prediction for next 6 hours
         for i in range(0, 12):
             df_all = df_all.reset_index(drop=True)
