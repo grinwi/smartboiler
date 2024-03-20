@@ -213,29 +213,9 @@ class Forecast:
         
 
         current_forecast_begin_date = right_time_interval + timedelta(hours=0.5)
+
         # prediction for next 6 hours
         for i in range(0, 12):
-            df_all = df_all.reset_index(drop=True)
-
-            df_predict_norm = df_all.copy()
-            df_predict_norm[df_all.columns] = self.scaler.transform(df_all)
-            # create predict df with values
-
-            predict_gen = self.generator(
-                dataframe=df_predict_norm,
-                target_name=self.predicted_column,
-                lookback=self.lookback,
-                delay=self.delay,
-                min_index=0,
-                max_index=None,
-                step=1,
-                shuffle=False,
-                batch_size=df_predict_norm.shape[0],
-            )
-
-            (X, y_truth) = next(predict_gen)
-            y_pred = self.model.predict(X, verbose=0)
-            # create new row with columns longtime_mean, weekday_cos, weekday_sin, hour_cos, hour_sin, minute_cos, minute_sin accorting to time_now
             new_row_df = pd.DataFrame(
                 columns=df_all.columns,
                 data=[
@@ -251,6 +231,30 @@ class Forecast:
                 ],
             )
             
+            df_all = pd.concat([df_all, new_row_df], ignore_index=True)
+            df_all = df_all.reset_index(drop=True)
+            
+            df_predict_norm = df_all.copy()
+            
+            
+            df_predict_norm[df_all.columns] = self.scaler.transform(df_all)
+            # create predict df with values
+            predict_gen = self.generator(
+                dataframe=df_predict_norm,
+                target_name=self.predicted_column,
+                lookback=self.lookback,
+                delay=self.delay,
+                min_index=0,
+                max_index=None,
+                step=1,
+                shuffle=False,
+                batch_size=df_predict_norm.shape[0],
+            )
+
+            (X, y_truth) = next(predict_gen)
+            y_pred = self.model.predict(X, verbose=0)
+
+            
             # np.expand_dims(y_truth,axis=1).shape
             y_pred_inv = np.concatenate(
                 (y_pred, np.zeros((y_pred.shape[0], self.num_of_features))), axis=1
@@ -261,16 +265,14 @@ class Forecast:
             y_pred_inv = y_pred_inv[-1, :]
 
             # append y_pred_inv to df_all
-            new_row_df["longtime_mean"] = y_pred_inv[0]
-
-            # Append the new row DataFrame to the existing DataFrame
-            df_all = pd.concat([df_all, new_row_df], ignore_index=True)            
+            df_all.iloc[-1]['longtime_mean'] = y_pred_inv[0]
+        
             
             # drop first row
             df_all = df_all[1:]
             
             forecast_future = pd.concat(
-                [forecast_future, new_row_df['longtime_mean']], axis=0
+                [forecast_future, df_all.iloc[-1]['longtime_mean']], axis=0
             )
             forecast_future = forecast_future.reset_index(drop=True)
 
