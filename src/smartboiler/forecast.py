@@ -33,7 +33,12 @@ class Forecast:
         self.model_path = model_path
         self.start_of_data = start_of_data
 
-    def train_model(self, begin_of_training=None, end_of_training=datetime.now(), df_training_data=None):
+    def train_model(
+        self,
+        begin_of_training=None,
+        end_of_training=datetime.now(),
+        df_training_data=None,
+    ):
         if df_training_data is None:
             if begin_of_training is None:
                 begin_of_training = self.start_of_data
@@ -43,12 +48,14 @@ class Forecast:
                 left_time_interval=begin_of_training,
                 right_time_interval=end_of_training,
                 predicted_column=self.predicted_column,
-                dropna=False
+                dropna=False,
             )
-            
+
         self.num_of_features = len(df_training_data.columns) - 1
         self.df_train_norm = df_training_data.copy()
-        self.df_train_norm[df_training_data.columns] = self.scaler.fit_transform(df_training_data)
+        self.df_train_norm[df_training_data.columns] = self.scaler.fit_transform(
+            df_training_data
+        )
 
         self.train_gen = self.generator(
             dataframe=self.df_train_norm,
@@ -82,8 +89,10 @@ class Forecast:
         self.train_steps = int(
             (self.df_train_norm.shape[0] * 0.9 - self.lookback) // self.batch_size
         )
+
     def save_model(self):
         self.model.save(self.model_path)
+
     def load_model(
         self,
         left_time_interval=datetime.now() - timedelta(days=2),
@@ -201,7 +210,7 @@ class Forecast:
             left_time_interval = datetime.now() - timedelta(days=2)
         if right_time_interval is None:
             right_time_interval = datetime.now()
-        
+
         df_all = self.dataHandler.get_data_for_prediction(
             left_time_interval=left_time_interval,
             right_time_interval=right_time_interval,
@@ -210,7 +219,6 @@ class Forecast:
         )
 
         forecast_future = pd.DataFrame()
-        
 
         current_forecast_begin_date = right_time_interval + timedelta(hours=0.5)
 
@@ -230,13 +238,12 @@ class Forecast:
                     ]
                 ],
             )
-            
+
             df_all = pd.concat([df_all, new_row_df], ignore_index=True)
             df_all = df_all.reset_index(drop=True)
-            
+
             df_predict_norm = df_all.copy()
-            
-            
+
             df_predict_norm[df_all.columns] = self.scaler.transform(df_all)
             # create predict df with values
             predict_gen = self.generator(
@@ -254,32 +261,33 @@ class Forecast:
             (X, y_truth) = next(predict_gen)
             y_pred = self.model.predict(X, verbose=0)
 
-            
             # np.expand_dims(y_truth,axis=1).shape
             y_pred_inv = np.concatenate(
                 (y_pred, np.zeros((y_pred.shape[0], self.num_of_features))), axis=1
             )
             y_pred_inv = self.scaler.inverse_transform(y_pred_inv)
-            
+
             # get last predicted value
             y_pred_inv = y_pred_inv[-1, :]
 
             # append y_pred_inv to df_all
-            df_all.iloc[-1]['longtime_mean'] = y_pred_inv[0]
-        
-            
+            df_all.iloc[-1]["longtime_mean"] = y_pred_inv[0]
+
             # drop first row
             df_all = df_all[1:]
-            
+
             forecast_future = pd.concat(
-                [forecast_future, df_all.iloc[-1]['longtime_mean']], axis=0
+                forecast_future,
+                df_all.iloc[[-1], df_all.columns.get_loc("longtime_mean")],
             )
             forecast_future = forecast_future.reset_index(drop=True)
 
             current_forecast_begin_date += timedelta(hours=0.5)
 
         # create a dataframe with forecast and datetime as index
-        self.dataHandler.write_forecast_to_influxdb(forecast_future, 'prediction_longtime_mean')
+        self.dataHandler.write_forecast_to_influxdb(
+            forecast_future, "prediction_longtime_mean"
+        )
         return forecast_future
 
 
