@@ -224,23 +224,7 @@ class Forecast:
 
         # prediction for next 6 hours
         for i in range(0, 12):
-            new_row_df = pd.DataFrame(
-                columns=df_all.columns,
-                data=[
-                    [
-                        0,
-                        np.sin(2 * np.pi * current_forecast_begin_date.weekday() / 7),
-                        np.cos(2 * np.pi * current_forecast_begin_date.weekday() / 7),
-                        np.sin(2 * np.pi * current_forecast_begin_date.hour / 24),
-                        np.cos(2 * np.pi * current_forecast_begin_date.hour / 24),
-                        np.sin(2 * np.pi * current_forecast_begin_date.minute / 60),
-                        np.cos(2 * np.pi * current_forecast_begin_date.minute / 60),
-                    ]
-                ],
-            )
 
-            df_all = pd.concat([df_all, new_row_df], ignore_index=True)
-            df_all = df_all.reset_index(drop=True)
 
             df_predict_norm = df_all.copy()
 
@@ -269,6 +253,24 @@ class Forecast:
 
             # get last predicted value
             y_pred_inv = y_pred_inv[-1, :]
+            
+            new_row_df = pd.DataFrame(
+                columns=df_all.columns,
+                data=[
+                    [
+                        0,
+                        np.sin(2 * np.pi * current_forecast_begin_date.weekday() / 7),
+                        np.cos(2 * np.pi * current_forecast_begin_date.weekday() / 7),
+                        np.sin(2 * np.pi * current_forecast_begin_date.hour / 24),
+                        np.cos(2 * np.pi * current_forecast_begin_date.hour / 24),
+                        np.sin(2 * np.pi * current_forecast_begin_date.minute / 60),
+                        np.cos(2 * np.pi * current_forecast_begin_date.minute / 60),
+                    ]
+                ],
+            )
+
+            df_all = pd.concat([df_all, new_row_df], ignore_index=True)
+            df_all = df_all.reset_index(drop=True)
 
             # append y_pred_inv to df_all
             df_all.iloc[-1]["longtime_mean"] = y_pred_inv[0]
