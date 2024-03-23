@@ -193,7 +193,7 @@ class DataHandler:
                 "outside_temperature_mean": "mean",
                 "outside_humidity_mean": "mean",
                 "outside_wind_speed_mean": "mean",
-                "device_presence_distinct_count": "mean",
+                # "device_presence_distinct_count": "mean",
             }
         )
         df["consumed_heat_kWh"] = df["consumed_heat_kJ"] / 3600
@@ -312,7 +312,7 @@ class DataHandler:
         df["temperature"] = df[f"outside_temperature_mean"].fillna(method="ffill")
         df["humidity"] = df[f"outside_humidity_mean"].fillna(method="ffill")
         df["wind_speed"] = df[f"outside_wind_speed_mean"].fillna(method="ffill")
-        df["count"] = df["device_presence_distinct_count"].fillna(method="ffill")
+        # df["count"] = df["device_presence_distinct_count"].fillna(method="ffill")
 
         # add to column 'consumed_heat_kWh' 1,25/6 to each row
         df["consumed_heat_kWh"] += 1.25 / (24 // freq)
