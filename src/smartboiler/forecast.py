@@ -199,7 +199,24 @@ class Forecast:
             verbose=2,
         )
         print("End training")
-
+    def add_empty_row(self, df, date_time):
+        new_row_df = pd.DataFrame(
+            columns=df.columns,
+            data=[
+                [
+                    0,
+                    np.sin(2 * np.pi * date_time.weekday() / 7),
+                    np.cos(2 * np.pi * date_time.weekday() / 7),
+                    np.sin(2 * np.pi * date_time.hour / 24),
+                    np.cos(2 * np.pi * date_time.hour / 24),
+                    np.sin(2 * np.pi * date_time.minute / 60),
+                    np.cos(2 * np.pi * date_time.minute / 60),
+                ]
+            ],
+        )
+        df = pd.concat([df, new_row_df], ignore_index=True)
+        df = df.reset_index(drop=True)
+        return df
     def get_forecast_next_steps(
         self,
         left_time_interval=None,
@@ -221,29 +238,19 @@ class Forecast:
         forecast_future = pd.DataFrame()
 
         current_forecast_begin_date = right_time_interval + timedelta(hours=0.5)
+        df_all = self.add_empty_row(df_all, current_forecast_begin_date)
+        
 
+        current_forecast_begin_date = right_time_interval + timedelta(hours=0.5)
         # prediction for next 6 hours
         for i in range(0, 12):
 
 
+            df_all = self.add_empty_row(df_all, current_forecast_begin_date)
+            current_forecast_begin_date += timedelta(hours=0.5)
+            
+            
             df_predict_norm = df_all.copy()
-            new_row_df = pd.DataFrame(
-                columns=df_all.columns,
-                data=[
-                    [
-                        0,
-                        np.sin(2 * np.pi * current_forecast_begin_date.weekday() / 7),
-                        np.cos(2 * np.pi * current_forecast_begin_date.weekday() / 7),
-                        np.sin(2 * np.pi * current_forecast_begin_date.hour / 24),
-                        np.cos(2 * np.pi * current_forecast_begin_date.hour / 24),
-                        np.sin(2 * np.pi * current_forecast_begin_date.minute / 60),
-                        np.cos(2 * np.pi * current_forecast_begin_date.minute / 60),
-                    ]
-                ],
-            )
-
-            df_all = pd.concat([df_all, new_row_df], ignore_index=True)
-            df_all = df_all.reset_index(drop=True)
             df_predict_norm[df_all.columns] = self.scaler.transform(df_all)
             # create predict df with values
             predict_gen = self.generator(
@@ -257,7 +264,7 @@ class Forecast:
                 shuffle=False,
                 batch_size=df_predict_norm.shape[0],
             )
-
+ 
             (X, y_truth) = next(predict_gen)
             y_pred = self.model.predict(X, verbose=0)
 
@@ -269,11 +276,10 @@ class Forecast:
 
             # get last predicted value
             y_pred_inv = y_pred_inv[-1, :]
-            
- 
 
-            # append y_pred_inv to df_all
-            df_all.iloc[-1]["longtime_mean"] = y_pred_inv[0]
+
+            
+            df_all.iloc[-2]["longtime_mean"] = y_pred_inv[0]
 
             # drop first row
             df_all = df_all[1:]
@@ -281,13 +287,12 @@ class Forecast:
             forecast_future = pd.concat(
                 [
                     forecast_future,
-                    df_all.iloc[[-1], df_all.columns.get_loc("longtime_mean")],
+                    df_all.iloc[[-2], df_all.columns.get_loc("longtime_mean")],
                 ],
                 axis=0,
             )
             forecast_future = forecast_future.reset_index(drop=True)
 
-            current_forecast_begin_date += timedelta(hours=0.5)
 
         # create a dataframe with forecast and datetime as index
         self.dataHandler.write_forecast_to_influxdb(
