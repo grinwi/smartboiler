@@ -6,6 +6,8 @@ from datetime import timedelta, datetime
 from sklearn.preprocessing import RobustScaler
 from tensorflow.keras.models import Sequential
 import tensorflow as tf
+from keras.optimizers import SGD
+
 
 from keras.layers import LSTM
 from keras.layers import Dropout
@@ -24,8 +26,8 @@ class Forecast:
     def __init__(
         self, dataHandler: DataHandler, start_of_data: datetime, model_path=None
     ):
-        self.batch_size = 3
-        self.lookback = 6
+        self.batch_size = 6
+        self.lookback = 12
         self.delay = 1
         self.predicted_column = "longtime_mean"
         self.dataHandler = dataHandler
@@ -163,8 +165,8 @@ class Forecast:
         model = Sequential()
         model.add(tf.keras.Input(shape=(None, self.df_train_norm.shape[1])))
         model.add(tf.keras.layers.Conv1D(filters=6, kernel_size=5, activation="relu"))
-        model.add(LSTM(50, return_sequences=True, activation="relu"))
-        model.add(LSTM(50, return_sequences=False, activation="relu"))
+        model.add(LSTM(6, return_sequences=True, activation="relu"))
+        model.add(LSTM(6, return_sequences=False, activation="relu"))
         model.add(Dense(1))
 
         self.model = model
@@ -184,8 +186,10 @@ class Forecast:
                 filepath=self.model_path, monitor="val_loss", save_best_only=True
             ),
         ]
+        opt = SGD(lr=0.01, momentum=0.9)
 
-        self.model.compile(loss="mae", optimizer="adam", metrics=[self.r2_keras])
+        # self.model.compile(loss="mae", optimizer="adam", metrics=[self.r2_keras])
+        self.model.compile(loss='mean_squared_logarithmic_error', optimizer=opt, metrics=['mse'])
         # history = model.fit(train_gen, epochs=50, batch_size=72, validation_data=valid_gen, verbose=2, shuffle=False, use_multiprocessing=True)
         print("Start training")
         history = self.model.fit(
