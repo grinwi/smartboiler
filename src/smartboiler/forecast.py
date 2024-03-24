@@ -6,7 +6,7 @@ from datetime import timedelta, datetime
 from sklearn.preprocessing import RobustScaler
 from tensorflow.keras.models import Sequential
 import tensorflow as tf
-from keras.optimizers import SGD
+import tf.keras.optimizers.legacy.SGD
 
 
 from keras.layers import LSTM
@@ -19,15 +19,16 @@ import keras.backend as K
 import numpy as np
 import pandas as pd
 from scipy import stats
-from smartboiler.data_handler import DataHandler
+# from smartboiler.data_handler import DataHandler
+from data_handler import DataHandler
 
 
 class Forecast:
     def __init__(
         self, dataHandler: DataHandler, start_of_data: datetime, model_path=None
     ):
-        self.batch_size = 6
-        self.lookback = 12
+        self.batch_size = 64
+        self.lookback = 24
         self.delay = 1
         self.predicted_column = "longtime_mean"
         self.dataHandler = dataHandler
@@ -160,14 +161,42 @@ class Forecast:
         SS_tot = K.sum(K.square(y_true - K.mean(y_true)))
         return 1 - SS_res / (SS_tot + K.epsilon())
 
+    def custom_loss(self, y_true, y_pred):
+        # Mask for nonzero values
+        mask_nonzero = tf.cast(tf.not_equal(y_true, 0), tf.float32)
+        
+        # Mask for zero values
+        mask_zero = tf.cast(tf.equal(y_true, 0), tf.float32)
+        
+        # Calculate squared error for nonzero values
+        nonzero_loss = tf.square(y_true - y_pred) *  mask_nonzero
+        
+        # Calculate squared error for zero values with a smaller weight
+        zero_loss = tf.square(y_true - y_pred) * mask_zero * 2
+        
+        # Combine the losses
+        total_loss = nonzero_loss + zero_loss
+        
+        # Compute mean over all elements
+        return tf.reduce_mean(total_loss)
+
     def build_model(self):
 
+        # model = Sequential()
+        # model.add(tf.keras.Input(shape=(None, self.df_train_norm.shape[1])))
+        # # model.add(tf.keras.layers.Conv1D(filters=6, kernel_size=5, activation="relu"))
+        # model.add(LSTM(50, return_sequences=True, activation="relu"))
+        # model.add(LSTM(50, return_sequences=False, activation="relu"))
+        # model.add(Dropout(0.4))
+        # model.add(Dense(1))
+        opt = SGD(lr=0.01, momentum=0.9)
+
         model = Sequential()
-        model.add(tf.keras.Input(shape=(None, self.df_train_norm.shape[1])))
-        model.add(tf.keras.layers.Conv1D(filters=6, kernel_size=5, activation="relu"))
-        model.add(LSTM(6, return_sequences=True, activation="relu"))
-        model.add(LSTM(6, return_sequences=False, activation="relu"))
+        model.add(LSTM(100, input_shape=(None, self.df_train_norm.shape[1])))
+        model.add(Dropout(0.3))
         model.add(Dense(1))
+        model.compile(loss=self.custom_loss, optimizer=opt)
+
 
         self.model = model
         return model
@@ -186,10 +215,7 @@ class Forecast:
                 filepath=self.model_path, monitor="val_loss", save_best_only=True
             ),
         ]
-        opt = SGD(lr=0.01, momentum=0.9)
 
-        # self.model.compile(loss="mae", optimizer="adam", metrics=[self.r2_keras])
-        self.model.compile(loss='mean_squared_logarithmic_error', optimizer=opt, metrics=['mse'])
         # history = model.fit(train_gen, epochs=50, batch_size=72, validation_data=valid_gen, verbose=2, shuffle=False, use_multiprocessing=True)
         print("Start training")
         history = self.model.fit(

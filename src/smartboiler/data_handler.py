@@ -184,7 +184,7 @@ class DataHandler:
             * 4.186
             * 0.6
         )
-        df = df.groupby(pd.Grouper(freq="30T"))
+        df = df.groupby(pd.Grouper(freq="15T"))
         df = df.agg(
             {
                 "consumed_heat_kJ": "sum",
@@ -295,7 +295,7 @@ class DataHandler:
     ):
         # read pickles from data/pickles
 
-        freq = 0.5
+        freq = 1/6
         freq_hour = f"{freq}H"
 
         df.index = pd.to_datetime(df.index)
@@ -315,7 +315,7 @@ class DataHandler:
         # df["count"] = df["device_presence_distinct_count"].fillna(method="ffill")
 
         # add to column 'consumed_heat_kWh' 1,25/6 to each row
-        df["consumed_heat_kWh"] += 1.25 / (24 // freq)
+        # df["consumed_heat_kWh"] += 1.25 / (24 // freq)
 
         window = 6
 
