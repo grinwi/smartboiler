@@ -161,7 +161,7 @@ class Forecast:
     def build_model(self):
 
         model = Sequential()
-        model.add(tf.keras.Input(shape=(None, self.df_train_norm.shape[1])))
+        model.add(tf.keras.Input(shape=(None, self.df_train_norm.shape[1]- 1)))
         model.add(tf.keras.layers.Conv1D(filters=6, kernel_size=5, activation="relu"))
         model.add(LSTM(50, return_sequences=True, activation="relu"))
         model.add(LSTM(50, return_sequences=False, activation="relu"))
@@ -228,6 +228,11 @@ class Forecast:
         data = dataframe.values
         data = data.astype(np.float32)
         
+        data_without_targets = dataframe.copy()
+        data_without_targets = data_without_targets.drop(columns='longtime_mean')
+        data_without_targets = data_without_targets.values
+        data_without_targets = data_without_targets.astype(np.float32)
+        
         # Get the column indices for the target names
         target_indices = [dataframe.columns.get_loc(target_name) for target_name in target_names]
         
@@ -253,7 +258,7 @@ class Forecast:
             
             for j, row in enumerate(rows):
                 indices = range(rows[j] - lookback, rows[j], step)
-                samples[j] = data[indices]
+                samples[j] = data_without_targets[indices]
                 
                 # Assign values for each target column
                 for k, target_indx in enumerate(target_indices):
