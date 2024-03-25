@@ -245,7 +245,7 @@ class DataHandlerTest:
         # all value in speed larger than 200 set to 0
         df.loc[df["speed"] > 200, "speed"] = 0
 
-        df = df.groupby(pd.Grouper(freq="30T"))
+        df = df.groupby(pd.Grouper(freq="60T"))
         df = df.agg(
             {
                 "consumed_heat_kJ": "sum",
@@ -360,7 +360,7 @@ class DataHandlerTest:
     ):
         # read pickles from data/pickles
 
-        freq = 0.5
+        freq = 1
         freq_hour = f"{freq}H"
 
         df.index = pd.to_datetime(df.index)
@@ -372,6 +372,9 @@ class DataHandlerTest:
         # delete rows with weekday nan
         df = df.dropna(subset=["weekday"])
         df["consumed_heat_kWh"] = df["consumed_heat_kWh"].fillna(0)
+        
+        # fill negative values with 0
+        df["consumed_heat_kWh"] = df["consumed_heat_kWh"].clip(lower=0)
 
         # fill na in df based on column
         df["temperature"] = df[f"outside_temperature_mean"].fillna(method="ffill")
@@ -389,14 +392,16 @@ class DataHandlerTest:
 
         # add to column 'consumed_heat_kWh' 1,25/6 to each row
         df["consumed_heat_kWh"] += 1.25 / (24 // freq)
-
+        # drop randomly 60 percent of rows where consumed_heat_kWh is 0
+        df = df.drop(df[df["consumed_heat_kWh"] == 0].sample(frac=0.3).index)
         window = 6
 
-        df["longtime_mean"] = (
-            df["consumed_heat_kWh"]
-            .rolling(window=window, min_periods=1, center=True)
-            .mean()
-        )
+        # df["longtime_mean"] = (
+        #     df["consumed_heat_kWh"]
+        #     .rolling(window=window, min_periods=1, center=True)
+        #     .mean()
+        # )
+        df['longtime_mean'] = df['consumed_heat_kWh']
         df["longtime_std"] = (
             df["consumed_heat_kWh"].rolling(window=window, min_periods=1).std()
         )
@@ -448,8 +453,8 @@ class DataHandlerTest:
                 "weekday_cos",
                 "hour_sin",
                 "hour_cos",
-                "minute_sin",
-                "minute_cos",
+                # "minute_sin",
+                # "minute_cos",
             ]
         ]
         # df = df[
