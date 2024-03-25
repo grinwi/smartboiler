@@ -3,14 +3,14 @@ from pathlib import Path
 
 print("Running" if __name__ == "__main__" else "Importing", Path(__file__).resolve())
 from datetime import timedelta, datetime
-from sklearn.preprocessing import RobustScaler
+from sklearn.preprocessing import MinMaxScaler, RobustScaler
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.callbacks import ReduceLROnPlateau
 
 import tensorflow as tf
 
-# import sgd
-
+#import sgd
+from keras.optimizers import SGD
 
 from keras.layers import LSTM
 from keras.layers import Dropout
@@ -32,7 +32,7 @@ class Forecast:
         self, dataHandler: DataHandler, start_of_data: datetime, model_path=None
     ):
         self.batch_size = 128
-        self.lookback = 72
+        self.lookback = 64
         self.delay = 1
         self.predicted_column = "longtime_mean"
         self.dataHandler = dataHandler
@@ -132,7 +132,10 @@ class Forecast:
         batch_size=128,
         step=6,
     ):
-
+        data_without_target = dataframe.copy()
+        data_without_target = data_without_target.drop(columns=[target_name]).values
+        data_without_target = data_without_target.astype(np.float32)
+        
         data = dataframe.values
         data = data.astype(np.float32)
         target_indx = dataframe.columns.get_loc(target_name)
@@ -151,11 +154,13 @@ class Forecast:
                 rows = np.arange(i, min(i + batch_size, max_index))
                 i += len(rows)
 
-            samples = np.zeros((len(rows), lookback // step, data.shape[-1]))
+            samples = np.zeros((len(rows), lookback // step, data_without_target.shape[-1]))
             targets = np.zeros((len(rows),))
+            
             for j, row in enumerate(rows):
                 indices = range(rows[j] - lookback, rows[j], step)
-                samples[j] = data[indices]
+                # samples without column with target
+                samples[j] = data_without_target[indices]
                 targets[j] = data[rows[j] + delay][target_indx]
             yield samples, targets
 
@@ -195,18 +200,18 @@ class Forecast:
         # model.add(LSTM(50, return_sequences=False, activation="relu"))
         # model.add(Dropout(0.4))
         # model.add(Dense(1))
-        # opt = SGD(lr=0.01, momentum=0.9)
+        opt = SGD(lr=0.01, momentum=0.9)
         model = Sequential()
         model.add(
             LSTM(
                 100,
-                input_shape=(None, self.df_train_norm.shape[1]),
+                input_shape=(None, self.df_train_norm.shape[1]-1),
                 # return_sequences=True,
             )
         )
         model.add(Dropout(0.3))
         model.add(Dense(1))
-        model.compile(loss=self.custom_loss, metrics=["mae"], optimizer="adam")
+        model.compile(loss=self.custom_loss, metrics=["mae"], optimizer=opt)
 
         self.model = model
         return model
@@ -216,14 +221,14 @@ class Forecast:
             monitor="val_loss", factor=0.2, patience=5, min_lr=0.0001
         )
         callbacks = [
-            # EarlyStopping(
-            #     monitor="loss",
-            #     min_delta=0,
-            #     patience=10,
-            #     verbose=2,
-            #     mode="auto",
-            #     restore_best_weights=True,
-            # ),
+            EarlyStopping(
+                monitor="loss",
+                min_delta=0,
+                patience=10,
+                verbose=2,
+                mode="auto",
+                restore_best_weights=True,
+            ),
             ModelCheckpoint(
                 filepath=self.model_path, monitor="val_loss", save_best_only=True
             ),
