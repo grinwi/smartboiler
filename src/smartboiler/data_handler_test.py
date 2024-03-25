@@ -360,7 +360,7 @@ class DataHandlerTest:
     ):
         # read pickles from data/pickles
 
-        freq = 1
+        freq = 0.5
         freq_hour = f"{freq}H"
 
         df.index = pd.to_datetime(df.index)
@@ -391,17 +391,17 @@ class DataHandlerTest:
         
 
         # add to column 'consumed_heat_kWh' 1,25/6 to each row
+        # df = df.drop(df[df["consumed_heat_kWh"] == 0].sample(frac=0.7).index)
         df["consumed_heat_kWh"] += 1.25 / (24 // freq)
         # drop randomly 60 percent of rows where consumed_heat_kWh is 0
-        df = df.drop(df[df["consumed_heat_kWh"] == 0].sample(frac=0.2).index)
         window = 3
 
-        # df["longtime_mean"] = (
-        #     df["consumed_heat_kWh"]
-        #     .rolling(window=window, min_periods=1, center=True)
-        #     .mean()
-        # )
-        df['longtime_mean'] = df['consumed_heat_kWh']
+        df["longtime_mean"] = (
+            df["consumed_heat_kWh"]
+            .rolling(window=window, min_periods=1, center=True)
+            .mean()
+        )
+        # df['longtime_mean'] = df['consumed_heat_kWh']
         df["longtime_std"] = (
             df["consumed_heat_kWh"].rolling(window=window, min_periods=1).std()
         )
@@ -438,12 +438,14 @@ class DataHandlerTest:
         df = df[
             [
                 "longtime_mean",
-                "distance_from_home",
-                # "speed",
-                "speed_towards_home",
-                "count",
-                "heading_to_home_sin",
-                "heading_to_home_cos",
+                # "longtime_min",
+                # "longtime_max",
+                # "distance_from_home",
+                # # "speed",
+                # "speed_towards_home",
+                # "count",
+                # "heading_to_home_sin",
+                # "heading_to_home_cos",
                 # "mean_latitude",
                 # "mean_longitude",
                 # "temperature",
@@ -453,8 +455,8 @@ class DataHandlerTest:
                 "weekday_cos",
                 "hour_sin",
                 "hour_cos",
-                # "minute_sin",
-                # "minute_cos",
+                "minute_sin",
+                "minute_cos",
             ]
         ]
         # df = df[

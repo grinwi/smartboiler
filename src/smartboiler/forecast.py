@@ -6,7 +6,7 @@ from datetime import timedelta, datetime
 from sklearn.preprocessing import RobustScaler
 from tensorflow.keras.models import Sequential
 import tensorflow as tf
-
+from tensorflow.keras.optimizers import SGD
 from keras.layers import LSTM
 from keras.layers import Dropout
 from keras.models import Model
@@ -25,7 +25,7 @@ class Forecast:
         self, dataHandler: DataHandlerTest, start_of_data: datetime, model_path=None, predicted_columns=None
     ):
         self.batch_size = 16
-        self.lookback = 24
+        self.lookback = 32
         self.delay = 1
         self.predicted_columns = predicted_columns
         self.dataHandler = dataHandler
@@ -165,8 +165,17 @@ class Forecast:
         # model.add(tf.keras.layers.Conv1D(filters=6, kernel_size=5, activation="relu"))
         # model.add(LSTM(50, return_sequences=True, activation="relu"))
         # model.add(LSTM(50, return_sequences=False, activation="relu"))
-        model.add(LSTM(100,))
-        model.add(Dense(6))
+        model = Sequential()
+        model.add(
+            LSTM(
+                100,
+                input_shape=(None, self.df_train_norm.shape[1]-1),
+                # return_sequences=True,
+            )
+        )
+        model.add(Dropout(0.2))
+        model.add(Dense(1))
+        model.compile(loss='', optimizer='adam', metrics=[self.r2_keras])
 
         self.model = model
         return model
@@ -231,7 +240,6 @@ class Forecast:
         
         data_without_targets = dataframe.copy()
         data_without_targets = data_without_targets.drop(columns='longtime_mean')
-        print(data_without_targets.shape)
         data_without_targets = data_without_targets.values
         data_without_targets = data_without_targets.astype(np.float32)
         
