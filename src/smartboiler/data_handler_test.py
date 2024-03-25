@@ -393,8 +393,8 @@ class DataHandlerTest:
         # add to column 'consumed_heat_kWh' 1,25/6 to each row
         df["consumed_heat_kWh"] += 1.25 / (24 // freq)
         # drop randomly 60 percent of rows where consumed_heat_kWh is 0
-        # df = df.drop(df[df["consumed_heat_kWh"] == 0].sample(frac=0.3).index)
-        window = 6
+        df = df.drop(df[df["consumed_heat_kWh"] == 0].sample(frac=0.2).index)
+        window = 3
 
         # df["longtime_mean"] = (
         #     df["consumed_heat_kWh"]

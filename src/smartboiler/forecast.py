@@ -22,12 +22,12 @@ from data_handler_test import DataHandlerTest
 
 class Forecast:
     def __init__(
-        self, dataHandler: DataHandlerTest, start_of_data: datetime, model_path=None
+        self, dataHandler: DataHandlerTest, start_of_data: datetime, model_path=None, predicted_columns=None
     ):
         self.batch_size = 16
         self.lookback = 24
         self.delay = 1
-        self.predicted_columns = ["longtime_mean"]
+        self.predicted_columns = predicted_columns
         self.dataHandler = dataHandler
         self.scaler = RobustScaler()
         self.model_path = model_path
@@ -59,7 +59,7 @@ class Forecast:
 
         self.train_gen = self.mul_generator(
             dataframe=self.df_train_norm,
-            target_name=self.predicted_columns,
+            target_names=self.predicted_columns,
             lookback=self.lookback,
             delay=self.delay,
             min_index=0,
@@ -71,7 +71,7 @@ class Forecast:
 
         self.valid_gen = self.mul_generator(
             dataframe=self.df_train_norm,
-            target_name=self.predicted_columns,
+            target_names=self.predicted_columns,
             lookback=self.lookback,
             delay=self.delay,
             min_index=int(df_training_data.shape[0] * 0.8),
@@ -161,11 +161,12 @@ class Forecast:
     def build_model(self):
 
         model = Sequential()
-        model.add(tf.keras.Input(shape=(None, self.df_train_norm.shape[1]- 1)))
-        model.add(tf.keras.layers.Conv1D(filters=6, kernel_size=5, activation="relu"))
-        model.add(LSTM(50, return_sequences=True, activation="relu"))
-        model.add(LSTM(50, return_sequences=False, activation="relu"))
-        model.add(Dense(1))
+        # model.add(tf.keras.Input(shape=(None, self.df_train_norm.shape[1]- 1)))
+        # model.add(tf.keras.layers.Conv1D(filters=6, kernel_size=5, activation="relu"))
+        # model.add(LSTM(50, return_sequences=True, activation="relu"))
+        # model.add(LSTM(50, return_sequences=False, activation="relu"))
+        model.add(LSTM(100,))
+        model.add(Dense(6))
 
         self.model = model
         return model
@@ -230,6 +231,7 @@ class Forecast:
         
         data_without_targets = dataframe.copy()
         data_without_targets = data_without_targets.drop(columns='longtime_mean')
+        print(data_without_targets.shape)
         data_without_targets = data_without_targets.values
         data_without_targets = data_without_targets.astype(np.float32)
         
@@ -251,7 +253,7 @@ class Forecast:
 
             samples = np.zeros((len(rows),
                                 lookback // step,
-                                data.shape[-1]))
+                                data_without_targets.shape[-1]))
             
             # Modify targets array to accommodate multiple target columns
             targets = np.zeros((len(rows), len(target_indices)))
