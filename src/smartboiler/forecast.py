@@ -5,8 +5,11 @@ print("Running" if __name__ == "__main__" else "Importing", Path(__file__).resol
 from datetime import timedelta, datetime
 from sklearn.preprocessing import RobustScaler
 from tensorflow.keras.models import Sequential
+from tensorflow.keras.callbacks import ReduceLROnPlateau
+
 import tensorflow as tf
-import tf.keras.optimizers.legacy.SGD
+
+# import sgd
 
 
 from keras.layers import LSTM
@@ -19,6 +22,7 @@ import keras.backend as K
 import numpy as np
 import pandas as pd
 from scipy import stats
+
 # from smartboiler.data_handler import DataHandler
 from data_handler import DataHandler
 
@@ -27,8 +31,8 @@ class Forecast:
     def __init__(
         self, dataHandler: DataHandler, start_of_data: datetime, model_path=None
     ):
-        self.batch_size = 64
-        self.lookback = 24
+        self.batch_size = 128
+        self.lookback = 72
         self.delay = 1
         self.predicted_column = "longtime_mean"
         self.dataHandler = dataHandler
@@ -164,19 +168,21 @@ class Forecast:
     def custom_loss(self, y_true, y_pred):
         # Mask for nonzero values
         mask_nonzero = tf.cast(tf.not_equal(y_true, 0), tf.float32)
-        
+
         # Mask for zero values
         mask_zero = tf.cast(tf.equal(y_true, 0), tf.float32)
-        
-        # Calculate squared error for nonzero values
-        nonzero_loss = tf.square(y_true - y_pred) *  mask_nonzero
-        
-        # Calculate squared error for zero values with a smaller weight
-        zero_loss = tf.square(y_true - y_pred) * mask_zero * 2
-        
+
+        # Calculate absolute error on logarithmic scale for nonzero values
+        nonzero_loss = (
+            tf.square(y_true - y_pred) * tf.math.log1p(tf.abs(y_true)) * mask_nonzero
+        )
+
+        # Calculate absolute error on logarithmic scale for zero values
+        zero_loss = tf.abs(y_true - y_pred) * mask_zero * 2
+
         # Combine the losses
         total_loss = nonzero_loss + zero_loss
-        
+
         # Compute mean over all elements
         return tf.reduce_mean(total_loss)
 
@@ -189,31 +195,39 @@ class Forecast:
         # model.add(LSTM(50, return_sequences=False, activation="relu"))
         # model.add(Dropout(0.4))
         # model.add(Dense(1))
-        opt = SGD(lr=0.01, momentum=0.9)
-
+        # opt = SGD(lr=0.01, momentum=0.9)
         model = Sequential()
-        model.add(LSTM(100, input_shape=(None, self.df_train_norm.shape[1])))
+        model.add(
+            LSTM(
+                100,
+                input_shape=(None, self.df_train_norm.shape[1]),
+                # return_sequences=True,
+            )
+        )
         model.add(Dropout(0.3))
         model.add(Dense(1))
-        model.compile(loss=self.custom_loss, optimizer=opt)
-
+        model.compile(loss=self.custom_loss, metrics=["mae"], optimizer="adam")
 
         self.model = model
         return model
 
     def fit_model(self):
+        reduce_lr = ReduceLROnPlateau(
+            monitor="val_loss", factor=0.2, patience=5, min_lr=0.0001
+        )
         callbacks = [
-            EarlyStopping(
-                monitor="loss",
-                min_delta=0,
-                patience=10,
-                verbose=2,
-                mode="auto",
-                restore_best_weights=True,
-            ),
+            # EarlyStopping(
+            #     monitor="loss",
+            #     min_delta=0,
+            #     patience=10,
+            #     verbose=2,
+            #     mode="auto",
+            #     restore_best_weights=True,
+            # ),
             ModelCheckpoint(
                 filepath=self.model_path, monitor="val_loss", save_best_only=True
             ),
+            # reduce_lr
         ]
 
         # history = model.fit(train_gen, epochs=50, batch_size=72, validation_data=valid_gen, verbose=2, shuffle=False, use_multiprocessing=True)
@@ -221,7 +235,7 @@ class Forecast:
         history = self.model.fit(
             self.train_gen,
             steps_per_epoch=self.train_steps,
-            epochs=70,
+            epochs=100,
             shuffle=False,
             validation_data=self.valid_gen,
             validation_steps=self.val_steps,
@@ -229,6 +243,7 @@ class Forecast:
             verbose=2,
         )
         print("End training")
+
     def add_empty_row(self, df, date_time):
         new_row_df = pd.DataFrame(
             columns=df.columns,
@@ -247,6 +262,7 @@ class Forecast:
         df = pd.concat([df, new_row_df], ignore_index=True)
         df = df.reset_index(drop=True)
         return df
+
     def get_forecast_next_steps(
         self,
         left_time_interval=None,
@@ -269,17 +285,14 @@ class Forecast:
 
         current_forecast_begin_date = right_time_interval + timedelta(hours=0.5)
         df_all = self.add_empty_row(df_all, current_forecast_begin_date)
-        
 
         current_forecast_begin_date = right_time_interval + timedelta(hours=0.5)
         # prediction for next 6 hours
         for i in range(0, 12):
 
-
             df_all = self.add_empty_row(df_all, current_forecast_begin_date)
             current_forecast_begin_date += timedelta(hours=0.5)
-            
-            
+
             df_predict_norm = df_all.copy()
             df_predict_norm[df_all.columns] = self.scaler.transform(df_all)
             # create predict df with values
@@ -294,7 +307,7 @@ class Forecast:
                 shuffle=False,
                 batch_size=df_predict_norm.shape[0],
             )
- 
+
             (X, y_truth) = next(predict_gen)
             y_pred = self.model.predict(X, verbose=0)
 
@@ -307,8 +320,6 @@ class Forecast:
             # get last predicted value
             y_pred_inv = y_pred_inv[-1, :]
 
-
-            
             df_all.iloc[-2]["longtime_mean"] = y_pred_inv[0]
 
             # drop first row
@@ -322,7 +333,6 @@ class Forecast:
                 axis=0,
             )
             forecast_future = forecast_future.reset_index(drop=True)
-
 
         # create a dataframe with forecast and datetime as index
         self.dataHandler.write_forecast_to_influxdb(
