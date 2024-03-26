@@ -173,7 +173,7 @@ class Forecast:
                 # return_sequences=True,
             )
         )
-        model.add(Dropout(0.2))
+        # model.add(Dropout(0.2))
         model.add(Dense(1))
         model.compile(loss='', optimizer='adam', metrics=[self.r2_keras])
 
