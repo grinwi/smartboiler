@@ -258,6 +258,9 @@ if __name__ == "__main__":
     start_of_data_measurement = datetime(2023, 10, 1, 0, 0, 0, 0)
 
     hass_url = options["hass_url"]
+    home_longitude = options["home_longitude"]
+    home_latitude = options["home_latitude"]
+    device_tracker_entity_id = options["device_tracker_entity_id"]
     long_lived_token = options["long_lived_token"]
     influxdb_host = options["influxdb_host"]
     influxdb_port: 8086
@@ -272,6 +275,7 @@ if __name__ == "__main__":
     boiler_water_flow_entity_id = options["boiler_water_flow_entity_id"]
     boiler_water_flow_measurement = options["boiler_water_flow_measurement"]
     boiler_water_temp_entity_id = options["boiler_water_temp_entity_id"]
+    boiler_water_temp_entity_id_2 = options["boiler_water_temp_entity_id_2"]
     boiler_water_temp_measurement = options["boiler_water_temp_measurement"]
     boiler_volume = options["boiler_volume"]
     boiler_set_tmp = options["boiler_set_tmp"]
@@ -306,6 +310,10 @@ if __name__ == "__main__":
         relay_power_entity_id=boiler_socket_power_id,
         tmp_boiler_case_entity_id=boiler_case_tmp_entity_id,
         tmp_output_water_entity_id=boiler_water_temp_entity_id,
+        tmp_output_water_entity_id_2=boiler_water_temp_entity_id_2,
+        device_tracker_entity_id=device_tracker_entity_id,
+        home_longitude=home_longitude,
+        home_latitude=home_latitude,
         start_of_data=start_of_data_measurement,
     )
     boiler_switch_entity_id = "switch." + boiler_socket_id
@@ -325,11 +333,15 @@ if __name__ == "__main__":
         boiler_case_max_tmp=boiler_case_max_tmp,
         hdo=hdo,
     )
+    
+    predicted_columns = ["longtime_mean"]
     print("inicializing forecast from controller __main__   ")
     forecast = Forecast(
         dataHandler=dataHandler,
         start_of_data=start_of_data_measurement,
         model_path=model_path,
+        predicted_columns=predicted_columns,
+        
     )
     print("inicializing controller from controller __main__")
     controller = Controller(

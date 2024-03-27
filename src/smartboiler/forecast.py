@@ -8,10 +8,7 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.callbacks import ReduceLROnPlateau
 
 import tensorflow as tf
-
-#import sgd
-from keras.optimizers import SGD
-
+from tensorflow.keras.optimizers import SGD
 from keras.layers import LSTM
 from keras.layers import Dropout
 from keras.models import Model
@@ -22,19 +19,22 @@ import keras.backend as K
 import numpy as np
 import pandas as pd
 from scipy import stats
-
-# from smartboiler.data_handler import DataHandler
 from data_handler import DataHandler
 
 
 class Forecast:
     def __init__(
-        self, dataHandler: DataHandler, start_of_data: datetime, model_path=None
+        self,
+        dataHandler: DataHandler,
+        start_of_data: datetime,
+        model_path=None,
+        predicted_columns=None,
     ):
-        self.batch_size = 128
-        self.lookback = 64
+        self.batch_size = 16
+        self.lookback = 32
+
         self.delay = 1
-        self.predicted_column = "longtime_mean"
+        self.predicted_columns = predicted_columns
         self.dataHandler = dataHandler
         self.scaler = RobustScaler()
         self.model_path = model_path
@@ -43,18 +43,20 @@ class Forecast:
     def train_model(
         self,
         begin_of_training=None,
-        end_of_training=datetime.now(),
-        df_training_data=None,
+        end_of_training=None,
     ):
         if df_training_data is None:
             if begin_of_training is None:
                 begin_of_training = self.start_of_data
+            if end_of_training is None:
+                end_of_training = datetime.now()
             print("begin of training: ", begin_of_training)
             print("end of training : ", end_of_training)
             df_training_data, _ = self.dataHandler.get_data_for_training_model(
                 left_time_interval=begin_of_training,
                 right_time_interval=end_of_training,
-                predicted_column=self.predicted_column,
+                predicted_columns=self.predicted_columns,
+
                 dropna=False,
             )
 
@@ -64,9 +66,9 @@ class Forecast:
             df_training_data
         )
 
-        self.train_gen = self.generator(
+        self.train_gen = self.mul_generator(
             dataframe=self.df_train_norm,
-            target_name=self.predicted_column,
+            target_names=self.predicted_columns,
             lookback=self.lookback,
             delay=self.delay,
             min_index=0,
@@ -76,9 +78,9 @@ class Forecast:
             batch_size=self.batch_size,
         )
 
-        self.valid_gen = self.generator(
+        self.valid_gen = self.mul_generator(
             dataframe=self.df_train_norm,
-            target_name=self.predicted_column,
+            target_names=self.predicted_columns,
             lookback=self.lookback,
             delay=self.delay,
             min_index=int(df_training_data.shape[0] * 0.8),
@@ -102,15 +104,13 @@ class Forecast:
 
     def load_model(
         self,
-        left_time_interval=datetime.now() - timedelta(days=2),
+        left_time_interval=datetime.now() - timedelta(days=100),
         right_time_interval=datetime.now(),
     ):
 
         df, _ = self.dataHandler.get_data_for_training_model(
             left_time_interval=left_time_interval,
             right_time_interval=right_time_interval,
-            predicted_column=self.predicted_column,
-            dropna=False,
         )
         self.num_of_features = len(df.columns) - 1
         self.df_train_norm = df.copy()
@@ -193,25 +193,18 @@ class Forecast:
 
     def build_model(self):
 
-        # model = Sequential()
-        # model.add(tf.keras.Input(shape=(None, self.df_train_norm.shape[1])))
-        # # model.add(tf.keras.layers.Conv1D(filters=6, kernel_size=5, activation="relu"))
-        # model.add(LSTM(50, return_sequences=True, activation="relu"))
-        # model.add(LSTM(50, return_sequences=False, activation="relu"))
-        # model.add(Dropout(0.4))
-        # model.add(Dense(1))
-        opt = SGD(lr=0.01, momentum=0.9)
         model = Sequential()
         model.add(
             LSTM(
                 100,
-                input_shape=(None, self.df_train_norm.shape[1]-1),
-                # return_sequences=True,
+                input_shape=(None, self.df_train_norm.shape[1] - 1),
+                # return_
+                # sequences=True,
             )
         )
-        model.add(Dropout(0.3))
+        # model.add(Dropout(0.2))
         model.add(Dense(1))
-        model.compile(loss=self.custom_loss, metrics=["mae"], optimizer=opt)
+        model.compile(loss="", optimizer="adam", metrics=[self.r2_keras])
 
         self.model = model
         return model
@@ -249,12 +242,21 @@ class Forecast:
         )
         print("End training")
 
-    def add_empty_row(self, df, date_time):
+    def add_empty_row(self, df, date_time, predicted_value):
+
+        last_row_values = df.iloc[-1].values
+
         new_row_df = pd.DataFrame(
             columns=df.columns,
             data=[
                 [
-                    0,
+                    predicted_value,
+                    last_row_values[1],
+                    last_row_values[2],
+                    last_row_values[3],
+                    last_row_values[4],
+                    last_row_values[5],
+
                     np.sin(2 * np.pi * date_time.weekday() / 7),
                     np.cos(2 * np.pi * date_time.weekday() / 7),
                     np.sin(2 * np.pi * date_time.hour / 24),
@@ -266,44 +268,107 @@ class Forecast:
         )
         df = pd.concat([df, new_row_df], ignore_index=True)
         df = df.reset_index(drop=True)
+
         return df
 
-    def get_forecast_next_steps(
+    def mul_generator(
         self,
-        left_time_interval=None,
-        right_time_interval=None,
-        predicted_column="longtime_mean",
-    ) -> pd.DataFrame:
+        dataframe,
+        target_names,
+        lookback,
+        delay,
+        min_index,
+        max_index,
+        shuffle=False,
+        batch_size=128,
+        step=6,
+    ):
+        data = dataframe.values
+        data = data.astype(np.float32)
+
+        data_without_targets = dataframe.copy()
+        data_without_targets = data_without_targets.drop(columns="longtime_mean")
+        data_without_targets = data_without_targets.values
+        data_without_targets = data_without_targets.astype(np.float32)
+
+        # Get the column indices for the target names
+        target_indices = [
+            dataframe.columns.get_loc(target_name) for target_name in target_names
+        ]
+
+        if max_index is None:
+            max_index = len(data) - delay - 1
+        i = min_index + lookback
+        while 1:
+            if shuffle:
+                rows = np.random.randint(
+                    min_index + lookback, max_index, size=batch_size
+                )
+            else:
+                if i + batch_size >= max_index:
+                    i = min_index + lookback
+                rows = np.arange(i, min(i + batch_size, max_index))
+                i += len(rows)
+
+            samples = np.zeros(
+                (len(rows), lookback // step, data_without_targets.shape[-1])
+            )
+
+            # Modify targets array to accommodate multiple target columns
+            targets = np.zeros((len(rows), len(target_indices)))
+
+            for j, row in enumerate(rows):
+                indices = range(rows[j] - lookback, rows[j], step)
+                samples[j] = data_without_targets[indices]
+
+                # Assign values for each target column
+                for k, target_indx in enumerate(target_indices):
+                    targets[j][k] = data[rows[j] + delay][target_indx]
+
+            yield samples, targets
+
+    def get_forecast_next_steps(self, left_time_interval=None, right_time_interval=None):
+        # Define the indices for the different predictions and truths
         if left_time_interval is None:
-            left_time_interval = datetime.now() - timedelta(days=2)
+            left_time_interval = datetime.now() - timedelta(days=4)
         if right_time_interval is None:
             right_time_interval = datetime.now()
+            
+        
+        forecast_future = pd.DataFrame()
+
 
         df_all = self.dataHandler.get_data_for_prediction(
             left_time_interval=left_time_interval,
             right_time_interval=right_time_interval,
-            predicted_column=self.predicted_column,
-            dropna=False,
         )
-
+        num_targets = len(self.predicted_columns)
+        len_columns = len(df_all.columns)
+        
+        df_all = df_all.dropna()
+        df_all = df_all.reset_index(drop=True)
+        
         forecast_future = pd.DataFrame()
 
-        current_forecast_begin_date = right_time_interval + timedelta(hours=0.5)
-        df_all = self.add_empty_row(df_all, current_forecast_begin_date)
+        current_forecast_begin_date = right_time_interval + timedelta(hours=1)
 
-        current_forecast_begin_date = right_time_interval + timedelta(hours=0.5)
+        df_all = self.add_empty_row(df_all, current_forecast_begin_date, 0)
+        current_forecast_begin_date += timedelta(hours=1)
+
         # prediction for next 6 hours
-        for i in range(0, 12):
+        for i in range(0, 6):
+            df_all = self.add_empty_row(df_all, current_forecast_begin_date, 0)
+            current_forecast_begin_date += timedelta(hours=1)
 
-            df_all = self.add_empty_row(df_all, current_forecast_begin_date)
-            current_forecast_begin_date += timedelta(hours=0.5)
-
+            
             df_predict_norm = df_all.copy()
+
             df_predict_norm[df_all.columns] = self.scaler.transform(df_all)
             # create predict df with values
-            predict_gen = self.generator(
+            predict_gen = self.mul_generator(
+
                 dataframe=df_predict_norm,
-                target_name=self.predicted_column,
+                target_names=self.predicted_columns,
                 lookback=self.lookback,
                 delay=self.delay,
                 min_index=0,
@@ -314,19 +379,26 @@ class Forecast:
             )
 
             (X, y_truth) = next(predict_gen)
-            y_pred = self.model.predict(X, verbose=0)
 
+            y_pred = self.model.predict(X, verbose=0)
             # np.expand_dims(y_truth,axis=1).shape
             y_pred_inv = np.concatenate(
-                (y_pred, np.zeros((y_pred.shape[0], self.num_of_features))), axis=1
+                (y_pred, np.zeros((y_pred.shape[0], len_columns - num_targets))), axis=1
             )
             y_pred_inv = self.scaler.inverse_transform(y_pred_inv)
 
             # get last predicted value
             y_pred_inv = y_pred_inv[-1, :]
+            
+            # y_pred_inv[0] is min 0
+            if y_pred_inv[0] < 0:
+                y_pred_inv[0] = 0
+            
+            df_all.iloc[-2][0] = y_pred_inv[0]
 
-            df_all.iloc[-2]["longtime_mean"] = y_pred_inv[0]
 
+            # append y_pred_inv to df_all
+            # df_all.iloc[-1, :num_targets] = y_pred_inv[:num_targets]
             # drop first row
             df_all = df_all[1:]
 
