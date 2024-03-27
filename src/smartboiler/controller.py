@@ -337,11 +337,15 @@ if __name__ == "__main__":
         boiler_case_max_tmp=boiler_case_max_tmp,
         hdo=hdo,
     )
+    
+    predicted_columns = ["longtime_mean"]
     print("inicializing forecast from controller __main__   ")
     forecast = Forecast(
         dataHandler=dataHandler,
         start_of_data=start_of_data_measurement,
         model_path=model_path,
+        predicted_columns=predicted_columns,
+        
     )
     print("inicializing controller from controller __main__")
     controller = Controller(
