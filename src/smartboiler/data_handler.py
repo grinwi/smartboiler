@@ -224,7 +224,6 @@ class DataHandler:
         # iterate over key an value in data
         for key, value in queries.items():
             # get data from influxdb
-            print(value["sql_query"])
             result = self.dataframe_client.query(value["sql_query"])[
                 value["measurement"]
             ]
