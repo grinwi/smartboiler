@@ -35,7 +35,6 @@ class DataHandlerTest:
         home_longitude,
         home_latitude,
         start_of_data=datetime(2023, 1, 1, 0, 0, 0, 0),
-        
     ):
         self.influx_id = influx_id
         self.db_name = db_name
@@ -47,7 +46,7 @@ class DataHandlerTest:
         self.tmp_boiler_case_entity_id = tmp_boiler_case_entity_id
         self.tmp_output_water_entity_id = tmp_output_water_entity_id
         self.tmp_output_water_entity_id_2 = tmp_output_water_entity_id_2
-        
+
         self.home_longitude = home_longitude
         self.home_latitude = home_latitude
 
@@ -125,64 +124,67 @@ class DataHandlerTest:
         right_time_interval = f"'{right_time_interval.strftime('%Y-%m-%dT%H:%M:%SZ')}'"
 
         return {
-            "water_flow": {
-                "sql_query": f'SELECT mean("value") AS "water_flow_L_per_minute_mean" FROM "{self.db_name}"."autogen"."L/min" WHERE time > {left_time_interval} AND time < {right_time_interval} GROUP BY time({group_by_time_interval}) FILL(null)',
-                "measurement": "L/min",
-            },
-            "water_temperature": {
-                "sql_query": f'SELECT mean("value") AS "water_temperature_mean" FROM "{self.db_name}"."autogen"."°C" WHERE time > {left_time_interval} AND time < {right_time_interval} AND ("entity_id"=\'{self.tmp_output_water_entity_id}\' OR "entity_id"=\'{self.tmp_output_water_entity_id_2}\') GROUP BY time({group_by_time_interval}) FILL(null)',
-                "measurement": "°C",
-            },
-            "temperature": {
-                "sql_query": f'SELECT mean("temperature") AS "outside_temperature_mean" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "domain"=\'weather\' AND "entity_id"=\'domov\' GROUP BY time({group_by_time_interval}) FILL(linear)',
-                "measurement": "state",
-            },
-            "humidity": {
-                "sql_query": f'SELECT mean("humidity") AS "outside_humidity_mean" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "domain"=\'weather\' AND "entity_id"=\'domov\' GROUP BY time({group_by_time_interval}) FILL(linear)',
-                "measurement": "state",
-            },
-            "wind_speed": {
-                "sql_query": f'SELECT mean("wind_speed") AS "outside_wind_speed_mean" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "entity_id"=\'domov\' GROUP BY time({group_by_time_interval}) FILL(linear)',
-                "measurement": "state",
-            },
-            "presence": {
-                "sql_query": f'SELECT count(distinct("friendly_name_str")) AS "device_presence_distinct_count" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "domain"=\'device_tracker\' AND "state"=\'home\' GROUP BY time({group_by_time_interval}) FILL(linear)',
-                "measurement": "state",
-            },
-            "boiler_water_temperature": {
-                "sql_query": f'SELECT mean("value") AS "boiler_water_temperature_mean" FROM "{self.db_name}"."autogen"."°C" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "entity_id"=\'{self.tmp_boiler_case_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(null)',
-                "measurement": "°C",
-            },
-            "boiler_relay_status": {
-                "sql_query": f'SELECT last("value") AS "boiler_relay_status" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "entity_id"=\'{self.relay_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(null)',
-                "measurement": "state",
-            },
-            "device_longitude": {
-                "sql_query": f'SELECT mean("longitude") AS "mean_longitude" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "domain"=\'device_tracker\' AND "entity_id"=\'{self.device_tracker_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(linear)',
-                "measurement": "state",
-            },
-            "device_latitude": {
-                "sql_query": f'SELECT mean("latitude") AS "mean_latitude" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "domain"=\'device_tracker\' AND "entity_id"=\'{self.device_tracker_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(linear)',
-                "measurement": "state",
-            },
-        }
+        "water_flow": {
+            "sql_query": f'SELECT mean("value") AS "water_flow_L_per_minute_mean" FROM "{self.db_name}"."autogen"."L/min" WHERE time > {left_time_interval} AND time < {right_time_interval} GROUP BY time({group_by_time_interval}) FILL(0)',
+            "measurement": "L/min",
+        },
+        "water_temperature": {
+            "sql_query": f'SELECT mean("value") AS "water_temperature_mean" FROM "{self.db_name}"."autogen"."°C" WHERE time > {left_time_interval} AND time < {right_time_interval} AND ("entity_id"=\'{self.tmp_output_water_entity_id}\' OR "entity_id"=\'{self.tmp_output_water_entity_id_2}\') GROUP BY time({group_by_time_interval}) FILL(0)',
+            "measurement": "°C",
+        },
+        "temperature": {
+            "sql_query": f'SELECT mean("temperature") AS "outside_temperature_mean" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "domain"=\'weather\' AND "entity_id"=\'domov\' GROUP BY time({group_by_time_interval}) FILL(null)',
+            "measurement": "state",
+        },
+        "humidity": {
+            "sql_query": f'SELECT mean("humidity") AS "outside_humidity_mean" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "domain"=\'weather\' AND "entity_id"=\'domov\' GROUP BY time({group_by_time_interval}) FILL(null)',
+            "measurement": "state",
+        },
+        "wind_speed": {
+            "sql_query": f'SELECT mean("wind_speed") AS "outside_wind_speed_mean" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "entity_id"=\'domov\' GROUP BY time({group_by_time_interval}) FILL(null)',
+            "measurement": "state",
+        },
+        "presence": {
+            "sql_query": f'SELECT count(distinct("friendly_name_str")) AS "device_presence_distinct_count" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "domain"=\'device_tracker\' AND "state"=\'home\' GROUP BY time({group_by_time_interval}) FILL(0)',
+            "measurement": "state",
+        },
+        "boiler_water_temperature": {
+            "sql_query": f'SELECT mean("value") AS "boiler_water_temperature_mean" FROM "{self.db_name}"."autogen"."°C" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "entity_id"=\'{self.tmp_boiler_case_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(null)',
+            "measurement": "°C",
+        },
+        "boiler_relay_status": {
+            "sql_query": f'SELECT last("value") AS "boiler_relay_status" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "entity_id"=\'{self.relay_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(null)',
+            "measurement": "state",
+        },
+        "device_longitude": {
+            "sql_query": f'SELECT mean("longitude") AS "mean_longitude" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "domain"=\'device_tracker\' AND "entity_id"=\'{self.device_tracker_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(linear)',
+            "measurement": "state",
+        },
+        "device_latitude": {
+            "sql_query": f'SELECT mean("latitude") AS "mean_latitude" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time < {right_time_interval} AND "domain"=\'device_tracker\' AND "entity_id"=\'{self.device_tracker_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(linear)',
+            "measurement": "state",
+        },
+        
+    } 
 
     def haversine_dist(self, x1, x2, y1, y2):
         return haversine((x1, x2), (y1, y2), unit="km")
 
     # Data Processing
 
-    def extract_features_from_longitude_latitude(
-        self, df
-    ):
+    def extract_features_from_longitude_latitude(self, df):
         home_coords = (self.home_latitude, self.home_longitude)
 
         df["distance_from_home"] = np.vectorize(self.haversine_dist)(
-            df["mean_latitude"], df["mean_longitude"], self.home_latitude, self.home_longitude
+            df["mean_latitude"],
+            df["mean_longitude"],
+            self.home_latitude,
+            self.home_longitude,
         )
 
         df["heading_to_home"] = np.arctan2(
-            df["mean_latitude"] - self.home_latitude, df["mean_longitude"] - self.home_longitude
+            df["mean_latitude"] - self.home_latitude,
+            df["mean_longitude"] - self.home_longitude,
         )
         df["heading_to_home_sin"] = np.sin(df["heading_to_home"])
         df["heading_to_home_cos"] = np.cos(df["heading_to_home"])
@@ -242,10 +244,7 @@ class DataHandlerTest:
             * 0.6
         )
 
-
-        df = self.extract_features_from_longitude_latitude(
-            df
-        )
+        df = self.extract_features_from_longitude_latitude(df)
         # all value in speed larger than 200 set to 0
         df.loc[df["speed"] > 200, "speed"] = 0
 
@@ -363,7 +362,7 @@ class DataHandlerTest:
     ):
         # read pickles from data/pickles
 
-        freq = 0.5
+        freq = 1
         freq_hour = f"{freq}H"
 
         df.index = pd.to_datetime(df.index)
@@ -375,7 +374,7 @@ class DataHandlerTest:
         # delete rows with weekday nan
         df = df.dropna(subset=["weekday"])
         df["consumed_heat_kWh"] = df["consumed_heat_kWh"].fillna(0)
-        
+
         # fill negative values with 0
         df["consumed_heat_kWh"] = df["consumed_heat_kWh"].clip(lower=0)
 
@@ -391,7 +390,6 @@ class DataHandlerTest:
         df["distance_from_home"] = df["distance_from_home"].fillna(method="ffill")
         df["heading_to_home_sin"] = df["heading_to_home_sin"].fillna(method="ffill")
         df["heading_to_home_cos"] = df["heading_to_home_cos"].fillna(method="ffill")
-        
 
         # add to column 'consumed_heat_kWh' 1,25/6 to each row
         # df = df.drop(df[df["consumed_heat_kWh"] == 0].sample(frac=0.7).index)

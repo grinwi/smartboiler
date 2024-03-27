@@ -99,7 +99,7 @@ class Forecast:
 
     def load_model(
         self,
-        left_time_interval=datetime.now() - timedelta(days=2),
+        left_time_interval=datetime.now() - timedelta(days=100),
         right_time_interval=datetime.now(),
     ):
 
@@ -320,7 +320,9 @@ class Forecast:
 
         # prediction for next 6 hours
         for i in range(0, 6):
-
+            df_all = self.add_empty_row(df_all, current_forecast_begin_date, 0)
+            current_forecast_begin_date += timedelta(hours=1)
+            
             df_predict_norm = df_all.copy()
 
             df_predict_norm[df_all.columns] = self.scaler.transform(df_all)
@@ -347,25 +349,24 @@ class Forecast:
             # get last predicted value
             y_pred_inv = y_pred_inv[-1, :]
             
-            df_all.iloc[-1][0] = y_pred_inv[0]
+            df_all.iloc[-2][0] = y_pred_inv[0]
 
 
             # append y_pred_inv to df_all
             # df_all.iloc[-1, :num_targets] = y_pred_inv[:num_targets]
             # drop first row
             df_all = df_all[1:]
-
             forecast_future = pd.concat(
                 [
                     forecast_future,
-                    df_all.iloc[-1][0],
+                    df_all.iloc[[-2], df_all.columns.get_loc("longtime_mean")],
                 ],
                 axis=0,
             )
             forecast_future = forecast_future.reset_index(drop=True)
+
             
-            df_all = self.add_empty_row(df_all, current_forecast_begin_date, 0)
-            current_forecast_begin_date += timedelta(hours=1)
+
 
         return forecast_future, df_all
 
