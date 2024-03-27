@@ -30,6 +30,7 @@ class Forecast:
     ):
         self.batch_size = 16
         self.lookback = 32
+
         self.delay = 1
         self.predicted_columns = predicted_columns
         self.dataHandler = dataHandler
@@ -41,7 +42,6 @@ class Forecast:
         self,
         begin_of_training=None,
         end_of_training=None,
-        df_training_data=None,
     ):
         if df_training_data is None:
             if begin_of_training is None:
@@ -54,6 +54,7 @@ class Forecast:
                 left_time_interval=begin_of_training,
                 right_time_interval=end_of_training,
                 predicted_columns=self.predicted_columns,
+
                 dropna=False,
             )
 
@@ -228,6 +229,7 @@ class Forecast:
                     last_row_values[3],
                     last_row_values[4],
                     last_row_values[5],
+
                     np.sin(2 * np.pi * date_time.weekday() / 7),
                     np.cos(2 * np.pi * date_time.weekday() / 7),
                     np.sin(2 * np.pi * date_time.hour / 24),
@@ -308,6 +310,7 @@ class Forecast:
         
         forecast_future = pd.DataFrame()
 
+
         df_all = self.dataHandler.get_data_for_prediction(
             left_time_interval=left_time_interval,
             right_time_interval=right_time_interval,
@@ -329,12 +332,14 @@ class Forecast:
         for i in range(0, 6):
             df_all = self.add_empty_row(df_all, current_forecast_begin_date, 0)
             current_forecast_begin_date += timedelta(hours=1)
+
             
             df_predict_norm = df_all.copy()
 
             df_predict_norm[df_all.columns] = self.scaler.transform(df_all)
             # create predict df with values
             predict_gen = self.mul_generator(
+
                 dataframe=df_predict_norm,
                 target_names=self.predicted_columns,
                 lookback=self.lookback,
@@ -345,6 +350,7 @@ class Forecast:
                 shuffle=False,
                 batch_size=df_predict_norm.shape[0],
             )
+
             (X, y_truth) = next(predict_gen)
 
             y_pred = self.model.predict(X, verbose=0)
@@ -353,6 +359,7 @@ class Forecast:
                 (y_pred, np.zeros((y_pred.shape[0], len_columns - num_targets))), axis=1
             )
             y_pred_inv = self.scaler.inverse_transform(y_pred_inv)
+
             # get last predicted value
             y_pred_inv = y_pred_inv[-1, :]
             
@@ -367,6 +374,7 @@ class Forecast:
             # df_all.iloc[-1, :num_targets] = y_pred_inv[:num_targets]
             # drop first row
             df_all = df_all[1:]
+
             forecast_future = pd.concat(
                 [
                     forecast_future,
@@ -376,10 +384,12 @@ class Forecast:
             )
             forecast_future = forecast_future.reset_index(drop=True)
 
-            
 
-
-        return forecast_future, df_all
+        # create a dataframe with forecast and datetime as index
+        self.dataHandler.write_forecast_to_influxdb(
+            forecast_future, "prediction_longtime_mean"
+        )
+        return forecast_future
 
 
 if __name__ == "__main__":

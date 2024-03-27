@@ -224,6 +224,7 @@ class DataHandler:
         # iterate over key an value in data
         for key, value in queries.items():
             # get data from influxdb
+            print(value["sql_query"])
             result = self.dataframe_client.query(value["sql_query"])[
                 value["measurement"]
             ]
@@ -319,6 +320,7 @@ class DataHandler:
             "time": current_time,
             "fields": result_dict,
         }
+
         self.influxdb_client.write_points([measurement_dict])
         # return measurement_dict
 

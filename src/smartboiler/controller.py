@@ -65,13 +65,10 @@ class Controller:
         """
         # TODO - load settings from config file or home assistant
 
-
-
         # self.how_water_flow = settings['how_water_flow']
         # self.tmp_water_flow = settings['tmp_water_flow']
 
         self.tmp_min = 5
-        self.consumption_tmp_min = 40
 
         self.start_date = datetime.now()
 
@@ -79,7 +76,7 @@ class Controller:
         self.dataHandler = dataHandler
         self.boiler = boiler
         self.forecast = forecast
-        
+
         if load_model:
             print("loading model")
             self.forecast.load_model()
@@ -127,6 +124,9 @@ class Controller:
 
         return (datetime.now() - self.start_date) < timedelta(days=7)
 
+    def actualize_forecast(self):
+        self.actual_forecast = self.forecast.get_forecast_next_steps()
+
     def control(self):
         """Method which decides about turning on or off the heating of a boiler."""
 
@@ -161,13 +161,12 @@ class Controller:
 
         # actual tmp of water in boiler
         tmp_act = self.boiler.real_tmp(tmp_measured)
-        print(f'actual tmp: {tmp_act}, measured: {tmp_measured}')
+        print(f"actual tmp: {tmp_act}, measured: {tmp_measured}")
 
         if is_on is None:
             print("boiler state is unknown")
             is_on = False
-        # state of smart socket
-        print("is_on: {}".format(is_on))
+            
 
         # protection from freezing
         if tmp_act < 5:
@@ -194,16 +193,14 @@ class Controller:
         #             self.boiler.turn_on()
         #     return
 
-        print("getting forecast")
-        consumption_forecast = (
-            self.forecast.get_forecast_next_steps()
-        )  # step has 30 minutes, so 24 steps is 12 hours
         # if the boiler is needed to heat up before the next predicted consumption
-        print("checking if boiler is needed to heat")
-        is_needed_to_heat, minutes_needed_to_heat = self.boiler.is_needed_to_heat(tmp_act, consumption_forecast)
-        print("need to heat: {}".format(is_needed_to_heat))
+        is_needed_to_heat, minutes_needed_to_heat = self.boiler.is_needed_to_heat(
+            tmp_act, self.actual_forecast
+        )
         if is_needed_to_heat:
-            print(f"need to heat for {minutes_needed_to_heat} minutes, turning on and sleeping")
+            print(
+                f"need to heat for {minutes_needed_to_heat} minutes, turning on and sleeping"
+            )
             self.boiler.turn_on()
             time.sleep(minutes_needed_to_heat * 60)
         else:
@@ -219,8 +216,7 @@ class Controller:
                 print("legionella was eliminated, see you in 3 weeks")
                 self.boiler.turn_off()
                 return
-        #TODO event checker for holidays
-        
+        # TODO event checker for holidays
 
 
 if __name__ == "__main__":
@@ -321,7 +317,7 @@ if __name__ == "__main__":
         start_of_data=start_of_data_measurement,
     )
     boiler_switch_entity_id = "switch." + boiler_socket_id
-    
+
     print("inicializing boiler from controller __main__")
     boiler = Boiler(
         base_url,
@@ -354,13 +350,10 @@ if __name__ == "__main__":
 
     while 1:
         try:
-            controller.control()
-            # c.toggle_shelly_relay('on', headers, base_url)
-
-            # time.sleep(60)
-            # c.toggle_shelly_relay('off', headers, base_url)
-
-            time.sleep(60)
+            controller.actualize_forecast()
+            for i in range(0,15):
+                controller.control()
+                time.sleep(60)
         except Exception as e:
             print(f"Error: {e}")
             time.sleep(60)

@@ -124,7 +124,7 @@ class Boiler(Switch):
         """
 
         if tmp_act < self.min_tmp:
-            kWh_needed_to_heat = self.get_kWh_delta_from_temperatures(tmp_act, self.min_tmp)
+            kWh_needed_to_heat = self.get_kWh_delta_from_temperatures(tmp_act, (self.min_tmp+3)) # add 3 degrees above min
             
             return (True, self.time_needed_to_heat_up_minutes(consumption_kWh=kWh_needed_to_heat))
 
@@ -155,7 +155,8 @@ class Boiler(Switch):
         len_of_df = len(prediction_of_consumption)
 
         for i in range(len_of_df, 0, -1):
-            time_to_consumption_minutes = i * 60 - 30
+            time_to_consumption_minutes = (i * 60) - 30
+
             sum_of_consumption = (
                 prediction_of_consumption.iloc[:i].sum().values[0]
                 - boiler_kWh_above_set
