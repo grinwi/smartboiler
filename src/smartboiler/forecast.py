@@ -356,6 +356,10 @@ class Forecast:
             # get last predicted value
             y_pred_inv = y_pred_inv[-1, :]
             
+            # y_pred_inv[0] is min 0
+            if y_pred_inv[0] < 0:
+                y_pred_inv[0] = 0
+            
             df_all.iloc[-2][0] = y_pred_inv[0]
 
 
