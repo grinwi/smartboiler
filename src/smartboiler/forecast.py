@@ -40,12 +40,14 @@ class Forecast:
     def train_model(
         self,
         begin_of_training=None,
-        end_of_training=datetime.now(),
+        end_of_training=None,
         df_training_data=None,
     ):
         if df_training_data is None:
             if begin_of_training is None:
                 begin_of_training = self.start_of_data
+            if end_of_training is None:
+                end_of_training = datetime.now()
             print("begin of training: ", begin_of_training)
             print("end of training : ", end_of_training)
             df_training_data, _ = self.dataHandler.get_data_for_training_model(
@@ -296,9 +298,14 @@ class Forecast:
 
             yield samples, targets
 
-    def get_forecast_next_steps(self, left_time_interval, right_time_interval):
+    def get_forecast_next_steps(self, left_time_interval=None, right_time_interval=None):
         # Define the indices for the different predictions and truths
-
+        if left_time_interval is None:
+            left_time_interval = datetime.now() - timedelta(days=4)
+        if right_time_interval is None:
+            right_time_interval = datetime.now()
+            
+        
         forecast_future = pd.DataFrame()
 
         df_all = self.dataHandler.get_data_for_prediction(

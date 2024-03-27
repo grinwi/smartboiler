@@ -155,7 +155,7 @@ class Boiler(Switch):
         len_of_df = len(prediction_of_consumption)
 
         for i in range(len_of_df, 0, -1):
-            time_to_consumption_minutes = i * 30
+            time_to_consumption_minutes = i * 60 - 30
             sum_of_consumption = (
                 prediction_of_consumption.iloc[:i].sum().values[0]
                 - boiler_kWh_above_set
