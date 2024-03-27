@@ -32,7 +32,10 @@ class DataHandlerTest:
         tmp_output_water_entity_id,
         tmp_output_water_entity_id_2,
         device_tracker_entity_id,
+        home_longitude,
+        home_latitude,
         start_of_data=datetime(2023, 1, 1, 0, 0, 0, 0),
+        
     ):
         self.influx_id = influx_id
         self.db_name = db_name
@@ -44,6 +47,9 @@ class DataHandlerTest:
         self.tmp_boiler_case_entity_id = tmp_boiler_case_entity_id
         self.tmp_output_water_entity_id = tmp_output_water_entity_id
         self.tmp_output_water_entity_id_2 = tmp_output_water_entity_id_2
+        
+        self.home_longitude = home_longitude
+        self.home_latitude = home_latitude
 
         self.device_tracker_entity_id = device_tracker_entity_id
         self.dataframe_client = DataFrameClient(
@@ -167,16 +173,16 @@ class DataHandlerTest:
     # Data Processing
 
     def extract_features_from_longitude_latitude(
-        self, df, home_longitude, home_latitude
+        self, df
     ):
-        home_coords = (home_latitude, home_longitude)
+        home_coords = (self.home_latitude, self.home_longitude)
 
         df["distance_from_home"] = np.vectorize(self.haversine_dist)(
-            df["mean_latitude"], df["mean_longitude"], home_latitude, home_longitude
+            df["mean_latitude"], df["mean_longitude"], self.home_latitude, self.home_longitude
         )
 
         df["heading_to_home"] = np.arctan2(
-            df["mean_latitude"] - home_latitude, df["mean_longitude"] - home_longitude
+            df["mean_latitude"] - self.home_latitude, df["mean_longitude"] - self.home_longitude
         )
         df["heading_to_home_sin"] = np.sin(df["heading_to_home"])
         df["heading_to_home_cos"] = np.cos(df["heading_to_home"])
@@ -219,7 +225,6 @@ class DataHandlerTest:
             result = self.dataframe_client.query(value["sql_query"])[
                 value["measurement"]
             ]
-
             df = pd.DataFrame(result)
             df_all_list.append(df)
 
@@ -237,10 +242,9 @@ class DataHandlerTest:
             * 0.6
         )
 
-        zuka_home_latitude = 49.412897925874184
-        zuka_home_longitude = 16.514843458109933
+
         df = self.extract_features_from_longitude_latitude(
-            df, home_longitude=zuka_home_longitude, home_latitude=zuka_home_latitude
+            df
         )
         # all value in speed larger than 200 set to 0
         df.loc[df["speed"] > 200, "speed"] = 0
@@ -288,9 +292,8 @@ class DataHandlerTest:
 
     def get_data_for_prediction(
         self,
-        left_time_interval=datetime.now() - timedelta(days=2),
+        left_time_interval=datetime.now() - timedelta(days=5),
         right_time_interval=datetime.now(),
-        predicted_columns=["longtime_mean"],
     ):
         queries = self.get_database_queries(
             left_time_interval=left_time_interval,
