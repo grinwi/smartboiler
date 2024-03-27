@@ -19,7 +19,7 @@ import keras.backend as K
 import numpy as np
 import pandas as pd
 from scipy import stats
-from data_handler import DataHandler
+from smartboiler.data_handler import DataHandler
 
 
 class Forecast:
