@@ -17,13 +17,13 @@ import keras.backend as K
 import numpy as np
 import pandas as pd
 from scipy import stats
-from data_handler_test import DataHandlerTest
+from data_handler import DataHandler
 
 
 class Forecast:
     def __init__(
         self,
-        dataHandler: DataHandlerTest,
+        dataHandler: DataHandler,
         start_of_data: datetime,
         model_path=None,
         predicted_columns=None,
