@@ -13,7 +13,6 @@ import numpy as np
 import json
 import logging
 from math import dist
-from turtle import home
 import numpy as np
 from geopy.distance import geodesic
 from haversine import haversine
