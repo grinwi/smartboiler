@@ -319,6 +319,7 @@ class DataHandler:
             "time": current_time,
             "fields": result_dict,
         }
+        print(measurement_dict)
 
         self.influxdb_client.write_points([measurement_dict])
         # return measurement_dict
