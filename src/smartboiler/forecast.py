@@ -119,7 +119,7 @@ class Forecast:
 
         
         self.scaler = load(open(self.scaler_path, 'rb'))        
-        self.model = load(open(self.model_path, 'rb'))
+        self.model = tf.keras.models.load_model(self.model_path)
 
     def generator(
         self,
@@ -241,7 +241,8 @@ class Forecast:
         )
         print("End training")
         
-        dump(self.model, open(self.model_path, 'wb'))
+        self.model.save(self.model_path)
+
 
         
         
