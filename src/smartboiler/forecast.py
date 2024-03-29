@@ -4,11 +4,9 @@ from pathlib import Path
 print("Running" if __name__ == "__main__" else "Importing", Path(__file__).resolve())
 from datetime import timedelta, datetime
 from sklearn.preprocessing import MinMaxScaler, RobustScaler
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.callbacks import ReduceLROnPlateau
+from keras.models import Sequential
+from keras.callbacks import ReduceLROnPlateau
 
-import tensorflow as tf
-from tensorflow.keras.optimizers import SGD
 from keras.layers import LSTM
 from keras.layers import Dropout
 from keras.models import Model
@@ -119,7 +117,7 @@ class Forecast:
 
         
         self.scaler = load(open(self.scaler_path, 'rb'))        
-        self.model = tf.keras.models.load_model(self.model_path)
+        self.model = load_model(self.model_path)
 
     def generator(
         self,
@@ -171,26 +169,7 @@ class Forecast:
         SS_tot = K.sum(K.square(y_true - K.mean(y_true)))
         return 1 - SS_res / (SS_tot + K.epsilon())
 
-    def custom_loss(self, y_true, y_pred):
-        # Mask for nonzero values
-        mask_nonzero = tf.cast(tf.not_equal(y_true, 0), tf.float32)
 
-        # Mask for zero values
-        mask_zero = tf.cast(tf.equal(y_true, 0), tf.float32)
-
-        # Calculate absolute error on logarithmic scale for nonzero values
-        nonzero_loss = (
-            tf.square(y_true - y_pred) * tf.math.log1p(tf.abs(y_true)) * mask_nonzero
-        )
-
-        # Calculate absolute error on logarithmic scale for zero values
-        zero_loss = tf.abs(y_true - y_pred) * mask_zero * 2
-
-        # Combine the losses
-        total_loss = nonzero_loss + zero_loss
-
-        # Compute mean over all elements
-        return tf.reduce_mean(total_loss)
 
     def build_model(self):
 
