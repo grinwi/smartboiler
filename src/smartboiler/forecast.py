@@ -3,8 +3,10 @@ from pathlib import Path
 
 print("Running" if __name__ == "__main__" else "Importing", Path(__file__).resolve())
 from datetime import timedelta, datetime
-from sklearn.preprocessing import RobustScaler
+from sklearn.preprocessing import MinMaxScaler, RobustScaler
 from tensorflow.keras.models import Sequential
+from tensorflow.keras.callbacks import ReduceLROnPlateau
+
 import tensorflow as tf
 from tensorflow.keras.optimizers import SGD
 from keras.layers import LSTM
@@ -20,7 +22,8 @@ from scipy import stats
 from pickle import load
 from pickle import dump
 
-from data_handler import DataHandler
+
+from smartboiler.data_handler import DataHandler
 
 
 class Forecast:
@@ -130,7 +133,10 @@ class Forecast:
         batch_size=128,
         step=6,
     ):
-
+        data_without_target = dataframe.copy()
+        data_without_target = data_without_target.drop(columns=[target_name]).values
+        data_without_target = data_without_target.astype(np.float32)
+        
         data = dataframe.values
         data = data.astype(np.float32)
         target_indx = dataframe.columns.get_loc(target_name)
@@ -149,11 +155,13 @@ class Forecast:
                 rows = np.arange(i, min(i + batch_size, max_index))
                 i += len(rows)
 
-            samples = np.zeros((len(rows), lookback // step, data.shape[-1]))
+            samples = np.zeros((len(rows), lookback // step, data_without_target.shape[-1]))
             targets = np.zeros((len(rows),))
+            
             for j, row in enumerate(rows):
                 indices = range(rows[j] - lookback, rows[j], step)
-                samples[j] = data[indices]
+                # samples without column with target
+                samples[j] = data_without_target[indices]
                 targets[j] = data[rows[j] + delay][target_indx]
             yield samples, targets
             
@@ -163,30 +171,49 @@ class Forecast:
         SS_tot = K.sum(K.square(y_true - K.mean(y_true)))
         return 1 - SS_res / (SS_tot + K.epsilon())
 
+    def custom_loss(self, y_true, y_pred):
+        # Mask for nonzero values
+        mask_nonzero = tf.cast(tf.not_equal(y_true, 0), tf.float32)
+
+        # Mask for zero values
+        mask_zero = tf.cast(tf.equal(y_true, 0), tf.float32)
+
+        # Calculate absolute error on logarithmic scale for nonzero values
+        nonzero_loss = (
+            tf.square(y_true - y_pred) * tf.math.log1p(tf.abs(y_true)) * mask_nonzero
+        )
+
+        # Calculate absolute error on logarithmic scale for zero values
+        zero_loss = tf.abs(y_true - y_pred) * mask_zero * 2
+
+        # Combine the losses
+        total_loss = nonzero_loss + zero_loss
+
+        # Compute mean over all elements
+        return tf.reduce_mean(total_loss)
+
     def build_model(self):
 
-        model = Sequential()
-        # model.add(tf.keras.Input(shape=(None, self.df_train_norm.shape[1]- 1)))
-        # model.add(tf.keras.layers.Conv1D(filters=6, kernel_size=5, activation="relu"))
-        # model.add(LSTM(50, return_sequences=True, activation="relu"))
-        # model.add(LSTM(50, return_sequences=False, activation="relu"))
         model = Sequential()
         model.add(
             LSTM(
                 100,
                 input_shape=(None, self.df_train_norm.shape[1] - 1),
-                # return_sequences=True,
+                # return_
+                # sequences=True,
             )
         )
         # model.add(Dropout(0.2))
         model.add(Dense(1))
-
 
         self.model = model
         self.model.compile(loss="mae", optimizer="adam")
         return model
 
     def fit_model(self):
+        reduce_lr = ReduceLROnPlateau(
+            monitor="val_loss", factor=0.2, patience=5, min_lr=0.0001
+        )
         callbacks = [
             EarlyStopping(
                 monitor="loss",
@@ -199,6 +226,7 @@ class Forecast:
             ModelCheckpoint(
                 filepath=self.model_path, monitor="val_loss", save_best_only=True
             ),
+            # reduce_lr
         ]
 
         # history = model.fit(train_gen, epochs=50, batch_size=72, validation_data=valid_gen, verbose=2, shuffle=False, use_multiprocessing=True)
@@ -206,7 +234,7 @@ class Forecast:
         history = self.model.fit(
             self.train_gen,
             steps_per_epoch=self.train_steps,
-            epochs=70,
+            epochs=100,
             shuffle=False,
             validation_data=self.valid_gen,
             validation_steps=self.val_steps,
@@ -388,7 +416,6 @@ class Forecast:
                 axis=0,
             )
             forecast_future = forecast_future.reset_index(drop=True)
-
 
         # create a dataframe with forecast and datetime as index
         self.dataHandler.write_forecast_to_influxdb(

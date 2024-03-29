@@ -13,7 +13,6 @@ import numpy as np
 import json
 import logging
 from math import dist
-from turtle import home
 import numpy as np
 from geopy.distance import geodesic
 from haversine import haversine
@@ -224,6 +223,7 @@ class DataHandler:
         # iterate over key an value in data
         for key, value in queries.items():
             # get data from influxdb
+
             result = self.dataframe_client.query(value["sql_query"])[
                 value["measurement"]
             ]
@@ -319,6 +319,7 @@ class DataHandler:
             "time": current_time,
             "fields": result_dict,
         }
+        print(measurement_dict)
 
         self.influxdb_client.write_points([measurement_dict])
         # return measurement_dict

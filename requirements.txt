@@ -13,4 +13,6 @@ tables==3.7.0
 skforecast>=0.10.1
 tensorflow>=2.6.0
 influxdb
+geopy
+haversine
 

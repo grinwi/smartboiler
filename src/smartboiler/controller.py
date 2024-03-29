@@ -126,6 +126,7 @@ class Controller:
 
     def actualize_forecast(self):
         self.actual_forecast = self.forecast.get_forecast_next_steps()
+        print(f"actual forecast: {self.actual_forecast}")
 
     def control(self):
         """Method which decides about turning on or off the heating of a boiler."""
@@ -260,6 +261,9 @@ if __name__ == "__main__":
     hass_url = options["hass_url"]
     home_longitude = options["home_longitude"]
     home_latitude = options["home_latitude"]
+    print(f"home longitude: {home_longitude}, home latitude: {home_latitude}")
+    print(f"home longitude type: {type(home_longitude)}, home latitude type: {type(home_latitude)}")
+    
     device_tracker_entity_id = options["device_tracker_entity_id"]
     long_lived_token = options["long_lived_token"]
     influxdb_host = options["influxdb_host"]
