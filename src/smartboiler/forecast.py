@@ -44,6 +44,7 @@ class Forecast:
         self,
         begin_of_training=None,
         end_of_training=None,
+        df_training_data=None,
     ):
         if df_training_data is None:
             if begin_of_training is None:
@@ -204,7 +205,7 @@ class Forecast:
         )
         # model.add(Dropout(0.2))
         model.add(Dense(1))
-        model.compile(loss="", optimizer="adam", metrics=[self.r2_keras])
+        model.compile(loss="mae", optimizer="adam", metrics=[self.r2_keras])
 
         self.model = model
         return model
