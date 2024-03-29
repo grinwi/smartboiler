@@ -201,8 +201,7 @@ class Forecast:
                 restore_best_weights=True,
             ),
 
-            # reduce_lr
-        ]
+            ModelCheckpoint(verbose=2, filepath=self.model_path, save_best_only=True)]
 
         # history = model.fit(train_gen, epochs=50, batch_size=72, validation_data=valid_gen, verbose=2, shuffle=False, use_multiprocessing=True)
         print("Start training")
@@ -218,7 +217,7 @@ class Forecast:
         )
         print("End training")
         
-        self.model.save(self.model_path)
+        # self.model.save(self.model_path)
 
 
         
