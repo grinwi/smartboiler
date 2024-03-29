@@ -17,6 +17,9 @@ import keras.backend as K
 import numpy as np
 import pandas as pd
 from scipy import stats
+from pickle import load
+from pickle import dump
+
 from data_handler import DataHandler
 
 
@@ -26,6 +29,7 @@ class Forecast:
         dataHandler: DataHandler,
         start_of_data: datetime,
         model_path=None,
+        scaler_path=None,
         predicted_columns=None,
     ):
         self.batch_size = 16
@@ -35,13 +39,16 @@ class Forecast:
         self.predicted_columns = predicted_columns
         self.dataHandler = dataHandler
         self.scaler = RobustScaler()
-        self.model_path = model_path
         self.start_of_data = start_of_data
+        
+        self.model_path = model_path
+        self.scaler_path = scaler_path
 
     def train_model(
         self,
         begin_of_training=None,
         end_of_training=None,
+        df_training_data=None,
     ):
         if df_training_data is None:
             if begin_of_training is None:
@@ -63,6 +70,8 @@ class Forecast:
         self.df_train_norm[df_training_data.columns] = self.scaler.fit_transform(
             df_training_data
         )
+        dump(self.scaler, open(self.scaler_path, 'wb'))
+
 
         self.train_gen = self.mul_generator(
             dataframe=self.df_train_norm,
@@ -97,26 +106,17 @@ class Forecast:
             (self.df_train_norm.shape[0] * 0.9 - self.lookback) // self.batch_size
         )
 
-    def save_model(self):
-        self.model.save(self.model_path)
 
     def load_model(
         self,
-        left_time_interval=datetime.now() - timedelta(days=100),
+        left_time_interval=datetime.now() - timedelta(days=10),
         right_time_interval=datetime.now(),
     ):
 
-        df, _ = self.dataHandler.get_data_for_training_model(
-            left_time_interval=left_time_interval,
-            right_time_interval=right_time_interval,
-        )
-        self.num_of_features = len(df.columns) - 1
-        self.df_train_norm = df.copy()
-        self.df_train_norm[df.columns] = self.scaler.fit_transform(df)
 
-        self.build_model()
-
-        self.model.load_weights(self.model_path)
+        
+        self.scaler = load(open(self.scaler_path, 'rb'))        
+        self.model = load(open(self.model_path, 'rb'))
 
     def generator(
         self,
@@ -156,7 +156,7 @@ class Forecast:
                 samples[j] = data[indices]
                 targets[j] = data[rows[j] + delay][target_indx]
             yield samples, targets
-
+            
     def r2_keras(self, y_true, y_pred):
         """Coefficient of Determination"""
         SS_res = K.sum(K.square(y_true - y_pred))
@@ -180,9 +180,10 @@ class Forecast:
         )
         # model.add(Dropout(0.2))
         model.add(Dense(1))
-        model.compile(loss="", optimizer="adam", metrics=[self.r2_keras])
+
 
         self.model = model
+        self.model.compile(loss="mae", optimizer="adam")
         return model
 
     def fit_model(self):
@@ -200,7 +201,6 @@ class Forecast:
             ),
         ]
 
-        self.model.compile(loss="mae", optimizer="adam", metrics=[self.r2_keras])
         # history = model.fit(train_gen, epochs=50, batch_size=72, validation_data=valid_gen, verbose=2, shuffle=False, use_multiprocessing=True)
         print("Start training")
         history = self.model.fit(
@@ -214,6 +214,11 @@ class Forecast:
             verbose=2,
         )
         print("End training")
+        
+        dump(self.model, open(self.model_path, 'wb'))
+
+        
+        
 
     def add_empty_row(self, df, date_time, predicted_value):
 
