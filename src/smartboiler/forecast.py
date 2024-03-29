@@ -113,11 +113,11 @@ class Forecast:
         left_time_interval=datetime.now() - timedelta(days=10),
         right_time_interval=datetime.now(),
     ):
-
-
         
-        self.scaler = load(open(self.scaler_path, 'rb'))        
-        self.model = load_model(self.model_path)
+        self.scaler = load(open(self.scaler_path, 'rb'))
+        self.build_model()
+        self.model.load_weights(self.model_path)
+
 
     def generator(
         self,
@@ -177,7 +177,7 @@ class Forecast:
         model.add(
             LSTM(
                 100,
-                input_shape=(None, self.df_train_norm.shape[1] - 1),
+                input_shape=(None, 11),
                 # return_
                 # sequences=True,
             )
@@ -190,9 +190,7 @@ class Forecast:
         return model
 
     def fit_model(self):
-        reduce_lr = ReduceLROnPlateau(
-            monitor="val_loss", factor=0.2, patience=5, min_lr=0.0001
-        )
+
         callbacks = [
             EarlyStopping(
                 monitor="loss",
