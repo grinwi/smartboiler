@@ -223,9 +223,7 @@ class Forecast:
                 mode="auto",
                 restore_best_weights=True,
             ),
-            ModelCheckpoint(
-                filepath=self.model_path, monitor="val_loss", save_best_only=True
-            ),
+
             # reduce_lr
         ]
 

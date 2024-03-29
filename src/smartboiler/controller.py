@@ -251,10 +251,9 @@ if __name__ == "__main__":
             options = json.load(data)
 
     DATA_PATH = os.getenv("DATA_PATH", default="/app/data/")
-    MODEL_PATH = os.getenv("MODEL_PATH", default="/app/lstm_model_zukalovi.keras")
 
     data_path = Path(DATA_PATH)
-    model_path = Path(MODEL_PATH)
+
 
     start_of_data_measurement = datetime(2023, 10, 1, 0, 0, 0, 0)
 
@@ -265,6 +264,8 @@ if __name__ == "__main__":
     print(f"home longitude type: {type(home_longitude)}, home latitude type: {type(home_latitude)}")
     
     device_tracker_entity_id = options["device_tracker_entity_id"]
+    model_path = options["model_path"]
+    scaler_path = options["scaler_path"]
     long_lived_token = options["long_lived_token"]
     influxdb_host = options["influxdb_host"]
     influxdb_port: 8086
@@ -294,6 +295,9 @@ if __name__ == "__main__":
     logging_level = options["logging_level"]
     load_model = options["load_model"]
     hdo = options["hdo"]
+    
+    model_path = Path(model_path)
+    scaler_path = Path(scaler_path)
 
     print(f"Starting SmartBoiler Controller with the following settings: {options}")
     base_url = hass_url
@@ -344,6 +348,7 @@ if __name__ == "__main__":
         dataHandler=dataHandler,
         start_of_data=start_of_data_measurement,
         model_path=model_path,
+        scaler_path=scaler_path,
         predicted_columns=predicted_columns,
         
     )
