@@ -110,13 +110,14 @@ class Forecast:
 
     def load_model(
         self,
-        left_time_interval=datetime.now() - timedelta(days=1),
+        left_time_interval=datetime.now() - timedelta(days=4),
         right_time_interval=datetime.now(),
     ):
         
         self.scaler = load(open(self.scaler_path, 'rb'))
-        self.build_model()
-        self.model.load_weights(self.model_path)
+        self.model = load_model(self.model_path)
+        self.model.compile(loss="mae", optimizer="adam")
+
 
 
     def generator(
@@ -174,10 +175,11 @@ class Forecast:
     def build_model(self):
 
         model = Sequential()
-        model.add(Input(shape=(None, 11)))
+        model.add(Input(shape=(None,11)))
 
         # Add LSTM layer
         model.add(LSTM(100))
+        model.add(Dense(1))
 
         self.model = model
         self.model.compile(loss="mae", optimizer="adam")
@@ -195,7 +197,8 @@ class Forecast:
                 restore_best_weights=True,
             ),
 
-            ModelCheckpoint(verbose=2, filepath=self.model_path, save_best_only=True)]
+            # ModelCheckpoint(verbose=1, filepath=self.model_path, save_best_only=True, save_weights_only=True)
+            ]
 
         # history = model.fit(train_gen, epochs=50, batch_size=72, validation_data=valid_gen, verbose=2, shuffle=False, use_multiprocessing=True)
         print("Start training")
@@ -209,6 +212,8 @@ class Forecast:
             callbacks=callbacks,
             verbose=2,
         )
+        
+        self.model.save(self.model_path)
         print("End training")
         
         # self.model.save(self.model_path)

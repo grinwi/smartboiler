@@ -171,30 +171,31 @@ class DataHandler:
 
     # Data Processing
 
-    def extract_features_from_longitude_latitude(self, df):
+    def extract_features_from_longitude_latitude(self, df_old):
         home_coords = (self.home_latitude, self.home_longitude)
         #drop na in columns mean_latitude and mean_longitude
+        df = df_old.copy()
         df = df.dropna(subset=["mean_latitude", "mean_longitude"])
-        df["distance_from_home"] = np.vectorize(self.haversine_dist)(
+        df.loc[:,"distance_from_home"] = np.vectorize(self.haversine_dist)(
             df["mean_latitude"],
             df["mean_longitude"],
             self.home_latitude,
             self.home_longitude,
         )
 
-        df["heading_to_home"] = np.arctan2(
+        df.loc[:,"heading_to_home"] = np.arctan2(
             df["mean_latitude"] - self.home_latitude,
             df["mean_longitude"] - self.home_longitude,
         )
-        df["heading_to_home_sin"] = np.sin(df["heading_to_home"])
-        df["heading_to_home_cos"] = np.cos(df["heading_to_home"])
+        df.loc[:,"heading_to_home_sin"] = np.sin(df["heading_to_home"])
+        df.loc[:,"heading_to_home_cos"] = np.cos(df["heading_to_home"])
         # resample by 10m mean
-        df["time_stamp"] = df.index
+        df.loc[:,"time_stamp"] = df.index
         # calculate the speed of device
-        df["time_diff"] = (
+        df.loc[:,"time_diff"] = (
             df["time_stamp"].diff().dt.total_seconds() / 3600
         )  # Convert seconds to hours
-        df["distance"] = np.vectorize(self.haversine_dist)(
+        df.loc[:,"distance"] = np.vectorize(self.haversine_dist)(
             df["mean_latitude"],
             df["mean_longitude"],
             df["mean_latitude"].shift(1),
@@ -203,9 +204,9 @@ class DataHandler:
         # df['hours'] = (df['time_stamp'].astype(int) / 10**9) / 60*60 # convert to seconds
         # df['time_taken'] = df['hours'] - df['hours'].shift(1) # calculate time difference
 
-        df["speed"] = df["distance"] / df["time_diff"]  # cal speed
+        df.loc[:,"speed"] = df["distance"] / df["time_diff"]  # cal speed
         df.loc[df["speed"] > 200, "speed"] = 0
-        df["speed_towards_home"] = df["speed"] * df["heading_to_home_cos"]
+        df.loc[:,"speed_towards_home"] = df["speed"] * df["heading_to_home_cos"]
         return df
 
     def get_lowest_area_tmp(
