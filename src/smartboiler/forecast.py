@@ -110,7 +110,7 @@ class Forecast:
 
     def load_model(
         self,
-        left_time_interval=datetime.now() - timedelta(days=10),
+        left_time_interval=datetime.now() - timedelta(days=1),
         right_time_interval=datetime.now(),
     ):
         
@@ -174,16 +174,10 @@ class Forecast:
     def build_model(self):
 
         model = Sequential()
-        model.add(
-            LSTM(
-                100,
-                input_shape=(None, 11),
-                # return_
-                # sequences=True,
-            )
-        )
-        # model.add(Dropout(0.2))
-        model.add(Dense(1))
+        model.add(Input(shape=(None, 11)))
+
+        # Add LSTM layer
+        model.add(LSTM(100))
 
         self.model = model
         self.model.compile(loss="mae", optimizer="adam")
