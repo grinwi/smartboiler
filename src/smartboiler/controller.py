@@ -126,7 +126,6 @@ class Controller:
 
     def actualize_forecast(self):
         self.actual_forecast = self.forecast.get_forecast_next_steps()
-        print(f"actual forecast: {self.actual_forecast}")
 
     def control(self):
         """Method which decides about turning on or off the heating of a boiler."""

@@ -313,7 +313,7 @@ class DataHandler:
 
         # Create dictionary
         result_dict = df.squeeze().to_dict()
-
+        print(f'Writing forecast to influxdb: {result_dict}')
         # Create a dictionary
         measurement_dict = {
             "measurement": "prediction",

@@ -311,7 +311,7 @@ class Forecast:
     def get_forecast_next_steps(self, left_time_interval=None, right_time_interval=None):
         # Define the indices for the different predictions and truths
         if left_time_interval is None:
-            left_time_interval = datetime.now() - timedelta(days=4)
+            left_time_interval = datetime.now() - timedelta(days=1)
         if right_time_interval is None:
             right_time_interval = datetime.now()
             
@@ -391,7 +391,6 @@ class Forecast:
                 axis=0,
             )
             forecast_future = forecast_future.reset_index(drop=True)
-        print(f'forecast_future: {forecast_future}')
         # create a dataframe with forecast and datetime as index
         self.dataHandler.write_forecast_to_influxdb(
             forecast_future, "prediction_longtime_mean"
