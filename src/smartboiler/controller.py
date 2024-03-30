@@ -132,9 +132,7 @@ class Controller:
         """Method which decides about turning on or off the heating of a boiler."""
 
         time_now = datetime.now().astimezone(pytz.timezone("Europe/Prague"))
-        print("controling boiler")
-        print(time_now)
-
+        print(f"actual time: {time_now}, controling boiler")
         last_entry = self._last_entry()
 
         # TODO - heatup events from calendar

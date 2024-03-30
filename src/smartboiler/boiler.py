@@ -130,7 +130,6 @@ class Boiler(Switch):
 
         # get actual kWh in boiler from volume and tmp
         boiler_kWh_above_set = self.get_kWh_delta_from_temperatures(self.min_tmp, tmp_act)#(self.capacity * 4.186 * (self.min_tmp - tmp_act)) / 3600
-        print(f"boiler_kWh_above_set: {boiler_kWh_above_set}")
 
         datetime_now = datetime.now()
         actual_time = datetime_now.time()
@@ -175,7 +174,7 @@ class Boiler(Switch):
                 )
                 return (True, time_needed_to_heat)  
 
-        print(f'no need to heat, returning false, time_needed_to_heat: {time_needed_to_heat}')
+        print(f'no need to heat, returning false, time_needed_to_heat: {time_needed_to_heat}, above_set: {boiler_kWh_above_set}')
         return (False, 0)
 
     def showers_degrees(self, number_of_showers):

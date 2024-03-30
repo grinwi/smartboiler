@@ -391,7 +391,7 @@ class Forecast:
                 axis=0,
             )
             forecast_future = forecast_future.reset_index(drop=True)
-
+        print(f'forecast_future: {forecast_future}')
         # create a dataframe with forecast and datetime as index
         self.dataHandler.write_forecast_to_influxdb(
             forecast_future, "prediction_longtime_mean"
