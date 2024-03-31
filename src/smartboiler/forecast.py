@@ -4,8 +4,11 @@ from pathlib import Path
 print("Running" if __name__ == "__main__" else "Importing", Path(__file__).resolve())
 from datetime import timedelta, datetime
 from sklearn.preprocessing import MinMaxScaler, RobustScaler
-from keras.models import Sequential
-from keras.callbacks import ReduceLROnPlateau
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.callbacks import ReduceLROnPlateau
+
+import tensorflow as tf
+from tensorflow.keras.optimizers import SGD
 from keras.layers import LSTM
 from keras.layers import Dropout
 from keras.models import Model
@@ -196,7 +199,7 @@ class Forecast:
                 restore_best_weights=True,
             ),
 
-            # ModelCheckpoint(verbose=1, filepath=self.model_path, save_best_only=True, save_weights_only=True)
+            ModelCheckpoint(verbose=1, filepath=self.model_path, save_best_only=True, save_weights_only=True)
             ]
 
         # history = model.fit(train_gen, epochs=50, batch_size=72, validation_data=valid_gen, verbose=2, shuffle=False, use_multiprocessing=True)
