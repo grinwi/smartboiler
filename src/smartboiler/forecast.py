@@ -6,7 +6,6 @@ from datetime import timedelta, datetime
 from sklearn.preprocessing import MinMaxScaler, RobustScaler
 from keras.models import Sequential
 from keras.callbacks import ReduceLROnPlateau
-
 from keras.layers import LSTM
 from keras.layers import Dropout
 from keras.models import Model
@@ -115,8 +114,8 @@ class Forecast:
     ):
         
         self.scaler = load(open(self.scaler_path, 'rb'))
-        self.model = load_model(self.model_path)
-        self.model.compile(loss="mae", optimizer="adam")
+        self.build_model()
+        self.model.load_weights(self.model_path)
 
 
 
