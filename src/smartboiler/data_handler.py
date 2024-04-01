@@ -116,7 +116,7 @@ class DataHandler:
         right_time_interval,
     ):
 
-        group_by_time_interval = "10s"
+        group_by_time_interval = "1m"
 
         # format datetime to YYYY-MM-DDTHH:MM:SSZ
         left_time_interval = f"'{left_time_interval.strftime('%Y-%m-%dT%H:%M:%SZ')}'"
