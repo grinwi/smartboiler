@@ -175,6 +175,7 @@ class DataHandler:
         home_coords = (self.home_latitude, self.home_longitude)
         #drop na in columns mean_latitude and mean_longitude
         df = df_old.copy()
+        
         df = df.dropna(subset=["mean_latitude", "mean_longitude"])
         df.loc[:,"distance_from_home"] = np.vectorize(self.haversine_dist)(
             df["mean_latitude"],

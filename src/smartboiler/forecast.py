@@ -318,6 +318,10 @@ class Forecast:
             
         
         forecast_future = pd.DataFrame()
+        
+        #set minutes to 0
+        left_time_interval = left_time_interval.replace(minute=0)
+        right_time_interval = right_time_interval.replace(minute=0)
 
 
         df_all = self.dataHandler.get_data_for_prediction(

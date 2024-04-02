@@ -106,7 +106,7 @@ class Boiler(Switch):
             https://vytapeni.tzb-info.cz/tabulky-a-vypocty/97-vypocet-doby-ohrevu-teple-vody
         """
 
-        return ( consumption_kWh / (self.real_wattage / 1000)) * 60
+        return (( consumption_kWh / (self.real_wattage / 1000)) * 60)
     
     def get_kWh_delta_from_temperatures(self, tmp_act: int, tmp_goal: int):
         return ( 4.186 * self.capacity * (tmp_goal - tmp_act) / 3600 )
