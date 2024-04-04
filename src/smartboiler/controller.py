@@ -79,12 +79,12 @@ class Controller:
 
         if load_model:
             print("loading model")
+            self.forecast.build_model()
             self.forecast.load_model()
         else:
             print("training model")
-            forecast.train_model()
             self.forecast.build_model()
-            self.forecast.fit_model()
+            forecast.train_model()
 
         self.last_model_training = datetime.now()
 
@@ -112,7 +112,6 @@ class Controller:
             print("actualizing data")
 
             self.forecast.train_model()
-            self.forecast.fit_model()
             self.last_model_training = datetime.now()
 
     def _learning(self):

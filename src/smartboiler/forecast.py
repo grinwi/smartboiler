@@ -108,6 +108,34 @@ class Forecast:
         self.train_steps = int(
             (self.df_train_norm.shape[0] * 0.9 - self.lookback) // self.batch_size
         )
+        
+        callbacks = [
+            EarlyStopping(
+                monitor="loss",
+                min_delta=0,
+                patience=10,
+                verbose=2,
+                mode="auto",
+                restore_best_weights=True,
+            ),
+
+            ModelCheckpoint(verbose=1, filepath=self.model_path, save_best_only=True, save_weights_only=True)
+            ]
+
+        print("Start training")
+        history = self.model.fit(
+            self.train_gen,
+            steps_per_epoch=self.train_steps,
+            epochs=100,
+            shuffle=False,
+            validation_data=self.valid_gen,
+            validation_steps=self.val_steps,
+            callbacks=callbacks,
+            verbose=2,
+        )
+        
+        self.model.save(self.model_path)
+        print("End training")
 
 
     def load_model(
@@ -117,7 +145,6 @@ class Forecast:
     ):
         
         self.scaler = load(open(self.scaler_path, 'rb'))
-        self.build_model()
         self.model.load_weights(self.model_path)
 
 
@@ -188,35 +215,8 @@ class Forecast:
         return model
 
     def fit_model(self):
+        pass
 
-        callbacks = [
-            EarlyStopping(
-                monitor="loss",
-                min_delta=0,
-                patience=10,
-                verbose=2,
-                mode="auto",
-                restore_best_weights=True,
-            ),
-
-            ModelCheckpoint(verbose=1, filepath=self.model_path, save_best_only=True, save_weights_only=True)
-            ]
-
-        # history = model.fit(train_gen, epochs=50, batch_size=72, validation_data=valid_gen, verbose=2, shuffle=False, use_multiprocessing=True)
-        print("Start training")
-        history = self.model.fit(
-            self.train_gen,
-            steps_per_epoch=self.train_steps,
-            epochs=100,
-            shuffle=False,
-            validation_data=self.valid_gen,
-            validation_steps=self.val_steps,
-            callbacks=callbacks,
-            verbose=2,
-        )
-        
-        self.model.save(self.model_path)
-        print("End training")
         
         # self.model.save(self.model_path)
 
@@ -328,6 +328,7 @@ class Forecast:
             left_time_interval=left_time_interval,
             right_time_interval=right_time_interval,
         )
+        
         num_targets = len(self.predicted_columns)
         len_columns = len(df_all.columns)
         

@@ -373,7 +373,8 @@ class DataHandler:
 
         df.loc[:, "weekday"] = df.index.weekday
         df.loc[:, "hour"] = df.index.hour
-        df.loc[:, "minute"] = df.index.minute
+        # df.loc[:, "minute"] = df.index.minute
+        df.loc[:, "minute"] = 0
 
         # delete rows with weekday nan
         df = df.dropna(subset=["weekday"])
