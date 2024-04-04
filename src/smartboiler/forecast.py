@@ -344,6 +344,7 @@ class Forecast:
 
         # prediction for next 6 hours
         for i in range(0, 6):
+            print(df_all["minute_cos"])
             df_all = self.add_empty_row(df_all, current_forecast_begin_date, 0)
             current_forecast_begin_date += timedelta(hours=1)
 
