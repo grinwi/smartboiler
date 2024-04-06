@@ -156,11 +156,11 @@ class DataHandler:
             "measurement": "state",
         },
         "device_longitude": {
-            "sql_query": f'SELECT mean("longitude") AS "mean_longitude" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time <= {right_time_interval} AND "domain"=\'device_tracker\' AND "entity_id"=\'{self.device_tracker_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(previous)',
+            "sql_query": f'SELECT mean("longitude") AS "mean_longitude" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time <= {right_time_interval} AND "domain"=\'device_tracker\' AND "entity_id"=\'{self.device_tracker_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(linear)',
             "measurement": "state",
         },
         "device_latitude": {
-            "sql_query": f'SELECT mean("latitude") AS "mean_latitude" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time <= {right_time_interval} AND "domain"=\'device_tracker\' AND "entity_id"=\'{self.device_tracker_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(previous)',
+            "sql_query": f'SELECT mean("latitude") AS "mean_latitude" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time <= {right_time_interval} AND "domain"=\'device_tracker\' AND "entity_id"=\'{self.device_tracker_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(linear)',
             "measurement": "state",
         },
         
@@ -411,30 +411,29 @@ class DataHandler:
             .rolling(window=window, min_periods=1, center=True)
             .mean()
         )
-        # df['longtime_mean'] = df['consumed_heat_kWh']
-        df["longtime_std"] = (
-            df["consumed_heat_kWh"].rolling(window=window, min_periods=1).std()
-        )
-        df["longtime_min"] = (
-            df["consumed_heat_kWh"].rolling(window=window, min_periods=1).min()
-        )
-        df["longtime_max"] = (
-            df["consumed_heat_kWh"].rolling(window=window, min_periods=1).max()
-        )
-        df["longtime_median"] = (
-            df["consumed_heat_kWh"].rolling(window=window, min_periods=1).median()
-        )
-        df["longtime_skew"] = (
-            df["consumed_heat_kWh"].rolling(window=window, min_periods=1).skew()
-        )
+
 
         # drop consumed_heat_kWh
+        
+        df['last_3_week_mean'] = df.groupby([df.index.weekday, df.index.hour])['consumed_heat_kWh'].rolling(window=3, min_periods=1).mean().reset_index(level=[0,1], drop=True)
+        df['last_3_week_mean'] = df['last_3_week_mean'].fillna(method='ffill')
+        
+        df['last_3_week_std'] = df.groupby([df.index.weekday, df.index.hour])['consumed_heat_kWh'].rolling(window=3, min_periods=1).std().reset_index(level=[0,1], drop=True)
+        df['last_3_week_std'] = df['last_3_week_std'].fillna(method='ffill')
+        
+        df['last_3_week_max'] = df.groupby([df.index.weekday, df.index.hour])['consumed_heat_kWh'].rolling(window=3, min_periods=1).max().reset_index(level=[0,1], drop=True)
+        df['last_3_week_max'] = df['last_3_week_max'].fillna(method='ffill')
+        
+        df['last_3_week_min'] = df.groupby([df.index.weekday, df.index.hour])['consumed_heat_kWh'].rolling(window=3, min_periods=1).min().reset_index(level=[0,1], drop=True)
+        df['last_3_week_min'] = df['last_3_week_min'].fillna(method='ffill')
+        
+        df['last_3_week_skew'] = df.groupby([df.index.weekday, df.index.hour])['consumed_heat_kWh'].rolling(window=3, min_periods=1).skew().reset_index(level=[0,1], drop=True)
+        df['last_3_week_skew'] = df['last_3_week_skew'].fillna(method='ffill')
+        
+        df['last_3_week_median'] = df.groupby([df.index.weekday, df.index.hour])['consumed_heat_kWh'].rolling(window=3, min_periods=1).median().reset_index(level=[0,1], drop=True)
+        df['last_3_week_median'] = df['last_3_week_median'].fillna(method='ffill') 
+        
         df = df.drop(columns=["consumed_heat_kWh"])
-
-        df["longtime_std"] = df["longtime_std"].fillna(method="ffill")
-        df["longtime_std"] = df["longtime_std"].fillna(method="ffill")
-        df["longtime_skew"] = df["longtime_mean"].fillna(method="ffill")
-
         # transform weekday, minute, hour to sin cos
         df["weekday_sin"] = np.sin(2 * df["weekday"] * np.pi / 7)
         df["weekday_cos"] = np.cos(2 * df["weekday"] * np.pi / 7)
@@ -448,6 +447,16 @@ class DataHandler:
         df = df[
             [
                 "longtime_mean",
+                
+                
+                # "last_3_week_mean",
+                # "last_3_week_median",
+                "last_3_week_skew",
+                "last_3_week_std",
+                # "last_3_week_min",
+                # "last_3_week_max",
+                
+                
                 # "longtime_min",
                 # "longtime_max",
                 "distance_from_home",
