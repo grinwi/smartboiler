@@ -23,7 +23,7 @@ from pickle import load
 from pickle import dump
 
 
-from data_handler import DataHandler
+from smartboiler.data_handler import DataHandler
 
 
 class Forecast:
