@@ -157,7 +157,7 @@ class Boiler(Switch):
             time_to_consumption_minutes = (i * 60) - 30
 
             sum_of_consumption = (
-                prediction_of_consumption.iloc[:i].sum().values[0]
+                sum(prediction_of_consumption[:i])
                 - boiler_kWh_above_set
             ) + self.get_kWh_loss_in_time(time_minutes=time_to_consumption_minutes, tmp_act=tmp_act) 
 

@@ -156,11 +156,11 @@ class DataHandler:
             "measurement": "state",
         },
         "device_longitude": {
-            "sql_query": f'SELECT mean("longitude") AS "mean_longitude" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time <= {right_time_interval} AND "domain"=\'device_tracker\' AND "entity_id"=\'{self.device_tracker_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(linear)',
+            "sql_query": f'SELECT mean("longitude") AS "mean_longitude" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time <= {right_time_interval} AND "domain"=\'device_tracker\' AND "entity_id"=\'{self.device_tracker_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(previous)',
             "measurement": "state",
         },
         "device_latitude": {
-            "sql_query": f'SELECT mean("latitude") AS "mean_latitude" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time <= {right_time_interval} AND "domain"=\'device_tracker\' AND "entity_id"=\'{self.device_tracker_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(linear)',
+            "sql_query": f'SELECT mean("latitude") AS "mean_latitude" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time <= {right_time_interval} AND "domain"=\'device_tracker\' AND "entity_id"=\'{self.device_tracker_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(previous)',
             "measurement": "state",
         },
         
@@ -172,7 +172,6 @@ class DataHandler:
     # Data Processing
 
     def extract_features_from_longitude_latitude(self, df_old):
-        home_coords = (self.home_latitude, self.home_longitude)
         #drop na in columns mean_latitude and mean_longitude
         df = df_old.copy()
         
@@ -225,8 +224,8 @@ class DataHandler:
         df_all_list = []
         # iterate over key an value in data
         for key, value in queries.items():
-            # get data from influxdb
 
+            # print(value["sql_query"])
             result = self.dataframe_client.query(value["sql_query"])[
                 value["measurement"]
             ]
@@ -245,7 +244,7 @@ class DataHandler:
             * (df["water_temperature_mean"] - 10)
             * 4.186
             * 0.6
-        )
+        )  
 
         df = self.extract_features_from_longitude_latitude(df)
         # all value in speed larger than 200 set to 0
@@ -308,18 +307,16 @@ class DataHandler:
         df_all = self.get_df_from_queries(queries)
         df_all = self.process_kWh_water_consumption(df_all)
         df_all.index = df_all.index.tz_localize(None)
-        df_all, _ = self.transform_data_for_ml(df_all, predicted_column="longtime_mean")
+        df_all, datetimes = self.transform_data_for_ml(df_all, predicted_column="longtime_mean")
 
-        return df_all
+        return df_all, datetimes
 
-    def write_forecast_to_influxdb(self, df, measurement_name):
+    def write_forecast_to_influxdb(self, forecast_list, measurement_name):
         current_time = datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
 
-        df.index = df.index.astype(str)
 
-        # Create dictionary
-        result_dict = df.squeeze().to_dict()
-        print(f'Writing forecast to influxdb: {result_dict}')
+       # create a dict from list with keys from 0
+        result_dict = dict(enumerate(forecast_list, 0))
         # Create a dictionary
         measurement_dict = {
             "measurement": "prediction",
@@ -381,7 +378,7 @@ class DataHandler:
         df.loc[:, "minute"] = 0
 
         # delete rows with weekday nan
-        df = df.dropna(subset=["weekday"])
+        # df = df.dropna(subset=["weekday"])
         df["consumed_heat_kWh"] = df["consumed_heat_kWh"].fillna(0)
 
         # fill negative values with 0
@@ -429,9 +426,27 @@ class DataHandler:
         
         df['last_3_week_skew'] = df.groupby([df.index.weekday, df.index.hour])['consumed_heat_kWh'].rolling(window=3, min_periods=1).skew().reset_index(level=[0,1], drop=True)
         df['last_3_week_skew'] = df['last_3_week_skew'].fillna(method='ffill')
+        #fill 
         
         df['last_3_week_median'] = df.groupby([df.index.weekday, df.index.hour])['consumed_heat_kWh'].rolling(window=3, min_periods=1).median().reset_index(level=[0,1], drop=True)
         df['last_3_week_median'] = df['last_3_week_median'].fillna(method='ffill') 
+        
+        
+        
+        df_reverse = df.iloc[::-1]
+
+        nan_indices = df_reverse[df_reverse['last_3_week_skew'].isna()].index
+
+        for index in nan_indices:
+
+            rolling_skew = df_reverse.loc[index:, 'consumed_heat_kWh'].rolling(window=3, min_periods=1).skew()
+            rolling_std = df_reverse.loc[index:, 'consumed_heat_kWh'].rolling(window=3, min_periods=1).std()
+            df_reverse.loc[index:, 'last_3_week_skew'] = np.where(df_reverse.loc[index:, 'last_3_week_skew'].isna(), rolling_skew, df_reverse.loc[index:, 'last_3_week_skew'])
+            df_reverse.loc[index:, 'last_3_week_std'] = np.where(df_reverse.loc[index:, 'last_3_week_std'].isna(), rolling_std, df_reverse.loc[index:, 'last_3_week_std'])
+
+        df['last_3_week_skew'] = df_reverse['last_3_week_skew'].iloc[::-1]
+        df['last_3_week_std'] = df_reverse['last_3_week_std'].iloc[::-1]
+        
         
         df = df.drop(columns=["consumed_heat_kWh"])
         # transform weekday, minute, hour to sin cos
@@ -447,35 +462,21 @@ class DataHandler:
         df = df[
             [
                 "longtime_mean",
-                
-                
-                # "last_3_week_mean",
-                # "last_3_week_median",
                 "last_3_week_skew",
                 "last_3_week_std",
-                # "last_3_week_min",
-                # "last_3_week_max",
-                
-                
-                # "longtime_min",
-                # "longtime_max",
                 "distance_from_home",
-                # # "speed",
                 "speed_towards_home",
                 "count",
                 "heading_to_home_sin",
                 "heading_to_home_cos",
-                # "mean_latitude",
-                # "mean_longitude",
-                # "temperature",
-                # "humidity",
-                # "wind_speed",
+                "temperature",
+                "humidity",
+                "wind_speed",
                 "weekday_sin",
                 "weekday_cos",
                 "hour_sin",
                 "hour_cos",
-                "minute_sin",
-                "minute_cos",
+
             ]
         ]
         # df = df[
