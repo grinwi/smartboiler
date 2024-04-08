@@ -5,6 +5,7 @@ from pathlib import Path
 import influxdb
 
 from smartboiler.data_handler import DataHandler
+from smartboiler.fotovoltaics import Fotovoltaics
 
 print("Running" if __name__ == "__main__" else "Importing", Path(__file__).resolve())
 
@@ -27,6 +28,8 @@ import time
 from numpy import ndarray
 from smartboiler.switch import Switch
 import pandas as pd
+from typing import Optional
+
 
 
 class Boiler(Switch):
@@ -37,6 +40,7 @@ class Boiler(Switch):
         headers,
         boiler_switch_entity_id,
         dataHandler: DataHandler,
+        fotovoltaics: Optional[Fotovoltaics] = None,
         capacity=100,
         wattage=2000,
         set_tmp=60,
@@ -67,6 +71,7 @@ class Boiler(Switch):
             headers=headers,
         )
         self.dataHandler = dataHandler
+        self.fotovoltaics = fotovoltaics
         self.boiler_heat_cap = capacity * 1.163
         self.real_wattage = wattage * heater_efficiency
         self.hdo = hdo
@@ -128,6 +133,10 @@ class Boiler(Switch):
             
             return (True, self.time_needed_to_heat_up_minutes(consumption_kWh=kWh_needed_to_heat))
 
+        if self.fotovoltaics is not None and (self.fotovoltaics.is_consumption_lower_than_production()) and ( not self.fotovoltaics.is_battery_charging()):
+            time_needed_to_heat_to_full = self.time_needed_to_heat_up_minutes(consumption_kWh=self.get_kWh_delta_from_temperatures(tmp_act, self.set_tmp))
+            return (True, time_needed_to_heat_to_full)
+        
         # get actual kWh in boiler from volume and tmp
         boiler_kWh_above_set = self.get_kWh_delta_from_temperatures(self.min_tmp, tmp_act)#(self.capacity * 4.186 * (self.min_tmp - tmp_act)) / 3600
 

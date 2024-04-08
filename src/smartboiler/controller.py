@@ -44,6 +44,7 @@ import numpy as np
 
 
 from smartboiler.data_handler import DataHandler
+from smartboiler.fotovoltaics import Fotovoltaics
 from smartboiler.forecast import Forecast
 from smartboiler.boiler import Boiler
 
@@ -291,6 +292,9 @@ if __name__ == "__main__":
     logging_level = options["logging_level"]
     load_model = options["load_model"]
     hdo = options["hdo"]
+    has_fotovoltaics = options["has_fotovoltaics"]
+    fve_solax_sn = options["fve_solax_sn"]
+    fve_solax_token = options["fve_solax_token"]
     
     model_path = Path(model_path)
     scaler_path = Path(scaler_path)
@@ -321,6 +325,19 @@ if __name__ == "__main__":
         start_of_data=start_of_data_measurement,
     )
     boiler_switch_entity_id = "switch." + boiler_socket_id
+    
+    print("inicializing fotovoltaics from controller __main__")
+    if has_fotovoltaics:
+        fotovoltaics = Fotovoltaics(
+            power=100,
+            efficiency=0.9,
+            token=fve_solax_token,
+            sn=fve_solax_sn,
+            battery_capacity=10,
+            battery_power=5,
+        )
+    else:
+        fotovoltaics = None
 
     print("inicializing boiler from controller __main__")
     boiler = Boiler(
@@ -329,6 +346,7 @@ if __name__ == "__main__":
         headers,
         boiler_switch_entity_id=boiler_socket_switch_id,
         dataHandler=dataHandler,
+        fotovoltaics=fotovoltaics,
         capacity=boiler_volume,
         wattage=boiler_watt_power,
         set_tmp=boiler_set_tmp,

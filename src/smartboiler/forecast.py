@@ -203,8 +203,8 @@ class Forecast:
     def build_model(self):
 
         model = Sequential()
-        model.add(Input(shape=(None, 14)))       
-     
+        model.add(Input(shape=(None, 14)))
+
         # Add LSTM layer
         model.add(LSTM(100))
         model.add(Dense(1))
@@ -212,8 +212,6 @@ class Forecast:
         self.model = model
         self.model.compile(loss="mae", optimizer="adam")
         return model
-
-
 
     def add_empty_row(self, df, date_time, predicted_value):
 
@@ -224,23 +222,21 @@ class Forecast:
             columns=df.columns,
             data=[
                 [
-                    predicted_value,# longtime_mean
-                    prev_week_values[1], # 3 week skew
-                    prev_week_values[2], # 3 weeak std
-                    last_row_values[3], # distance_from_home
-                    last_row_values[4], # speed_towards_home
-                    last_row_values[5], # count
-                    last_row_values[6], # heading to home sin
-                    last_row_values[7], # heading to home cos
-                    last_row_values[8], # temperature
-                    last_row_values[9], # humidity
-                    last_row_values[10], # wind_speed
-                    
+                    predicted_value,  # longtime_mean
+                    prev_week_values[1],  # 3 week skew
+                    prev_week_values[2],  # 3 weeak std
+                    last_row_values[3],  # distance_from_home
+                    last_row_values[4],  # speed_towards_home
+                    last_row_values[5],  # count
+                    last_row_values[6],  # heading to home sin
+                    last_row_values[7],  # heading to home cos
+                    last_row_values[8],  # temperature
+                    last_row_values[9],  # humidity
+                    last_row_values[10],  # wind_speed
                     np.sin(2 * np.pi * date_time.weekday() / 7),
                     np.cos(2 * np.pi * date_time.weekday() / 7),
                     np.sin(2 * np.pi * date_time.hour / 24),
                     np.cos(2 * np.pi * date_time.hour / 24),
-
                 ]
             ],
         )
@@ -326,9 +322,9 @@ class Forecast:
         # print last row of df all
 
         forecast_future = []
-            
+
         current_forecast_begin_date = right_time_interval + timedelta(hours=1)
-        
+
         df_all = self.add_empty_row(df_all, current_forecast_begin_date, 0)
         current_forecast_begin_date += timedelta(hours=1)
 
@@ -339,10 +335,8 @@ class Forecast:
 
             # df_test_norm = df_test_zuka.copy()
             df_test_norm[df_test_norm.columns] = self.scaler.transform(df_test_norm)
-            
-            
-            
-            df_test_norm = df_test_norm[-self.lookback*4:]
+
+            df_test_norm = df_test_norm[-self.lookback * 4 :]
             test_gen = self.mul_generator(
                 dataframe=df_test_norm,
                 target_names=self.predicted_columns,
@@ -354,26 +348,24 @@ class Forecast:
                 shuffle=False,
                 batch_size=self.batch_size,
             )
-            
+
             last_batch = next(test_gen)
 
             # Step 3: Extract the last batch of features (X_batch) and target values (y_truth_batch)
             (X_batch, y_truth) = last_batch
-            
-            
 
             # Step 4: Make predictions with your model on the last batch
             num_targets = len(self.predicted_columns)
             len_columns = len(df_test_norm.columns)
             num_features = len_columns - num_targets
-            
+
             y_truth_concat = np.concatenate(
                 (y_truth, np.zeros((y_truth.shape[0], num_features))), axis=1
             )
             y_truth_concat = self.scaler.inverse_transform(y_truth_concat)
-            
+
             y_truth_inv = y_truth_concat[-1, 0]
-            
+
             y_pred = self.model.predict(X_batch, verbose=0)
             y_pred_inv = np.concatenate(
                 (y_pred, np.zeros((y_pred.shape[0], num_features))), axis=1
@@ -385,22 +377,19 @@ class Forecast:
             # y_pred_inv[0] is min 0
             if y_pred_inv < 0:
                 y_pred_inv = 0
-                
-            if (i == 0):
+
+            if i == 0:
                 print("y_pred_inv: ", y_pred_inv)
                 print("y_truth_inv: ", y_truth_inv)
 
             # set last longtimemean value
             df_all.iloc[-1, df_all.columns.get_loc("longtime_mean")] = y_pred_inv
 
-            # df_all = df_all[1:]
-
             forecast_future.append(y_pred_inv)
-            
-            
+
             df_all = self.add_empty_row(df_all, current_forecast_begin_date, 0)
             current_forecast_begin_date += timedelta(hours=1)
-            
+
         # create a dataframe with forecast and datetime as index
         self.dataHandler.write_forecast_to_influxdb(
             forecast_future, "prediction_longtime_mean"
