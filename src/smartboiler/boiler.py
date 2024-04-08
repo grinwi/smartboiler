@@ -31,7 +31,6 @@ import pandas as pd
 from typing import Optional
 
 
-
 class Boiler(Switch):
     def __init__(
         self,
@@ -51,7 +50,7 @@ class Boiler(Switch):
         average_boiler_surroundings_temp=15,
         boiler_case_max_tmp=40,
         hdo=False,
-        cooldown_coef_B = 1.12
+        cooldown_coef_B=1.12,
     ):
 
         print("------------------------------------------------------\n")
@@ -88,6 +87,7 @@ class Boiler(Switch):
         # if (average_boiler_surroundings_temp is None or boiler_case_max_tmp is None):
         #     boiler_data_stats = dataHandler.get_boiler_data_stats(left_time_interval=datetime.now() - timedelta(days=21))
         #     self.set_measured_tmp(boiler_data_stats)
+
     def get_kWh_loss_in_time(self, time_minutes, tmp_act=60):
         """Calculates the kWh loss in time.
 
@@ -101,8 +101,7 @@ class Boiler(Switch):
         kWh_loss = (time_minutes * self.cooldown_coef_B * tmp_delta / 1000) / 60
         # print(f"kWh_loss: {kWh_loss}, time_minutes: {time_minutes}, tmp_act: {tmp_act}, tmp_delta: {tmp_delta}")
         return kWh_loss
-        
-        
+
     def time_needed_to_heat_up_minutes(self, consumption_kWh):
         """
         Calculates the time needed for heating water in boiler by temperature delta.
@@ -111,12 +110,14 @@ class Boiler(Switch):
             https://vytapeni.tzb-info.cz/tabulky-a-vypocty/97-vypocet-doby-ohrevu-teple-vody
         """
 
-        return (( consumption_kWh / (self.real_wattage / 1000)) * 60)
-    
-    def get_kWh_delta_from_temperatures(self, tmp_act: int, tmp_goal: int):
-        return ( 4.186 * self.capacity * (tmp_goal - tmp_act) / 3600 )
+        return (consumption_kWh / (self.real_wattage / 1000)) * 60
 
-    def is_needed_to_heat(self, tmp_act: int, prediction_of_consumption)->tuple[bool, int]:
+    def get_kWh_delta_from_temperatures(self, tmp_act: int, tmp_goal: int):
+        return 4.186 * self.capacity * (tmp_goal - tmp_act) / 3600
+
+    def is_needed_to_heat(
+        self, tmp_act: int, prediction_of_consumption
+    ) -> tuple[bool, int]:
         """Conciders if it is needed to heat.
 
         Args:
@@ -129,16 +130,31 @@ class Boiler(Switch):
         """
 
         if tmp_act < self.min_tmp:
-            kWh_needed_to_heat = self.get_kWh_delta_from_temperatures(tmp_act, (self.min_tmp+3)) # add 3 degrees above min
-            
-            return (True, self.time_needed_to_heat_up_minutes(consumption_kWh=kWh_needed_to_heat))
+            kWh_needed_to_heat = self.get_kWh_delta_from_temperatures(
+                tmp_act, (self.min_tmp + 3)
+            )  # add 3 degrees above min
 
-        if self.fotovoltaics is not None and (self.fotovoltaics.is_consumption_lower_than_production()) and ( not self.fotovoltaics.is_battery_charging()):
-            time_needed_to_heat_to_full = self.time_needed_to_heat_up_minutes(consumption_kWh=self.get_kWh_delta_from_temperatures(tmp_act, self.set_tmp))
+            return (
+                True,
+                self.time_needed_to_heat_up_minutes(consumption_kWh=kWh_needed_to_heat),
+            )
+
+        if (
+            self.fotovoltaics is not None
+            and (self.fotovoltaics.is_consumption_lower_than_production())
+            and (not self.fotovoltaics.is_battery_charging())
+        ):
+            time_needed_to_heat_to_full = self.time_needed_to_heat_up_minutes(
+                consumption_kWh=self.get_kWh_delta_from_temperatures(
+                    tmp_act, self.set_tmp
+                )
+            )
             return (True, time_needed_to_heat_to_full)
-        
+
         # get actual kWh in boiler from volume and tmp
-        boiler_kWh_above_set = self.get_kWh_delta_from_temperatures(self.min_tmp, tmp_act)#(self.capacity * 4.186 * (self.min_tmp - tmp_act)) / 3600
+        boiler_kWh_above_set = self.get_kWh_delta_from_temperatures(
+            self.min_tmp, tmp_act
+        )  # (self.capacity * 4.186 * (self.min_tmp - tmp_act)) / 3600
 
         datetime_now = datetime.now()
         actual_time = datetime_now.time()
@@ -166,13 +182,15 @@ class Boiler(Switch):
             time_to_consumption_minutes = (i * 60) - 30
 
             sum_of_consumption = (
-                sum(prediction_of_consumption[:i])
+                prediction_of_consumption.iloc[:i].sum().values[0]
                 - boiler_kWh_above_set
-            ) + self.get_kWh_loss_in_time(time_minutes=time_to_consumption_minutes, tmp_act=tmp_act) 
+            ) + self.get_kWh_loss_in_time(
+                time_minutes=time_to_consumption_minutes, tmp_act=tmp_act
+            )
 
             unavailible_minutes = actual_schedule.iloc[:i]["unavailable_minutes"].sum()
-            time_needed_to_heat = (
-                self.time_needed_to_heat_up_minutes(consumption_kWh=sum_of_consumption)
+            time_needed_to_heat = self.time_needed_to_heat_up_minutes(
+                consumption_kWh=sum_of_consumption
             )
             if time_needed_to_heat > 0:
                 time_needed_to_heat += unavailible_minutes
@@ -181,9 +199,11 @@ class Boiler(Switch):
                 print(
                     f"time_needed_to_heat: {time_needed_to_heat}, time_to_consumption_minutes: {time_to_consumption_minutes}, sum_of_consumption: {sum_of_consumption}, unavailible_minutes: {unavailible_minutes}"
                 )
-                return (True, time_needed_to_heat)  
+                return (True, time_needed_to_heat)
 
-        print(f'no need to heat, returning false, time_needed_to_heat: {time_needed_to_heat}, above_set: {boiler_kWh_above_set}')
+        print(
+            f"no need to heat, returning false, time_needed_to_heat: {time_needed_to_heat}, above_set: {boiler_kWh_above_set}"
+        )
         return (False, 0)
 
     def showers_degrees(self, number_of_showers):

@@ -311,12 +311,14 @@ class DataHandler:
 
         return df_all, datetimes
 
-    def write_forecast_to_influxdb(self, forecast_list, measurement_name):
+    def write_forecast_to_influxdb(self, df, measurement_name):
         current_time = datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
 
+        df.index = df.index.astype(str)
 
-       # create a dict from list with keys from 0
-        result_dict = dict(enumerate(forecast_list, 0))
+        # Create dictionary
+        result_dict = df.squeeze().to_dict()
+        print(f'Writing forecast to influxdb: {result_dict}')
         # Create a dictionary
         measurement_dict = {
             "measurement": "prediction",

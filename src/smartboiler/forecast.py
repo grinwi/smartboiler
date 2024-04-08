@@ -319,9 +319,6 @@ class Forecast:
         len_columns = len(df_all.columns)
         forecast_future = pd.DataFrame()
 
-        # print last row of df all
-
-        forecast_future = []
 
         current_forecast_begin_date = right_time_interval + timedelta(hours=1)
 
@@ -385,8 +382,15 @@ class Forecast:
             # set last longtimemean value
             df_all.iloc[-1, df_all.columns.get_loc("longtime_mean")] = y_pred_inv
 
-            forecast_future.append(y_pred_inv)
-
+            forecast_future = pd.concat(
+                [
+                    forecast_future,
+                    df_all.iloc[[-1], df_all.columns.get_loc("longtime_mean")],
+                ],
+                axis=0,
+            )
+            forecast_future = forecast_future.reset_index(drop=True)
+            
             df_all = self.add_empty_row(df_all, current_forecast_begin_date, 0)
             current_forecast_begin_date += timedelta(hours=1)
 
