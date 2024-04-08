@@ -5,7 +5,6 @@ WORKDIR /app
 
 # copy the requirements file into the image
 COPY requirements.txt requirements.txt
-COPY requirements_webserver.txt requirements_webserver.txt
 COPY setup.py setup.py
 COPY README.md README.md
 
@@ -22,7 +21,6 @@ RUN apt-get update \
     && ln -s /usr/include/hdf5/serial /usr/include/hdf5/include \
     && export HDF5_DIR=/usr/include/hdf5 \
     && pip3 install netCDF4 \
-    && pip3 install --no-cache-dir -r requirements_webserver.txt \
     && apt-get purge -y --auto-remove \
         gcc \
         libhdf5-dev \
@@ -31,7 +29,6 @@ RUN apt-get update \
         libnetcdf-dev \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install --no-cache-dir -r requirements_webserver.txt
 RUN pip install --trusted-host pypi.python.org -r requirements.txt
 
 
@@ -39,20 +36,6 @@ RUN pip install --trusted-host pypi.python.org -r requirements.txt
 # copy contents
 COPY src/smartboiler/ /app/src/smartboiler/
 
-
-
-COPY src/smartboiler/optimization.py /app/src/smartboiler/optimization.py
-COPY src/smartboiler/retrieve_hass.py /app/src/smartboiler/retrieve_hass.py
-COPY src/smartboiler/utils.py /app/src/smartboiler/utils.py
-COPY src/smartboiler/web_server.py /app/src/smartboiler/web_server.py
-COPY src/smartboiler/templates/index.html /app/src/smartboiler/templates/index.html
-COPY src/smartboiler/static/style.css /app/src/smartboiler/static/style.css
-
-COPY options.json /app/
-COPY src/smartboiler/lstm_model.h5 /app/data/lstm_model.h5
-
-COPY config_smartboiler.yaml /app/config_smartboiler.yaml
-COPY secrets_smartboiler.yaml /app/secrets_smartboiler.yaml
 
 
 
