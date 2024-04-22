@@ -25,7 +25,7 @@ from time_handler import TimeHandler
 
 class EventChecker:
 
-    def __init__(self):
+    def __init__(self, token_path='token.pickle', credentials_path='credentials.json'):
 
         self.SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
         self.TimeHandler = TimeHandler()
@@ -60,7 +60,7 @@ class EventChecker:
         except:
             print("couldn't build service")
             return
-        now = datetime.datetime.utcnow().isoformat() + 'Z'
+        now = datetime.datetime.now(datetime.UTC).isoformat() + 'Z'
         try:
             events_result = service.events().list(calendarId='primary', timeMin=now,
                                                   maxResults=1, singleEvents=True,
@@ -98,23 +98,23 @@ class EventChecker:
                         return_dict['hours_to_event'] = time_to_event
                         return_dict['degree_target'] = degree_target
                     break
-                if re.match('^.*Prepare (\d+) showers$', e['summary']):
-                    number_of_showers = int(
-                        re.split('^.*Prepare (\d+) showers$', e['summary'])[1])
+                # if re.match('^.*Prepare (\d+) showers$', e['summary']):
+                #     number_of_showers = int(
+                #         re.split('^.*Prepare (\d+) showers$', e['summary'])[1])
 
-                    degree_target = Boiler.showers_degrees(
-                        number_of_showers=number_of_showers)
+                #     degree_target = Boiler.showers_degrees(
+                #         number_of_showers=number_of_showers)
 
-                    start = self.TimeHandler.date_to_datetime(
-                        e['start'].get('dateTime', e['start'].get('date')))
-                    time_to_event = (start - (datetime.datetime.now() +
-                                     datetime.timedelta(hours=1))) / datetime.timedelta(hours=1)
+                #     start = self.TimeHandler.date_to_datetime(
+                #         e['start'].get('dateTime', e['start'].get('date')))
+                #     time_to_event = (start - (datetime.datetime.now() +
+                #                      datetime.timedelta(hours=1))) / datetime.timedelta(hours=1)
 
-                    if (time_to_event > 0):
+                #     if (time_to_event > 0):
 
-                        return_dict['hours_to_event'] = time_to_event
-                        return_dict['degree_target'] = degree_target
-                    break
+                #         return_dict['hours_to_event'] = time_to_event
+                #         return_dict['degree_target'] = degree_target
+                #     break
 
         return return_dict
 

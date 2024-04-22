@@ -46,6 +46,9 @@ class Forecast:
 
         self.model_path = model_path
         self.scaler_path = scaler_path
+        # Define the quantiles you want to predict
+        self.quantiles = [0.1, 0.3, 0.5, 0.7, 0.9]
+
 
     def train_model(
         self,
@@ -136,7 +139,7 @@ class Forecast:
             verbose=2,
         )
 
-        self.model.save(self.model_path)
+        # self.model.save(self.model_path)
         print("End training")
 
     def load_model(
@@ -199,6 +202,20 @@ class Forecast:
         SS_res = K.sum(K.square(y_true - y_pred))
         SS_tot = K.sum(K.square(y_true - K.mean(y_true)))
         return 1 - SS_res / (SS_tot + K.epsilon())
+    
+    def mean_absolute_percentage_error(self, y_true, y_pred):
+        epsilon = 1e-10
+        y_true, y_pred = tf.cast(y_true, tf.float32), tf.cast(y_pred, tf.float32)
+        diff = tf.abs((y_true - y_pred) / tf.maximum(tf.abs(y_true), epsilon))
+        return 100. * tf.reduce_mean(diff)
+    
+    def quantile_loss(self, q, y_true, y_pred):
+        # Example usage:
+        # Suppose you want to predict the median (q=0.5) and the 90th percentile (q=0.9)
+
+        e = y_true - y_pred
+        return tf.keras.backend.mean(tf.keras.backend.maximum(q * e, (q - 1) * e), axis=-1)
+
 
     def build_model(self):
 
@@ -210,7 +227,7 @@ class Forecast:
         model.add(Dense(1))
 
         self.model = model
-        self.model.compile(loss="mae", optimizer="adam")
+        self.model.compile(loss=[lambda y_true, y_pred: self.quantile_loss(q, y_true, y_pred) for q in self.quantiles], optimizer="adam")
         return model
 
     def add_empty_row(self, df, date_time, predicted_value):

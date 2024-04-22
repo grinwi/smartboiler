@@ -259,7 +259,7 @@ class DataHandler:
                 "outside_temperature_mean": "mean",
                 "outside_humidity_mean": "mean",
                 "outside_wind_speed_mean": "mean",
-                "device_presence_distinct_count": "sum",
+                "device_presence_distinct_count": "mean",
                 "mean_longitude": "mean",
                 "mean_latitude": "mean",
                 "speed": "mean",
