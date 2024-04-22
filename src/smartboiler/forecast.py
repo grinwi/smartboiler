@@ -18,7 +18,6 @@ from keras.callbacks import EarlyStopping, ModelCheckpoint
 import keras.backend as K
 import numpy as np
 import pandas as pd
-from scipy import stats
 from pickle import load
 from pickle import dump
 
