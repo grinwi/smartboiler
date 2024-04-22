@@ -41,20 +41,12 @@ setup(
     install_requires=[
         'wheel', 
         'numpy>=1.22.2',
-        'scipy<1.9.0',
         'pandas>=1.4.1',
-        'pvlib>=0.10.1',
-        'protobuf>=3.0.0',
         'pytz>=2021.1',
         'requests>=2.25.1',
-        'beautifulsoup4>=4.9.3',
-        'pulp>=2.4',
-        'pyyaml>=5.4.1',
         'tables==3.7.0',
-        'skforecast==0.10.1',
         'influxdb==5.3.1',
         'matplotlib==3.5.1',
-        'flask>=2.0.2',
         
     ],  
     # Optional
