@@ -44,9 +44,7 @@ setup(
         'pandas>=1.4.1',
         'pytz>=2021.1',
         'requests>=2.25.1',
-        'tables==3.7.0',
         'influxdb==5.3.1',
-        'matplotlib==3.5.1',
         
     ],  
     # Optional
