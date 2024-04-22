@@ -9,25 +9,25 @@ COPY setup.py setup.py
 COPY README.md README.md
 
 # Setup
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        gcc \
-        libhdf5-dev \
-        libhdf5-serial-dev \
-        netcdf-bin \    
-        libnetcdf-dev \
-        coinor-cbc \
-        coinor-libcbc-dev \
-    && ln -s /usr/include/hdf5/serial /usr/include/hdf5/include \
-    && export HDF5_DIR=/usr/include/hdf5 \
-    && pip3 install netCDF4 \
-    && apt-get purge -y --auto-remove \
-        gcc \
-        libhdf5-dev \
-        libhdf5-serial-dev \
-        netcdf-bin \
-        libnetcdf-dev \
-    && rm -rf /var/lib/apt/lists/*
+# RUN apt-get update \
+    # && apt-get install -y --no-install-recommends \
+    #     gcc \
+    #     libhdf5-dev \
+    #     libhdf5-serial-dev \
+    #     netcdf-bin \    
+    #     libnetcdf-dev \
+    #     coinor-cbc \
+    #     coinor-libcbc-dev \
+    # && ln -s /usr/include/hdf5/serial /usr/include/hdf5/include \
+    # && export HDF5_DIR=/usr/include/hdf5 \
+    # && pip3 install netCDF4 \
+    # && apt-get purge -y --auto-remove \
+    #     gcc \
+    #     libhdf5-dev \
+    #     libhdf5-serial-dev \
+    #     netcdf-bin \
+    #     libnetcdf-dev \
+    # && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --trusted-host pypi.python.org -r requirements.txt
 
