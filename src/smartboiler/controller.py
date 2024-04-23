@@ -27,20 +27,13 @@ import calendar
 from influxdb import DataFrameClient
 from influxdb import InfluxDBClient
 import os.path
-import signal
-import sys
+
 import argparse
 import logging
 import time
 import os
 
 import json
-import requests
-
-
-from distutils.util import strtobool
-from scipy.misc import electrocardiogram
-import numpy as np
 
 
 from smartboiler.data_handler import DataHandler
@@ -220,24 +213,7 @@ class Controller:
 if __name__ == "__main__":
     logging.info("Starting SmartBoiler Controller")
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--url",
-        type=str,
-        help="The URL to your Home Assistant instance, ex the external_url in your hass configuration",
-    )
-    parser.add_argument(
-        "--key",
-        type=str,
-        help="Your access key. If using EMHASS in standalone this should be a Long-Lived Access Token",
-    )
-    parser.add_argument(
-        "--addon",
-        type=strtobool,
-        default="False",
-        help="Define if we are usinng EMHASS with the add-on or in standalone mode",
-    )
-    args = parser.parse_args()
+
 
     OPTIONS_PATH = os.getenv("OPTIONS_PATH", default="/app/options.json")
     options_json = Path(OPTIONS_PATH)
