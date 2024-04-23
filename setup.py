@@ -41,6 +41,7 @@ setup(
     install_requires=[
         'wheel', 
         'numpy>=1.22.2',
+        'h5py==3.10.0'
         'scipy<1.9.0',
         'pandas>=1.4.1',
         'pvlib>=0.10.1',
@@ -49,6 +50,8 @@ setup(
         'requests>=2.25.1',
         'beautifulsoup4>=4.9.3',
         'pulp>=2.4',
+        'tensorflow>=2.6.0',
+        'Mako==1.3.2',
         'pyyaml>=5.4.1',
         'tables==3.7.0',
         'skforecast==0.10.1',
