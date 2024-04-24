@@ -3,11 +3,9 @@ from pathlib import Path
 print("Running" if __name__ == "__main__" else "Importing", Path(__file__).resolve())
 from datetime import timedelta, datetime
 from sklearn.preprocessing import MinMaxScaler, RobustScaler
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.callbacks import ReduceLROnPlateau
+from keras.models import Sequential
 
-import tensorflow as tf
-from tensorflow.keras.optimizers import SGD
+# import tensorflow as tf
 from keras.layers import LSTM
 from keras.layers import Dropout
 from keras.models import Model
@@ -203,16 +201,19 @@ class Forecast:
     
     def mean_absolute_percentage_error(self, y_true, y_pred):
         epsilon = 1e-10
-        y_true, y_pred = tf.cast(y_true, tf.float32), tf.cast(y_pred, tf.float32)
-        diff = tf.abs((y_true - y_pred) / tf.maximum(tf.abs(y_true), epsilon))
-        return 100. * tf.reduce_mean(diff)
+        epsilon = K.constant(epsilon, dtype='float32')  # Assuming epsilon is a constant
+        y_true = K.cast(y_true, 'float32')
+        y_pred = K.cast(y_pred, 'float32')
+
+        diff = K.abs((y_true - y_pred) / K.maximum(K.abs(y_true), epsilon))
+        return 100. * K.mean(diff)
     
     def quantile_loss(self, q, y_true, y_pred):
         # Example usage:
         # Suppose you want to predict the median (q=0.5) and the 90th percentile (q=0.9)
 
         e = y_true - y_pred
-        return tf.keras.backend.mean(tf.keras.backend.maximum(q * e, (q - 1) * e), axis=-1)
+        return K.mean(K.maximum(q * e, (q - 1) * e), axis=-1)
 
 
     def build_model(self):
