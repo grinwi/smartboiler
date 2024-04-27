@@ -2,6 +2,8 @@ from pathlib import Path
 from pyexpat import model
 import re, pytz
 
+from smartboiler.event_checker import EventChecker
+
 print("Running" if __name__ == "__main__" else "Importing", Path(__file__).resolve())
 
 ###########################################################
@@ -57,16 +59,11 @@ class Controller:
         Args:
             settings_file (str, optional): [name of json file with settings]. Defaults to 'settings.json'.
         """
-        # TODO - load settings from config file or home assistant
-
-        # self.how_water_flow = settings['how_water_flow']
-        # self.tmp_water_flow = settings['tmp_water_flow']
 
         self.tmp_min = 5
 
         self.start_date = datetime.now()
 
-        # self.Hass = remote.API('localhost', 'smart_boiler01')
         self.dataHandler = dataHandler
         self.boiler = boiler
         self.forecast = forecast
@@ -81,18 +78,8 @@ class Controller:
             forecast.train_model()
 
         self.last_model_training = datetime.now()
-
-        # #self.EventChecker = EventChecker()
-        # #self.TimeHandler = TimeHandler()
-        # #self.Boiler = Boiler(capacity=boiler_capacity,
-        # #                    wattage=boiler_wattage, set_tmp=boiler_set_tmp)
-
-        # #self.data_db = self._actualize_data()
         self.last_legionella_heating = datetime.now()
 
-        # #self.WeekPlanner = WeekPlanner(self.data_db)
-        self.coef_up_in_current_heating_cycle_changed = False
-        self.coef_down_in_current_heating_cycle_changed = False
 
     def _last_entry(self):
         print("getting last entry")
@@ -127,62 +114,46 @@ class Controller:
         print(f"actual time: {time_now}, controling boiler")
         last_entry = self._last_entry()
 
-        # TODO - heatup events from calendar
-        # # checks whether the water in boiler should be even ready
-        # if self.eventChecker.check_off_event():
-        #     print("naplanovana udalost")
-        #     self.boiler.turn_off()
-        #     time.sleep(600)
-        #     return
+        # checks whether the water in boiler should be even ready
+        if self.eventChecker.check_off_event():
+            self.boiler.turn_off()
+            time.sleep(600)
+            return
+        # check scheduled heating target event
 
         tmp_measured = last_entry["boiler_case_tmp"]
         is_on = last_entry["is_boiler_on"]
-        boiler_case_last_time_entry = last_entry["boiler_case_last_time_entry"]
-        is_boiler_on_last_time_entry = last_entry["is_boiler_on_last_time_entry"]
 
-        # # in case of too old data, the boiler is turned on
-        # if ( ( time_now.microsecond - (last_entry['boiler_case_last_time_entry']).microsecond)/1000000 > timedelta(minutes=10)):
-        #     print("too old data, turning on")
-        #     boiler.turn_on()
-        #     return
 
-        # # looks for the next heat up event from a calendar
-        # next_calendar_heat_up_event = self.eventChecker.next_calendar_heat_up_event(
-        #     self.Boiler)
+
 
         # actual tmp of water in boiler
         tmp_act = self.boiler.real_tmp(tmp_measured)
         print(f"actual tmp: {tmp_act}, measured: {tmp_measured}")
+        
+        
 
         if is_on is None:
             print("boiler state is unknown")
             is_on = False
             
 
+
+
         # protection from freezing
         if tmp_act < 5:
             self.boiler.turn_on()
 
-        # if self._learning():
-        #     if tmp_act > 60:
-        #         if is_on:
-        #             self.boiler.turn_off()
-        #     else:
-        #         if tmp_act < 57:
-        #             if not is_on:
-        #                 self.boiler.turn_on()
+        if self._learning():
+            if tmp_act > 60:
+                if is_on:
+                    self.boiler.turn_off()
+            else:
+                if tmp_act < 57:
+                    if not is_on:
+                        self.boiler.turn_on()
+            return
 
-        #     return
-
-        # # if last entry is older than 10 minutes and not because of high tarif, water in a boiler is heated for sure
-        # time_of_last_entry = last_entry['time_of_last_entry']
-        # if (time_now - time_of_last_entry > timedelta(minutes=10)):
-        #     if not self.weekPlanner.is_in_DTO():
-        #         print("too old last entry ({}), need to heat".format(
-        #             time_of_last_entry))
-        #         if not is_on:
-        #             self.boiler.turn_on()
-        #     return
 
         # if the boiler is needed to heat up before the next predicted consumption
         is_needed_to_heat, minutes_needed_to_heat = self.boiler.is_needed_to_heat(
@@ -207,7 +178,6 @@ class Controller:
                 print("legionella was eliminated, see you in 3 weeks")
                 self.boiler.turn_off()
                 return
-        # TODO event checker for holidays
 
 
 if __name__ == "__main__":
@@ -271,6 +241,7 @@ if __name__ == "__main__":
     has_fotovoltaics = options["has_fotovoltaics"]
     fve_solax_sn = options["fve_solax_sn"]
     fve_solax_token = options["fve_solax_token"]
+    google_calendar_credentials = options["google_calendar_credentials"]
     
     model_path = Path(model_path)
     scaler_path = Path(scaler_path)
@@ -322,6 +293,7 @@ if __name__ == "__main__":
         headers,
         boiler_switch_entity_id=boiler_socket_switch_id,
         dataHandler=dataHandler,
+        eventChecker=EventChecker(),
         fotovoltaics=fotovoltaics,
         capacity=boiler_volume,
         wattage=boiler_watt_power,

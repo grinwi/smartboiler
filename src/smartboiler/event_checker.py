@@ -25,11 +25,10 @@ from time_handler import TimeHandler
 
 class EventChecker:
 
-    def __init__(self, token_path='token.pickle', credentials_path='credentials.json'):
+    def __init__(self):
 
         self.SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
         self.TimeHandler = TimeHandler()
-
     def load_events(self):
         """Loads events from Google Calendar API using credentials of Google Calendar.
 
@@ -71,7 +70,7 @@ class EventChecker:
             print("couldn't get events")
             return None
 
-    def next_calendar_heat_up_event(self, Boiler):
+    def next_calendar_heat_up_event(self):
         """Search next event in a calendar which contains specific words describing the process of heating up.
 
         Args:
@@ -90,33 +89,27 @@ class EventChecker:
                         re.split('^.*boiler heat up at (\d+) degrees$', e['summary'])[1])
                     start = self.TimeHandler.date_to_datetime(
                         e['start'].get('dateTime', e['start'].get('date')))
+                    end = self.TimeHandler.date_to_datetime(
+                        e['end'].get('dateTime', e['end'].get('date')))
                     time_to_event = (start - (datetime.datetime.now() +
                                      datetime.timedelta(hours=1))) / datetime.timedelta(hours=1)
-
+                    time_to_end_event = (end - (datetime.datetime.now() +  
+                                        datetime.timedelta(hours=1))) / datetime.timedelta(hours=1)
+                    # case before event
                     if (time_to_event > 0):
 
-                        return_dict['hours_to_event'] = time_to_event
+                        return_dict['minutes_to_event'] = time_to_event * 60
                         return_dict['degree_target'] = degree_target
-                    break
-                # if re.match('^.*Prepare (\d+) showers$', e['summary']):
-                #     number_of_showers = int(
-                #         re.split('^.*Prepare (\d+) showers$', e['summary'])[1])
 
-                #     degree_target = Boiler.showers_degrees(
-                #         number_of_showers=number_of_showers)
+                        return return_dict
+                    # case in event
+                    elif(time_to_end_event > 0):
+                        return_dict['minutes_to_event'] = 0
+                        return_dict['degree_target'] = degree_target
 
-                #     start = self.TimeHandler.date_to_datetime(
-                #         e['start'].get('dateTime', e['start'].get('date')))
-                #     time_to_event = (start - (datetime.datetime.now() +
-                #                      datetime.timedelta(hours=1))) / datetime.timedelta(hours=1)
-
-                #     if (time_to_event > 0):
-
-                #         return_dict['hours_to_event'] = time_to_event
-                #         return_dict['degree_target'] = degree_target
-                #     break
-
+                        return return_dict
         return return_dict
+                        
 
     def check_off_event(self):
         """Search for an event for turning off the boiler.
@@ -135,7 +128,6 @@ class EventChecker:
                         e['start'].get('dateTime', e['start'].get('date')))
                     end = self.TimeHandler.date_to_datetime(
                         e['end'].get('dateTime', e['end'].get('date')))
-
                     return self.TimeHandler.is_date_between(start, end)
             return False
 

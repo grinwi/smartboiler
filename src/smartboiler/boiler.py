@@ -1,6 +1,7 @@
 from calendar import week
 from math import inf
 from pathlib import Path
+from tkinter import N
 
 import influxdb
 
@@ -27,8 +28,10 @@ import time
 
 from numpy import ndarray
 from smartboiler.switch import Switch
+from smartboiler.event_checker import EventChecker
 import pandas as pd
 from typing import Optional
+
 
 
 class Boiler(Switch):
@@ -39,6 +42,7 @@ class Boiler(Switch):
         headers,
         boiler_switch_entity_id,
         dataHandler: DataHandler,
+        eventChecker: EventChecker,
         fotovoltaics: Optional[Fotovoltaics] = None,
         capacity=100,
         wattage=2000,
@@ -71,6 +75,7 @@ class Boiler(Switch):
         )
         self.dataHandler = dataHandler
         self.fotovoltaics = fotovoltaics
+        self.eventChecker = eventChecker
         self.boiler_heat_cap = capacity * 1.163
         self.real_wattage = wattage * heater_efficiency
         self.hdo = hdo
@@ -114,7 +119,7 @@ class Boiler(Switch):
 
     def get_kWh_delta_from_temperatures(self, tmp_act: int, tmp_goal: int):
         return 4.186 * self.capacity * (tmp_goal - tmp_act) / 3600
-
+    
     def is_needed_to_heat(
         self, tmp_act: int, prediction_of_consumption
     ) -> tuple[bool, int]:
@@ -154,7 +159,7 @@ class Boiler(Switch):
         # get actual kWh in boiler from volume and tmp
         boiler_kWh_above_set = self.get_kWh_delta_from_temperatures(
             self.min_tmp, tmp_act
-        )  # (self.capacity * 4.186 * (self.min_tmp - tmp_act)) / 3600
+        ) 
 
         datetime_now = datetime.now()
         actual_time = datetime_now.time()
@@ -175,6 +180,25 @@ class Boiler(Switch):
             )
         if not self.hdo:
             actual_schedule["unavailable_minutes"] = 0
+
+        next_heat_event = self.eventChecker.next_calendar_heat_up_event()
+        if next_heat_event['minutes_to_event'] is not None:
+            minutes_to_event = next_heat_event['minutes_to_event']
+            hours_to_event = minutes_to_event // 60
+            degree_target = next_heat_event['degree_target']
+            minutes_needed_to_heat = self.time_needed_to_heat_up_minutes(
+                consumption_kWh=self.get_kWh_delta_from_temperatures(
+                    tmp_act, degree_target
+                )
+            )
+            minutes_unavailable = actual_schedule.iloc[:hours_to_event]["unavailable_minutes"].sum()
+            minutes_needed_to_heat += minutes_unavailable
+            
+            if minutes_to_event < minutes_needed_to_heat:
+                return (True, minutes_needed_to_heat)
+
+                
+
 
         len_of_df = len(prediction_of_consumption)
 
