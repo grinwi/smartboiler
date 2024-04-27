@@ -42,7 +42,6 @@ class Forecast:
 
         self.model_path = model_path
         self.scaler_path = scaler_path
-        # Define the quantiles you want to predict
         self.quantiles = [0.1, 0.3, 0.5, 0.7, 0.9]
 
 
@@ -71,8 +70,10 @@ class Forecast:
         self.df_train_norm[df_training_data.columns] = self.scaler.fit_transform(
             df_training_data
         )
+        # save the scaler
         dump(self.scaler, open(self.scaler_path, "wb"))
 
+        # create a train gen and valid gen
         self.train_gen = self.mul_generator(
             dataframe=self.df_train_norm,
             target_names=self.predicted_columns,
@@ -96,16 +97,16 @@ class Forecast:
             shuffle=False,
             batch_size=self.batch_size,
         )
-
+        # devine validity and train steps
         self.val_steps = int(
             (self.df_train_norm.shape[0] * 0.1 - self.lookback) // self.batch_size
         )
-        # This is how many steps to draw from `train_gen`
-        # in order to see the whole train set:
         self.train_steps = int(
             (self.df_train_norm.shape[0] * 0.9 - self.lookback) // self.batch_size
         )
 
+        
+        # create a callbecks
         callbacks = [
             EarlyStopping(
                 monitor="loss",
@@ -120,10 +121,10 @@ class Forecast:
                 filepath=self.model_path,
                 save_best_only=True,
                 save_weights_only=True,
+                save_format="keras"
             ),
         ]
-
-        print("Start training")
+        # fit the model
         history = self.model.fit(
             self.train_gen,
             steps_per_epoch=self.train_steps,
@@ -134,8 +135,10 @@ class Forecast:
             callbacks=callbacks,
             verbose=2,
         )
+        
+        # save the weights of the model
+        self.model.save_weights(self.model_path, overwrite=True, save_format='keras', options=None)
 
-        # self.model.save(self.model_path)
         print("End training")
 
     def load_model(
@@ -143,85 +146,26 @@ class Forecast:
         left_time_interval=datetime.now() - timedelta(days=4),
         right_time_interval=datetime.now(),
     ):
-
+        """
+        Load the model and the scaler
+        """
         self.scaler = load(open(self.scaler_path, "rb"))
         self.model.load_weights(self.model_path)
 
-    def generator(
-        self,
-        dataframe,
-        target_name,
-        lookback,
-        delay,
-        min_index,
-        max_index,
-        shuffle=False,
-        batch_size=128,
-        step=6,
-    ):
-        data_without_target = dataframe.copy()
-        data_without_target = data_without_target.drop(columns=[target_name]).values
-        data_without_target = data_without_target.astype(np.float32)
-
-        data = dataframe.values
-        data = data.astype(np.float32)
-        target_indx = dataframe.columns.get_loc(target_name)
-
-        if max_index is None:
-            max_index = len(data) - delay - 1
-        i = min_index + lookback
-        while 1:
-            if shuffle:
-                rows = np.random.randint(
-                    min_index + lookback, max_index, size=batch_size
-                )
-            else:
-                if i + batch_size >= max_index:
-                    i = min_index + lookback
-                rows = np.arange(i, min(i + batch_size, max_index))
-                i += len(rows)
-
-            samples = np.zeros(
-                (len(rows), lookback // step, data_without_target.shape[-1])
-            )
-            targets = np.zeros((len(rows),))
-
-            for j, row in enumerate(rows):
-                indices = range(rows[j] - lookback, rows[j], step)
-                # samples without column with target
-                samples[j] = data_without_target[indices]
-                targets[j] = data[rows[j] + delay][target_indx]
-            yield samples, targets
-
-    def r2_keras(self, y_true, y_pred):
-        """Coefficient of Determination"""
-        SS_res = K.sum(K.square(y_true - y_pred))
-        SS_tot = K.sum(K.square(y_true - K.mean(y_true)))
-        return 1 - SS_res / (SS_tot + K.epsilon())
-    
-    def mean_absolute_percentage_error(self, y_true, y_pred):
-        epsilon = 1e-10
-        epsilon = K.constant(epsilon, dtype='float32')  # Assuming epsilon is a constant
-        y_true = K.cast(y_true, 'float32')
-        y_pred = K.cast(y_pred, 'float32')
-
-        diff = K.abs((y_true - y_pred) / K.maximum(K.abs(y_true), epsilon))
-        return 100. * K.mean(diff)
     
     def quantile_loss(self, q, y_true, y_pred):
-        # Example usage:
-        # Suppose you want to predict the median (q=0.5) and the 90th percentile (q=0.9)
+        # quentile loss function
 
         e = y_true - y_pred
         return K.mean(K.maximum(q * e, (q - 1) * e), axis=-1)
 
 
     def build_model(self):
+        """Function for building the model"""
 
         model = Sequential()
         model.add(Input(shape=(None, 14)))
 
-        # Add LSTM layer
         model.add(LSTM(100))
         model.add(Dense(1))
 
@@ -230,6 +174,7 @@ class Forecast:
         return model
 
     def add_empty_row(self, df, date_time, predicted_value):
+        """Function for adding an empty row for purpose of rpediction for the next hours"""
 
         last_row_values = df.iloc[-1].values
         prev_week_values = df.iloc[-24 * 7].values
@@ -273,6 +218,7 @@ class Forecast:
         batch_size=128,
         step=6,
     ):
+        """Generator function for the model training and prediction"""
         data = dataframe.values
         data = data.astype(np.float32)
 
@@ -320,7 +266,6 @@ class Forecast:
     def get_forecast_next_steps(
         self, left_time_interval=None, right_time_interval=None
     ):
-        # Define the indices for the different predictions and truths
         if left_time_interval is None:
             left_time_interval = datetime.now() - timedelta(days=30)
         if right_time_interval is None:
