@@ -37,11 +37,6 @@ RUN pip install --trusted-host pypi.python.org -r requirements.txt
 COPY src/smartboiler/ /app/src/smartboiler/
 
 
-
-
-
-
-# CMD ["python", "-u", "control.py","-f", "settings.json"]
 RUN python3 setup.py install
 
 # set env variables
