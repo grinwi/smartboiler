@@ -241,7 +241,6 @@ if __name__ == "__main__":
     has_fotovoltaics = options["has_fotovoltaics"]
     fve_solax_sn = options["fve_solax_sn"]
     fve_solax_token = options["fve_solax_token"]
-    google_calendar_credentials = options["google_calendar_credentials"]
     
     model_path = Path(model_path)
     scaler_path = Path(scaler_path)
