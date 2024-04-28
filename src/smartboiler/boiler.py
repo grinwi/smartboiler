@@ -1,7 +1,6 @@
 from calendar import week
 from math import inf
 from pathlib import Path
-from tkinter import N
 
 import influxdb
 
