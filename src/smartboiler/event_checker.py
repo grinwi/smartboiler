@@ -16,9 +16,12 @@ import time
 import pickle
 import os.path
 import re
-# from googleapiclient.discovery import build
-# from google_auth_oauthlib.flow import InstalledAppFlow
-# from google.auth.transport.requests import Request
+
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 from smartboiler.time_handler import TimeHandler
 
@@ -134,4 +137,4 @@ class EventChecker:
 
 if __name__ == '__main__':
     e = EventChecker()
-    e.check_event()
+    e.check_off_event()
