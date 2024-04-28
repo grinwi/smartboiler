@@ -41,29 +41,26 @@ class EventChecker:
         Returns:
             [list]: [list of events]
         """
-
-        creds = None
-
-        if os.path.exists('token.pickle'):
-            with open('token.pickle', 'rb') as token:
-                creds = pickle.load(token)
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    'credentials.json', self.SCOPES)
-                creds = flow.run_local_server(port=0)
-            with open('token.pickle', 'wb') as token:
-                pickle.dump(creds, token)
-
         try:
+
+            creds = None
+
+            if os.path.exists('token.pickle'):
+                with open('token.pickle', 'rb') as token:
+                    creds = pickle.load(token)
+            if not creds or not creds.valid:
+                if creds and creds.expired and creds.refresh_token:
+                    creds.refresh(Request())
+                else:
+                    flow = InstalledAppFlow.from_client_secrets_file(
+                        'credentials.json', self.SCOPES)
+                    creds = flow.run_local_server(port=0)
+                with open('token.pickle', 'wb') as token:
+                    pickle.dump(creds, token)
+
             service = build('calendar', 'v3', credentials=creds)
-        except:
-            print("couldn't build service")
-            return
-        now = datetime.datetime.now(datetime.UTC).isoformat() + 'Z'
-        try:
+
+            now = datetime.datetime.now(datetime.UTC).isoformat() + 'Z'
             events_result = service.events().list(calendarId='primary', timeMin=now,
                                                   maxResults=1, singleEvents=True,
                                                   orderBy='startTime').execute()
@@ -137,4 +134,4 @@ class EventChecker:
 
 if __name__ == '__main__':
     e = EventChecker()
-    e.check_off_event()
+    e.check_event()
