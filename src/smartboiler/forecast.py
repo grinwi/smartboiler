@@ -10,7 +10,6 @@ from keras.layers import LSTM
 from keras.layers import Dropout
 from keras.models import Model
 from keras.layers import Input, Dense
-from keras.models import load_model
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 import keras.backend as K
 import numpy as np
@@ -121,7 +120,6 @@ class Forecast:
                 filepath=self.model_path,
                 save_best_only=True,
                 save_weights_only=True,
-                save_format="keras"
             ),
         ]
         # fit the model
@@ -137,7 +135,7 @@ class Forecast:
         )
         
         # save the weights of the model
-        self.model.save_weights(self.model_path, overwrite=True, save_format='keras', options=None)
+        self.model.save_weights(self.model_path, overwrite=True)
 
         print("End training")
 
@@ -150,7 +148,8 @@ class Forecast:
         Load the model and the scaler
         """
         self.scaler = load(open(self.scaler_path, "rb"))
-        self.model.load_weights(self.model_path)
+        self.model.load_weights(self.model_path, skip_mismatch=False)
+
 
     
     def quantile_loss(self, q, y_true, y_pred):
@@ -162,7 +161,7 @@ class Forecast:
 
     def build_model(self):
         """Function for building the model"""
-
+        
         model = Sequential()
         model.add(Input(shape=(None, 14)))
 
@@ -172,6 +171,7 @@ class Forecast:
         self.model = model
         self.model.compile(loss=[lambda y_true, y_pred: self.quantile_loss(q, y_true, y_pred) for q in self.quantiles], optimizer="adam")
         return model
+
 
     def add_empty_row(self, df, date_time, predicted_value):
         """Function for adding an empty row for purpose of rpediction for the next hours"""
@@ -218,7 +218,7 @@ class Forecast:
         batch_size=128,
         step=6,
     ):
-        """Generator function for the model training and prediction"""
+        """Generator function for the model training and prediciction"""
         data = dataframe.values
         data = data.astype(np.float32)
 
@@ -266,6 +266,7 @@ class Forecast:
     def get_forecast_next_steps(
         self, left_time_interval=None, right_time_interval=None
     ):
+        # Define the indices for the different predictions and truths
         if left_time_interval is None:
             left_time_interval = datetime.now() - timedelta(days=30)
         if right_time_interval is None:
