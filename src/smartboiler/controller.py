@@ -2,6 +2,7 @@ from pathlib import Path
 from pyexpat import model
 import re, pytz
 
+from smartboiler import event_checker
 from smartboiler.event_checker import EventChecker
 
 print("Running" if __name__ == "__main__" else "Importing", Path(__file__).resolve())
@@ -52,6 +53,7 @@ class Controller:
         dataHandler: DataHandler,
         boiler: Boiler,
         forecast: Forecast,
+        eventChecker: EventChecker,
         load_model=False,
     ):
         """Inits class of Controller. Loads settings from a settings file
@@ -67,6 +69,7 @@ class Controller:
         self.dataHandler = dataHandler
         self.boiler = boiler
         self.forecast = forecast
+        self.eventChecker = eventChecker
 
         if load_model:
             print("loading model")
@@ -286,7 +289,7 @@ if __name__ == "__main__":
         )
     else:
         fotovoltaics = None
-
+    eventChecker=EventChecker()
     print("inicializing boiler from controller __main__")
     boiler = Boiler(
         base_url,
@@ -294,7 +297,7 @@ if __name__ == "__main__":
         headers,
         boiler_switch_entity_id=boiler_socket_switch_id,
         dataHandler=dataHandler,
-        eventChecker=EventChecker(),
+        eventChecker=eventChecker,
         fotovoltaics=fotovoltaics,
         capacity=boiler_volume,
         wattage=boiler_watt_power,
@@ -317,7 +320,7 @@ if __name__ == "__main__":
     )
     print("inicializing controller from controller __main__")
     controller = Controller(
-        dataHandler=dataHandler, boiler=boiler, forecast=forecast, load_model=load_model
+        dataHandler=dataHandler, boiler=boiler, forecast=forecast, eventChecker=eventChecker, load_model=load_model
     )
 
     while 1:

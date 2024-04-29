@@ -67,7 +67,6 @@ class EventChecker:
             events = events_result.get('items', [])
             return events
         except:
-            print("couldn't get events")
             return None
 
     def next_calendar_heat_up_event(self):
