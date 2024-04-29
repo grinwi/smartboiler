@@ -207,6 +207,7 @@ if __name__ == "__main__":
     print(f"home longitude type: {type(home_longitude)}, home latitude type: {type(home_latitude)}")
     
     device_tracker_entity_id = options["device_tracker_entity_id"]
+    device_tracker_entity_id_2 = options["device_tracker_entity_id_2"]
     model_path = options["model_path"]
     scaler_path = options["scaler_path"]
     long_lived_token = options["long_lived_token"]
@@ -266,6 +267,7 @@ if __name__ == "__main__":
         tmp_output_water_entity_id=boiler_water_temp_entity_id,
         tmp_output_water_entity_id_2=boiler_water_temp_entity_id_2,
         device_tracker_entity_id=device_tracker_entity_id,
+        device_tracker_entity_id_2=device_tracker_entity_id_2,
         home_longitude=home_longitude,
         home_latitude=home_latitude,
         start_of_data=start_of_data_measurement,

@@ -31,6 +31,7 @@ class DataHandler:
         tmp_output_water_entity_id,
         tmp_output_water_entity_id_2,
         device_tracker_entity_id,
+        device_tracker_entity_id_2,
         home_longitude,
         home_latitude,
         start_of_data=datetime(2023, 1, 1, 0, 0, 0, 0),
@@ -50,6 +51,7 @@ class DataHandler:
         self.home_latitude = home_latitude
 
         self.device_tracker_entity_id = device_tracker_entity_id
+        self.device_tracker_entity_id_2 = device_tracker_entity_id_2
         self.dataframe_client = DataFrameClient(
             host=self.influx_id,
             port=8086,
@@ -163,6 +165,14 @@ class DataHandler:
             "sql_query": f'SELECT mean("latitude") AS "mean_latitude" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time <= {right_time_interval} AND "domain"=\'device_tracker\' AND "entity_id"=\'{self.device_tracker_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(previous)',
             "measurement": "state",
         },
+        "device_longitude_2": {
+            "sql_query": f'SELECT mean("longitude") AS "mean_longitude_2" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time <= {right_time_interval} AND "domain"=\'device_tracker\' AND "entity_id"=\'{self.device_tracker_entity_id_2}\' GROUP BY time({group_by_time_interval}) FILL(previous)',
+            "measurement": "state",
+        },
+        "device_latitude_2": {
+            "sql_query": f'SELECT mean("latitude") AS "mean_latitude_2" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time <= {right_time_interval} AND "domain"=\'device_tracker\' AND "entity_id"=\'{self.device_tracker_entity_id_2}\' GROUP BY time({group_by_time_interval}) FILL(previous)',
+            "measurement": "state",
+        },
         
     } 
 
@@ -201,12 +211,46 @@ class DataHandler:
             df["mean_latitude"].shift(1),
             df["mean_longitude"].shift(1),
         )  # calculate haversine distance
-        # df['hours'] = (df['time_stamp'].astype(int) / 10**9) / 60*60 # convert to seconds
-        # df['time_taken'] = df['hours'] - df['hours'].shift(1) # calculate time difference
 
         df.loc[:,"speed"] = df["distance"] / df["time_diff"]  # cal speed
         df.loc[df["speed"] > 200, "speed"] = 0
         df.loc[:,"speed_towards_home"] = df["speed"] * df["heading_to_home_cos"]
+        
+        #######
+        
+        
+        df = df.dropna(subset=["mean_latitude_2", "mean_longitude_2"])
+        df.loc[:,"distance_from_home_2"] = np.vectorize(self.haversine_dist)(
+            df["mean_latitude_2"],
+            df["mean_longitude_2"],
+            self.home_latitude,
+            self.home_longitude,
+        )
+
+        df.loc[:,"heading_to_home_2"] = np.arctan2(
+            df["mean_latitude_2"] - self.home_latitude,
+            df["mean_longitude_2"] - self.home_longitude,
+        )
+        df.loc[:,"heading_to_home_sin_2"] = np.sin(df["heading_to_home_2"])
+        df.loc[:,"heading_to_home_cos_2"] = np.cos(df["heading_to_home_2"])
+        # resample by 10m mean
+        df.loc[:,"time_stamp_2"] = df.index
+        # calculate the speed of device
+        df.loc[:,"time_diff_2"] = (
+            df["time_stamp_2"].diff().dt.total_seconds() / 3600
+        )  # Convert seconds to hours
+        df.loc[:,"distance_2"] = np.vectorize(self.haversine_dist)(
+            df["mean_latitude_2"],
+            df["mean_longitude_2"],
+            df["mean_latitude_2"].shift(1),
+            df["mean_longitude_2"].shift(1),
+        )  # calculate haversine distance
+
+        df.loc[:,"speed_2"] = df["distance_2"] / df["time_diff_2"]  # cal speed
+        df.loc[df["speed_2"] > 200, "speed_2"] = 0
+        df.loc[:,"speed_towards_home_2"] = df["speed_2"] * df["heading_to_home_cos_2"]
+        
+        
         return df
 
     def get_lowest_area_tmp(
@@ -259,7 +303,7 @@ class DataHandler:
                 "outside_temperature_mean": "mean",
                 "outside_humidity_mean": "mean",
                 "outside_wind_speed_mean": "mean",
-                "device_presence_distinct_count": "mean",
+                "device_presence_distinct_count": "max",
                 "mean_longitude": "mean",
                 "mean_latitude": "mean",
                 "speed": "mean",
@@ -267,6 +311,13 @@ class DataHandler:
                 "distance_from_home": "mean",
                 "heading_to_home_sin": "mean",
                 "heading_to_home_cos": "mean",
+                "mean_longitude_2": "mean",
+                "mean_latitude_2": "mean",
+                "speed_2": "mean",
+                "speed_towards_home_2": "mean",
+                "distance_from_home_2": "mean",
+                "heading_to_home_sin_2": "mean",
+                "heading_to_home_cos_2": "mean",
             }
         )
         df["consumed_heat_kWh"] = df["consumed_heat_kJ"] / 3600
@@ -391,6 +442,7 @@ class DataHandler:
         df["humidity"] = df[f"outside_humidity_mean"].fillna(method="ffill")
         df["wind_speed"] = df[f"outside_wind_speed_mean"].fillna(method="ffill")
         df["count"] = df["device_presence_distinct_count"].fillna(method="ffill")
+        
         df["mean_longitude"] = df["mean_longitude"].fillna(method="ffill")
         df["mean_latitude"] = df["mean_latitude"].fillna(method="ffill")
         df["speed"] = df["speed"].fillna(0)
@@ -398,6 +450,14 @@ class DataHandler:
         df["distance_from_home"] = df["distance_from_home"].fillna(method="ffill")
         df["heading_to_home_sin"] = df["heading_to_home_sin"].fillna(method="ffill")
         df["heading_to_home_cos"] = df["heading_to_home_cos"].fillna(method="ffill")
+        
+        df["mean_longitude_2"] = df["mean_longitude_2"].fillna(method="ffill")
+        df["mean_latitude_2"] = df["mean_latitude_2"].fillna(method="ffill")
+        df["speed_2"] = df["speed_2"].fillna(0)
+        df["speed_towards_home_2"] = df["speed_towards_home_2"].fillna(0)
+        df["distance_from_home_2"] = df["distance_from_home_2"].fillna(method="ffill")
+        df["heading_to_home_sin_2"] = df["heading_to_home_sin_2"].fillna(method="ffill")
+        df["heading_to_home_cos_2"] = df["heading_to_home_cos_2"].fillna(method="ffill")
 
         # add to column 'consumed_heat_kWh' 1,25/6 to each row
         # df = df.drop(df[df["consumed_heat_kWh"] == 0].sample(frac=0.7).index)
@@ -468,9 +528,13 @@ class DataHandler:
                 "last_3_week_std",
                 "distance_from_home",
                 "speed_towards_home",
+                # "distance_from_home_2",
+                # "speed_towards_home_2",
                 "count",
                 "heading_to_home_sin",
                 "heading_to_home_cos",
+                # "heading_to_home_sin_2",
+                # "heading_to_home_cos_2",
                 "temperature",
                 "humidity",
                 "wind_speed",
