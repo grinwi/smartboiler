@@ -80,7 +80,7 @@ class EventChecker:
             [dict]: [dictionary describing next heating up event]
         """
         events = self.load_events()
-        return_dict = {"hours_to_event": None, "degree_target": None}
+        return_dict = {"minutes_to_event": None, "degree_target": None}
 
         if events:
             for e in events:
