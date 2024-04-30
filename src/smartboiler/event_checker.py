@@ -120,6 +120,8 @@ class EventChecker:
             [type]: [description]
         """
         events = self.load_events()
+        if events is None:
+            return False
         if not events:
             return False
         else:

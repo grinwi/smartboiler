@@ -143,15 +143,15 @@ class Controller:
         if tmp_act < 5:
             self.boiler.turn_on()
 
-        if self._learning():
-            if tmp_act > 60:
-                if is_on:
-                    self.boiler.turn_off()
-            else:
-                if tmp_act < 57:
-                    if not is_on:
-                        self.boiler.turn_on()
-            return
+        # if self._learning():
+        #     if tmp_act > 60:
+        #         if is_on:
+        #             self.boiler.turn_off()
+        #     else:
+        #         if tmp_act < 57:
+        #             if not is_on:
+        #                 self.boiler.turn_on()
+        #     return
 
 
         # if the boiler is needed to heat up before the next predicted consumption
