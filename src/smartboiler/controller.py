@@ -119,6 +119,7 @@ class Controller:
 
         # checks whether the water in boiler should be even ready
         if self.eventChecker.check_off_event():
+            print("turning off boiler, event in calendar")
             self.boiler.turn_off()
             time.sleep(600)
             return
@@ -128,20 +129,15 @@ class Controller:
         is_on = last_entry["is_boiler_on"]
 
 
-
-
         # actual tmp of water in boiler
         tmp_act = self.boiler.real_tmp(tmp_measured)
         print(f"actual tmp: {tmp_act}, measured: {tmp_measured}")
         
         
-
         if is_on is None:
             print("boiler state is unknown")
             is_on = False
             
-
-
 
         # protection from freezing
         if tmp_act < 5:

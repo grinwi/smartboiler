@@ -153,6 +153,7 @@ class Boiler(Switch):
                     tmp_act, self.set_tmp
                 )
             )
+            print("fve heating to full, time_needed: ", time_needed_to_heat_to_full)
             return (True, time_needed_to_heat_to_full)
 
         # get actual kWh in boiler from volume and tmp
@@ -181,7 +182,11 @@ class Boiler(Switch):
             actual_schedule["unavailable_minutes"] = 0
 
         next_heat_event = self.eventChecker.next_calendar_heat_up_event()
+        
+        print("next_heat_event: ", next_heat_event)
+        
         if next_heat_event['minutes_to_event'] is not None:
+            
             minutes_to_event = next_heat_event['minutes_to_event']
             hours_to_event = minutes_to_event // 60
             degree_target = next_heat_event['degree_target']

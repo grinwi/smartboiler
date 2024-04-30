@@ -67,6 +67,7 @@ class EventChecker:
             events = events_result.get('items', [])
             return events
         except:
+            print("Error while loading events")
             return None
 
     def next_calendar_heat_up_event(self):
@@ -107,6 +108,8 @@ class EventChecker:
                         return_dict['degree_target'] = degree_target
 
                         return return_dict
+                    
+        print("No event found, return_dict: ", return_dict)
         return return_dict
                         
 
