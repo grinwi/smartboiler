@@ -1,44 +1,22 @@
+# Created as a part of Master's Thesis "Using machine learning methods to save energy in a smart home"
+# Faculty of Information Technology, Brno University of Technology, 2024
+# Author: Adam Grünwald
+#
+# This module is used for controlling the boiler with use of the predictions in combination with the smart heating algotithm.
+
+
 from pathlib import Path
-from pyexpat import model
-import re, pytz
-
-from smartboiler import event_checker
-from smartboiler.event_checker import EventChecker
-
-print("Running" if __name__ == "__main__" else "Importing", Path(__file__).resolve())
-
-###########################################################
-# Masters's thesis                                       #
-# From a dumb boiler to a smart one using a smart socket  #
-# Author: Adam Grünwald                                   #
-# BUT FIT BRNO, Faculty of Information Technology         #
-# 26/6/2021                                               #
-#                                                         #
-# Module that controls a heating of smart boiler.         #
-# Uses module Boiler for computing time needed to heating #
-# of water, module TimeHandler for basic time and date    #
-# operations, WeekPlanner for plan week heating,          #
-# SettingsLoader to load setting from settings file and   #
-# EventChecker which checks events in calendar,           #
-# when the water shouldn't be heated.                      #
-###########################################################
-
-
+import pytz
 from datetime import datetime, timedelta
-import pandas as pd
-import calendar
-from influxdb import DataFrameClient
-from influxdb import InfluxDBClient
-import os.path
 
-import argparse
+import os.path
 import logging
 import time
 import os
-
 import json
 
 
+from smartboiler.event_checker import EventChecker
 from smartboiler.data_handler import DataHandler
 from smartboiler.fotovoltaics import Fotovoltaics
 from smartboiler.forecast import Forecast
@@ -82,7 +60,6 @@ class Controller:
 
         self.last_model_training = datetime.now()
         self.last_legionella_heating = datetime.now()
-
 
     def _last_entry(self):
         print("getting last entry")
@@ -128,16 +105,13 @@ class Controller:
         tmp_measured = last_entry["boiler_case_tmp"]
         is_on = last_entry["is_boiler_on"]
 
-
         # actual tmp of water in boiler
         tmp_act = self.boiler.real_tmp(tmp_measured)
         print(f"actual tmp: {tmp_act}, measured: {tmp_measured}")
-        
-        
+
         if is_on is None:
             print("boiler state is unknown")
             is_on = False
-            
 
         # protection from freezing
         if tmp_act < 5:
@@ -152,7 +126,6 @@ class Controller:
         #             if not is_on:
         #                 self.boiler.turn_on()
         #     return
-
 
         # if the boiler is needed to heat up before the next predicted consumption
         is_needed_to_heat, minutes_needed_to_heat = self.boiler.is_needed_to_heat(
@@ -182,8 +155,6 @@ class Controller:
 if __name__ == "__main__":
     logging.info("Starting SmartBoiler Controller")
 
-
-
     OPTIONS_PATH = os.getenv("OPTIONS_PATH", default="/app/options.json")
     options_json = Path(OPTIONS_PATH)
 
@@ -196,15 +167,16 @@ if __name__ == "__main__":
 
     data_path = Path(DATA_PATH)
 
-
     start_of_data_measurement = datetime(2023, 10, 1, 0, 0, 0, 0)
 
     hass_url = options["hass_url"]
     home_longitude = options["home_longitude"]
     home_latitude = options["home_latitude"]
     print(f"home longitude: {home_longitude}, home latitude: {home_latitude}")
-    print(f"home longitude type: {type(home_longitude)}, home latitude type: {type(home_latitude)}")
-    
+    print(
+        f"home longitude type: {type(home_longitude)}, home latitude type: {type(home_latitude)}"
+    )
+
     device_tracker_entity_id = options["device_tracker_entity_id"]
     device_tracker_entity_id_2 = options["device_tracker_entity_id_2"]
     model_path = options["model_path"]
@@ -241,7 +213,7 @@ if __name__ == "__main__":
     has_fotovoltaics = options["has_fotovoltaics"]
     fve_solax_sn = options["fve_solax_sn"]
     fve_solax_token = options["fve_solax_token"]
-    
+
     model_path = Path(model_path)
     scaler_path = Path(scaler_path)
 
@@ -272,7 +244,7 @@ if __name__ == "__main__":
         start_of_data=start_of_data_measurement,
     )
     boiler_switch_entity_id = "switch." + boiler_socket_id
-    
+
     print("inicializing fotovoltaics from controller __main__")
     if has_fotovoltaics:
         fotovoltaics = Fotovoltaics(
@@ -285,7 +257,7 @@ if __name__ == "__main__":
         )
     else:
         fotovoltaics = None
-    eventChecker=EventChecker()
+    eventChecker = EventChecker()
     print("inicializing boiler from controller __main__")
     boiler = Boiler(
         base_url,
@@ -303,7 +275,7 @@ if __name__ == "__main__":
         boiler_case_max_tmp=boiler_case_max_tmp,
         hdo=hdo,
     )
-    
+
     predicted_columns = ["longtime_mean"]
     print("inicializing forecast from controller __main__   ")
     forecast = Forecast(
@@ -312,17 +284,20 @@ if __name__ == "__main__":
         model_path=model_path,
         scaler_path=scaler_path,
         predicted_columns=predicted_columns,
-        
     )
     print("inicializing controller from controller __main__")
     controller = Controller(
-        dataHandler=dataHandler, boiler=boiler, forecast=forecast, eventChecker=eventChecker, load_model=load_model
+        dataHandler=dataHandler,
+        boiler=boiler,
+        forecast=forecast,
+        eventChecker=eventChecker,
+        load_model=load_model,
     )
 
     while 1:
         try:
             controller.actualize_forecast()
-            for i in range(0,15):
+            for i in range(0, 15):
                 controller.control()
                 time.sleep(60)
         except Exception as e:

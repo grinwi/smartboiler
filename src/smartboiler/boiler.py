@@ -1,70 +1,70 @@
-from calendar import week
-from math import inf
-from pathlib import Path
+# Created as a part of Master's Thesis "Using machine learning methods to save energy in a smart home"
+# Faculty of Information Technology, Brno University of Technology, 2024
+# Author: Adam Grünwald
+#
+# This module is used for calculations of the heating time and controlling the boiler itself
 
-import influxdb
-
-from smartboiler.data_handler import DataHandler
-from smartboiler.fotovoltaics import Fotovoltaics
-
-print("Running" if __name__ == "__main__" else "Importing", Path(__file__).resolve())
-
-##########################################################
-# Bachelor's thesis                                      #
-# From a dumb boiler to a smart one using a smart socket #
-# Author: Adam Grünwald                                  #
-# BUT FIT BRNO, Faculty of Information Technology        #
-# 26/6/2021                                              #
-#                                                        #
-# Module with class representing boiler itself.          #
-# Serves for computing time needed to heat to certain    #
-# temperature or recalculates number of showers          #
-# to needed temperature to heat to.                      #
-##########################################################
-
-from datetime import date, datetime, timedelta
-import time
-
-from numpy import ndarray
+from datetime import datetime, timedelta
 from smartboiler.switch import Switch
-from smartboiler.event_checker import EventChecker
 import pandas as pd
 from typing import Optional
 
 
+from smartboiler.event_checker import EventChecker
+from smartboiler.data_handler import DataHandler
+from smartboiler.fotovoltaics import Fotovoltaics
 
 class Boiler(Switch):
+    """Class representing boiler itself. Used for the calculation of time needed to heat to certain temperature or recalculates number of showers to needed temperature to heat to.
+        Also used for controlling the boiler itself via the relay.
+    Args:
+        Switch (_type_): Parent is a Switch class for the relay controlling the heating of the boiler.
+    """
     def __init__(
         self,
-        base_url,
-        token,
-        headers,
-        boiler_switch_entity_id,
+        base_url: str,
+        token: str,
+        headers: dict,
+        boiler_switch_entity_id: str,
         dataHandler: DataHandler,
         eventChecker: EventChecker,
         fotovoltaics: Optional[Fotovoltaics] = None,
-        capacity=100,
-        wattage=2000,
-        set_tmp=60,
-        one_shower_volume=40,
-        shower_temperature=40,
-        min_tmp=40,
-        heater_efficiency=0.88,
-        average_boiler_surroundings_temp=15,
-        boiler_case_max_tmp=40,
-        hdo=False,
-        cooldown_coef_B=1.12,
+        capacity: Optional[int] = 100,
+        wattage: Optional[int] = 2000,
+        set_tmp: Optional[int] = 60,
+        one_shower_volume: Optional[int] = 40,
+        shower_temperature: Optional[int] = 40,
+        min_tmp: Optional[int] = 40,
+        heater_efficiency: Optional[float] = 0.88,
+        average_boiler_surroundings_temp: Optional[int] = 15,
+        boiler_case_max_tmp: Optional[int] = 40,
+        hdo: Optional[bool] = False,
+        cooldown_coef_B: Optional[float] = 1.12,
     ):
+        """Init method for the Boiler class.
 
-        print("------------------------------------------------------\n")
-        print(
-            "initializing of control...\n\tCapacity of Boiler = {}\n\t Wattage of boiler = {}\n".format(
-                capacity, wattage
-            )
-        )
-        print("------------------------------------------------------\n")
-        #    def __init__(self, entity_id, base_url, token, headers):
+        Args:
+            base_url (str): Url of the Shelly device.
+            token (str): Token for the Shelly device.
+            headers (dict): Headers for the Shelly device.
+            boiler_switch_entity_id (str): Entity ID of the boiler switch.
+            dataHandler (DataHandler): Instance of the DataHandler class.
+            eventChecker (EventChecker): Instance of the EventChecker class.
+            fotovoltaics (Optional[Fotovoltaics], optional): Instance of the Fotovoltaics slass. Defaults to None.
+            capacity (Optional[int], optional): Capacity of the boiler represented in liters. Defaults to 100.
+            wattage (Optional[int], optional): Wattage of the boiler. Defaults to 2000.
+            set_tmp (Optional[int], optional): Set temperature on the boiler. Defaults to 60.
+            one_shower_volume (Optional[int], optional): Volume used for one shower in liters. Defaults to 40.
+            shower_temperature (Optional[int], optional): Ideal temperature of one shower. Defaults to 40.
+            min_tmp (Optional[int], optional): Minimal temperature of the water in the boiler. Defaults to 40.
+            heater_efficiency (Optional[float], optional): Efficiency of the heater itself. Defaults to 0.88.
+            average_boiler_surroundings_temp (Optional[int], optional): Temperature of the surroundings of the boiler. Defaults to 15.
+            boiler_case_max_tmp (Optional[int], optional): Maximum temperature measured by sensor in the boiler case. Defaults to 40.
+            hdo (Optional[bool], optional): Is the boiler connected to HDO. Defaults to False.
+            cooldown_coef_B (Optional[float], optional): Coeficient of the cooldown of the water in boiler. Defaults to 1.12.
+        """
 
+        # Call the parent class constructor
         Switch.__init__(
             self,
             entity_id=boiler_switch_entity_id,
@@ -72,6 +72,7 @@ class Boiler(Switch):
             token=token,
             headers=headers,
         )
+
         self.dataHandler = dataHandler
         self.fotovoltaics = fotovoltaics
         self.eventChecker = eventChecker
@@ -88,11 +89,7 @@ class Boiler(Switch):
         self.boiler_case_max_tmp = boiler_case_max_tmp
         self.cooldown_coef_B = cooldown_coef_B
 
-        # if (average_boiler_surroundings_temp is None or boiler_case_max_tmp is None):
-        #     boiler_data_stats = dataHandler.get_boiler_data_stats(left_time_interval=datetime.now() - timedelta(days=21))
-        #     self.set_measured_tmp(boiler_data_stats)
-
-    def get_kWh_loss_in_time(self, time_minutes, tmp_act=60):
+    def get_kWh_loss_in_time(self, time_minutes: float, tmp_act: Optional[float] = 60) -> float:
         """Calculates the kWh loss in time.
 
         Args:
@@ -106,7 +103,7 @@ class Boiler(Switch):
         # print(f"kWh_loss: {kWh_loss}, time_minutes: {time_minutes}, tmp_act: {tmp_act}, tmp_delta: {tmp_delta}")
         return kWh_loss
 
-    def time_needed_to_heat_up_minutes(self, consumption_kWh):
+    def time_needed_to_heat_up_minutes(self, consumption_kWh: float)-> float:
         """
         Calculates the time needed for heating water in boiler by temperature delta.
             time = (m * c) * d'(tmp) / P * effectivity_coef
@@ -116,23 +113,32 @@ class Boiler(Switch):
 
         return (consumption_kWh / (self.real_wattage / 1000)) * 60
 
-    def get_kWh_delta_from_temperatures(self, tmp_act: int, tmp_goal: int):
-        return 4.186 * self.capacity * (tmp_goal - tmp_act) / 3600
-    
-    def is_needed_to_heat(
-        self, tmp_act: int, prediction_of_consumption
-    ) -> tuple[bool, int]:
-        """Conciders if it is needed to heat.
+    def get_kWh_delta_from_temperatures(self, tmp_act: int, tmp_goal: int)-> float:
+        """Calculates delta of kWh from temperatures of the water in boiler
 
         Args:
-            tmp_act ([type]): [actual temperature of water in boiler]
-            tmp_goal ([type]): [temperature of water to heat before consumption]
-            time_to_consumption ([type]): [time to consumption]
+            tmp_act (int): Actual temperature of tha water in boiler.
+            tmp_goal (int): Temperature of the boiler to heat to.
 
         Returns:
-            [boolean]: [boolean value of needed to heat]
+            float: kWh delta from temperatures
+        """
+        return 4.186 * self.capacity * (tmp_goal - tmp_act) / 3600
+
+    def is_needed_to_heat(
+        self, tmp_act: int, prediction_of_consumption: pd.DataFrame
+    ) -> tuple[bool, int]:
+        """Method to check if it is needed to heat the water in boiler.
+
+        Args:
+            tmp_act (int): Actual temperature of the water in boiler.
+            prediction_of_consumption (pd.DataFrame): Dataframe with prediction of consumption.
+
+        Returns:
+            tuple[bool, int]: Tuple with boolean if it is needed to heat and time needed to heat in minutes.
         """
 
+        # if the actual temperature is lower than minimal temperature, heat
         if tmp_act < self.min_tmp:
             kWh_needed_to_heat = self.get_kWh_delta_from_temperatures(
                 tmp_act, (self.min_tmp + 3)
@@ -142,7 +148,7 @@ class Boiler(Switch):
                 True,
                 self.time_needed_to_heat_up_minutes(consumption_kWh=kWh_needed_to_heat),
             )
-
+        # if fotovoltaics generates more than is consumed and battery is not charging, heat
         if (
             self.fotovoltaics is not None
             and (self.fotovoltaics.is_consumption_lower_than_production())
@@ -159,53 +165,55 @@ class Boiler(Switch):
         # get actual kWh in boiler from volume and tmp
         boiler_kWh_above_set = self.get_kWh_delta_from_temperatures(
             self.min_tmp, tmp_act
-        ) 
+        )
 
+        # get schedule of high tarif
         datetime_now = datetime.now()
         actual_time = datetime_now.time()
-        actual_schedule = self.high_tarif_schedule[
+        actual_hdo_schedule = self.high_tarif_schedule[
             (self.high_tarif_schedule["time"] > actual_time)
             & (self.high_tarif_schedule["weekday"] >= datetime_now.weekday())
         ]
         # get first 6*12 rows
-        actual_schedule = actual_schedule.head(2 * 12)
-
-        if len(actual_schedule) < 2 * 12:
-            # concat actual schedule with beggining of df_reset
-            actual_schedule = pd.concat(
+        actual_hdo_schedule = actual_hdo_schedule.head(2 * 12)
+        # if the schedule is shorter than 12 hours, concat with beggining of the week
+        if len(actual_hdo_schedule) < 2 * 12:
+            # concat actual schedule with beggining of the week
+            actual_hdo_schedule = pd.concat(
                 [
-                    actual_schedule,
-                    self.high_tarif_schedule.head(2 * 12 - len(actual_schedule)),
+                    actual_hdo_schedule,
+                    self.high_tarif_schedule.head(2 * 12 - len(actual_hdo_schedule)),
                 ]
             )
-        if not self.hdo:
-            actual_schedule["unavailable_minutes"] = 0
-
-        next_heat_event = self.eventChecker.next_calendar_heat_up_event()
-        
-        print("next_heat_event: ", next_heat_event)
-        
-        if next_heat_event['minutes_to_event'] is not None:
             
-            minutes_to_event = next_heat_event['minutes_to_event']
+        # if the boiler is not connected to HDO, set unavailable minutes to 0
+        if not self.hdo:
+            actual_hdo_schedule["unavailable_minutes"] = 0
+        # check if there is a need to heat up for the next event
+        next_heat_event = self.eventChecker.next_calendar_heat_up_event()
+
+        # if there is an event to heat up in the calendar
+        if next_heat_event["minutes_to_event"] is not None:
+
+            minutes_to_event = next_heat_event["minutes_to_event"]
             hours_to_event = minutes_to_event // 60
-            degree_target = next_heat_event['degree_target']
+            degree_target = next_heat_event["degree_target"]
             minutes_needed_to_heat = self.time_needed_to_heat_up_minutes(
                 consumption_kWh=self.get_kWh_delta_from_temperatures(
                     tmp_act, degree_target
                 )
             )
-            minutes_unavailable = actual_schedule.iloc[:hours_to_event]["unavailable_minutes"].sum()
+            minutes_unavailable = actual_hdo_schedule.iloc[:hours_to_event][
+                "unavailable_minutes"
+            ].sum()
             minutes_needed_to_heat += minutes_unavailable
-            
+
             if minutes_to_event < minutes_needed_to_heat:
                 return (True, minutes_needed_to_heat)
 
-                
-
-
         len_of_df = len(prediction_of_consumption)
-
+        
+        # check if there is a need to heat up for the next predicted consumption
         for i in range(len_of_df, 0, -1):
             time_to_consumption_minutes = (i * 60) - 30
 
@@ -216,7 +224,7 @@ class Boiler(Switch):
                 time_minutes=time_to_consumption_minutes, tmp_act=tmp_act
             )
 
-            unavailible_minutes = actual_schedule.iloc[:i]["unavailable_minutes"].sum()
+            unavailible_minutes = actual_hdo_schedule.iloc[:i]["unavailable_minutes"].sum()
             time_needed_to_heat = self.time_needed_to_heat_up_minutes(
                 consumption_kWh=sum_of_consumption
             )
@@ -234,7 +242,7 @@ class Boiler(Switch):
         )
         return (False, 0)
 
-    def showers_degrees(self, number_of_showers):
+    def showers_degrees(self, number_of_showers: int)-> float:
         """Recalculates number of showers to temperature
         on which is needed to heat up water in boiler.
 
@@ -259,7 +267,7 @@ class Boiler(Switch):
 
         return needed_temperature
 
-    def real_tmp(self, tmp_act):
+    def real_tmp(self, tmp_act: float)-> float:
         """Calculates the real temperature of water in boiler
 
         Args:
@@ -284,7 +292,7 @@ class Boiler(Switch):
 
         return tmp
 
-    def set_measured_tmp(self, df):
+    def set_measured_tmp(self, df: pd.DataFrame)-> None:
         """Initializes measured temperatures for calculation of real temperature of water in boiler.
 
         Args:

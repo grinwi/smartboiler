@@ -1,14 +1,16 @@
-from pathlib import Path
+# Created as a part of Master's Thesis "Using machine learning methods to save energy in a smart home"
+# Faculty of Information Technology, Brno University of Technology, 2024
+# Author: Adam Grünwald
+#
+# This module is used for training the model for prediction and creating predictions.
 
-print("Running" if __name__ == "__main__" else "Importing", Path(__file__).resolve())
+from typing import Optional
 from datetime import timedelta, datetime
-from sklearn.preprocessing import MinMaxScaler, RobustScaler
+from sklearn.preprocessing import RobustScaler
 from keras.models import Sequential
 
 # import tensorflow as tf
 from keras.layers import LSTM
-from keras.layers import Dropout
-from keras.models import Model
 from keras.layers import Input, Dense
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 import keras.backend as K
@@ -22,18 +24,30 @@ from smartboiler.data_handler import DataHandler
 
 
 class Forecast:
+    """Class for training model for prediction and creating predictions
+    """
+
     def __init__(
         self,
         dataHandler: DataHandler,
         start_of_data: datetime,
-        model_path=None,
-        scaler_path=None,
-        predicted_columns=None,
+        model_path: Optional[str] = None,
+        scaler_path: Optional[datetime] = None,
+        predicted_columns: Optional[list] = None,
     ):
+        """Initialize the class of the forecast.
+
+        Args:
+            dataHandler (DataHandler): Instance of the DataHandler class
+            start_of_data (datetime): Datetime of the start of the data
+            model_path (Optional[str], optional): Path of the model. Defaults to None.
+            scaler_path (Optional[datetime], optional): Path of the scaler. Defaults to None.
+            predicted_columns (Optional[list], optional): List of columns for prediction. Defaults to None.
+        """
         self.batch_size = 16
         self.lookback = 32
-
         self.delay = 1
+
         self.predicted_columns = predicted_columns
         self.dataHandler = dataHandler
         self.scaler = RobustScaler()
@@ -43,28 +57,35 @@ class Forecast:
         self.scaler_path = scaler_path
         self.quantiles = [0.1, 0.3, 0.5, 0.7, 0.9]
 
-
     def train_model(
         self,
-        begin_of_training=None,
-        end_of_training=None,
-        df_training_data=None,
-    ):
+        begin_of_training: Optional[datetime] = None,
+        end_of_training: Optional[datetime] = None,
+        df_training_data: Optional[pd.DataFrame] = None,
+    ) -> None:
+        """Method for training the model
+
+        Args:
+            begin_of_training (_type_, optional): Datetime of beggining of the data for training. Defaults to None.
+            end_of_training (_type_, optional): Datetime of end of the data used for training. Defaults to None.
+            df_training_data (_type_, optional): Dataframe with data for training.
+                                                If not None, this data will be used for training. Defaults to None.
+        """
+        
+        # if the data for training is not provided, get the data from the dataHandler
         if df_training_data is None:
             if begin_of_training is None:
                 begin_of_training = self.start_of_data
             if end_of_training is None:
                 end_of_training = datetime.now()
-            print("begin of training: ", begin_of_training)
-            print("end of training : ", end_of_training)
             df_training_data, _ = self.dataHandler.get_data_for_training_model(
                 left_time_interval=begin_of_training,
                 right_time_interval=end_of_training,
-                predicted_columns=self.predicted_columns,
-                dropna=False,
             )
-
+        # get the number of features
         self.num_of_features = len(df_training_data.columns) - 1
+        
+        # fit the scaler
         self.df_train_norm = df_training_data.copy()
         self.df_train_norm[df_training_data.columns] = self.scaler.fit_transform(
             df_training_data
@@ -72,7 +93,7 @@ class Forecast:
         # save the scaler
         dump(self.scaler, open(self.scaler_path, "wb"))
 
-        # create a train gen and valid gen
+        # create a train validation generator
         self.train_gen = self.mul_generator(
             dataframe=self.df_train_norm,
             target_names=self.predicted_columns,
@@ -96,7 +117,8 @@ class Forecast:
             shuffle=False,
             batch_size=self.batch_size,
         )
-        # devine validity and train steps
+        
+        # devide validity and train steps
         self.val_steps = int(
             (self.df_train_norm.shape[0] * 0.1 - self.lookback) // self.batch_size
         )
@@ -104,8 +126,7 @@ class Forecast:
             (self.df_train_norm.shape[0] * 0.9 - self.lookback) // self.batch_size
         )
 
-        
-        # create a callbecks
+        # create a callbacks for training of the model
         callbacks = [
             EarlyStopping(
                 monitor="loss",
@@ -122,6 +143,7 @@ class Forecast:
                 save_weights_only=True,
             ),
         ]
+        
         # fit the model
         history = self.model.fit(
             self.train_gen,
@@ -133,50 +155,68 @@ class Forecast:
             callbacks=callbacks,
             verbose=2,
         )
-        
+
         # save the weights of the model
         self.model.save_weights(self.model_path, overwrite=True)
 
-        print("End training")
-
     def load_model(
         self,
-        left_time_interval=datetime.now() - timedelta(days=4),
-        right_time_interval=datetime.now(),
-    ):
-        """
-        Load the model and the scaler
+    ) -> None:
+        """Load model and scaler from the files
         """
         self.scaler = load(open(self.scaler_path, "rb"))
         self.model.load_weights(self.model_path, skip_mismatch=False)
 
+    def quantile_loss(self, q, y_true, y_pred) -> float:
+        """Qunatile loss function used for training the model
 
-    
-    def quantile_loss(self, q, y_true, y_pred):
-        # quentile loss function
+        Args:
+            q (_type_): _description_
+            y_true (_type_): _description_
+            y_pred (_type_): _description_
 
+        Returns:
+            float: the loss
+        """
         e = y_true - y_pred
         return K.mean(K.maximum(q * e, (q - 1) * e), axis=-1)
 
-
-    def build_model(self):
-        """Function for building the model"""
+    def build_model(self) -> None:
+        """Method for building the model
+        """
         
+        # Use the Sequential with LSTM layer with 100 units and Dense layer with 1 unit
         model = Sequential()
         model.add(Input(shape=(None, 14)))
-
         model.add(LSTM(100))
         model.add(Dense(1))
 
+        # compile the model with the quantile loss and adam optimizer
         self.model = model
-        self.model.compile(loss=[lambda y_true, y_pred: self.quantile_loss(q, y_true, y_pred) for q in self.quantiles], optimizer="adam")
-        return model
+        self.model.compile(
+            loss=[
+                lambda y_true, y_pred: self.quantile_loss(q, y_true, y_pred)
+                for q in self.quantiles
+            ],
+            optimizer="adam",
+        )
 
+    def add_empty_row(
+        self, df: pd.DataFrame, date_time: datetime, predicted_value: float
+    ) -> pd.DataFrame:
+        """Methot adding an empty row to the dataframe
 
-    def add_empty_row(self, df, date_time, predicted_value):
-        """Function for adding an empty row for purpose of rpediction for the next hours"""
+        Args:
+            df (pd.DataFrame): Dataframe
+            date_time (datetime): Datetime of the new row
+            predicted_value (float): Predicted value from previous step
 
+        Returns:
+            pd.DataFrame: Dataframe with the new row
+        """
+        # get the last row values
         last_row_values = df.iloc[-1].values
+        # get values from previous week
         prev_week_values = df.iloc[-24 * 7].values
 
         new_row_df = pd.DataFrame(
@@ -201,6 +241,8 @@ class Forecast:
                 ]
             ],
         )
+        
+        # concat the new row to the dataframe
         df = pd.concat([df, new_row_df], ignore_index=True)
         df = df.reset_index(drop=True)
 
@@ -208,17 +250,33 @@ class Forecast:
 
     def mul_generator(
         self,
-        dataframe,
-        target_names,
-        lookback,
-        delay,
-        min_index,
-        max_index,
-        shuffle=False,
-        batch_size=128,
-        step=6,
+        dataframe: pd.DataFrame,
+        target_names: list,
+        lookback: int,
+        delay: int,
+        min_index: int,
+        max_index: int,
+        shuffle: Optional[bool] = False,
+        batch_size: Optional[int] = 128,
+        step: Optional[int] = 6,
     ):
-        """Generator function for the model training and prediciction"""
+        """
+        Method to create a generator for the model
+
+        Args:
+            dataframe (pd.DataFrame): Dataframe with the data
+            target_names (list): Names of the target values
+            lookback (int): Lookback size
+            delay (int): Delay size
+            min_index (int): Min index of the data
+            max_index (int): Max index of the data
+            shuffle (Optional[bool], optional): Choose if shuffle the data. Defaults to False.
+            batch_size (Optional[int], optional): Size of the batch. Defaults to 128.
+            step (Optional[int], optional): Size of the step. Defaults to 6.
+
+        Yields:
+            _type_: The data for the model
+        """
         data = dataframe.values
         data = data.astype(np.float32)
 
@@ -264,14 +322,25 @@ class Forecast:
             yield samples, targets
 
     def get_forecast_next_steps(
-        self, left_time_interval=None, right_time_interval=None
-    ):
-        # Define the indices for the different predictions and truths
+        self,
+        left_time_interval: Optional[datetime] = None,
+        right_time_interval: Optional[datetime] = None,
+    ) -> pd.DataFrame:
+        """Method for getting the forecast of the consumed heat prediction for the next steps for the next 6 hours.
+
+        Args:
+            left_time_interval (Optional[datetime], optional): Left time datetime of interval. Defaults to None.
+            right_time_interval (Optional[datetime], optional): Right time datetime of interval. Defaults to None.
+
+        Returns:
+            pd.DataFrame: Dataframe with consumed heat prediction for next 6 hours.
+        """
         if left_time_interval is None:
             left_time_interval = datetime.now() - timedelta(days=30)
         if right_time_interval is None:
             right_time_interval = datetime.now()
 
+        # get data for creatig a prediction
         df_all, datetimes = self.dataHandler.get_data_for_prediction(
             left_time_interval=left_time_interval,
             right_time_interval=right_time_interval,
@@ -279,11 +348,13 @@ class Forecast:
 
         num_targets = len(self.predicted_columns)
         len_columns = len(df_all.columns)
+        
+        # dataframe with forecast
         forecast_future = pd.DataFrame()
-
 
         current_forecast_begin_date = right_time_interval + timedelta(hours=1)
 
+        # add an empty row to the dataframe
         df_all = self.add_empty_row(df_all, current_forecast_begin_date, 0)
         current_forecast_begin_date += timedelta(hours=1)
 
@@ -295,7 +366,10 @@ class Forecast:
             # df_test_norm = df_test_zuka.copy()
             df_test_norm[df_test_norm.columns] = self.scaler.transform(df_test_norm)
 
+
+            # get data for the last lookback * 4 hours
             df_test_norm = df_test_norm[-self.lookback * 4 :]
+            # create a generator for the model
             test_gen = self.mul_generator(
                 dataframe=df_test_norm,
                 target_names=self.predicted_columns,
@@ -310,40 +384,33 @@ class Forecast:
 
             last_batch = next(test_gen)
 
-            # Step 3: Extract the last batch of features (X_batch) and target values (y_truth_batch)
             (X_batch, y_truth) = last_batch
 
-            # Step 4: Make predictions with your model on the last batch
             num_targets = len(self.predicted_columns)
             len_columns = len(df_test_norm.columns)
             num_features = len_columns - num_targets
-
-            y_truth_concat = np.concatenate(
-                (y_truth, np.zeros((y_truth.shape[0], num_features))), axis=1
-            )
-            y_truth_concat = self.scaler.inverse_transform(y_truth_concat)
-
-            y_truth_inv = y_truth_concat[-1, 0]
-
+            
+            # do the prediction of next step
             y_pred = self.model.predict(X_batch, verbose=0)
+        
+            # inverse transform the prediction
             y_pred_inv = np.concatenate(
                 (y_pred, np.zeros((y_pred.shape[0], num_features))), axis=1
             )
-
             y_pred_inv = self.scaler.inverse_transform(y_pred_inv)
+            
             # get last predicted value
             y_pred_inv = y_pred_inv[-1, 0]
+
             # y_pred_inv[0] is min 0
             if y_pred_inv < 0:
                 y_pred_inv = 0
 
-            if i == 0:
-                print("y_pred_inv: ", y_pred_inv)
-                print("y_truth_inv: ", y_truth_inv)
-
-            # set last longtimemean value
+            # set last longtime_mean value
             df_all.iloc[-1, df_all.columns.get_loc("longtime_mean")] = y_pred_inv
 
+            
+            # add the prediction to the forecast
             forecast_future = pd.concat(
                 [
                     forecast_future,
@@ -352,14 +419,14 @@ class Forecast:
                 axis=0,
             )
             forecast_future = forecast_future.reset_index(drop=True)
+
             
+            # add an empty row to the dataframe
             df_all = self.add_empty_row(df_all, current_forecast_begin_date, 0)
             current_forecast_begin_date += timedelta(hours=1)
 
         # create a dataframe with forecast and datetime as index
-        self.dataHandler.write_forecast_to_influxdb(
-            forecast_future, "prediction_longtime_mean"
-        )
+        self.dataHandler.write_forecast_to_influxdb(forecast_future)
         return forecast_future
 
 
