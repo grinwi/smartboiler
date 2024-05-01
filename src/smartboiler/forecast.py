@@ -9,7 +9,6 @@ from datetime import timedelta, datetime
 from sklearn.preprocessing import RobustScaler
 from keras.models import Sequential
 
-# import tensorflow as tf
 from keras.layers import LSTM
 from keras.layers import Input, Dense
 from keras.callbacks import EarlyStopping, ModelCheckpoint
