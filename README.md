@@ -1,25 +1,14 @@
 # SMART BOILER
-From dumb boiler smart with help of smart plug. 
+This is a README for the Smart Boiler application, used to decrease energy usage for heating water in a boiler. This is achieved by learning household consumption trends and heating water above the emergency temperature just before predicted consumption.
 
-Recursive link to the github repository: <https://github.com/grinwi/smart_boiler>.
-
+Recursive link to the GitHub repository: <https://github.com/grinwi/smart_boiler>.
 
 ## What's it all about?
-This project is my bachelor's thesis with one simple goal: make from dumb boiler a smart one with help of a smart plug and few sensors.
-The smart part is, that the heating of the boiler is based on historic data of consumption from the boiler. 
-That provides, that boiler doesn't have to be heated up at max temperature all the time, so the heat losses will be smaller.
-There is also the possibility to link the solution with a Google Calendar. 
-In a calendar can be set events for holidays, when the boiler won't heat, or events describing an unordinary consumption following with temperature, on which should be the boiler heated on.
+This project was undertaken as a master's thesis at FIT VUT Brno. 
+The goal was to find a solution for cutting costs by predicting household inhabitants' behavior with machine learning. Machine learning was utilized to train an LSTM network on historical data from a smart home. 
+Based on the prediction of heat consumption from the water boiler, the algorithm included in controller.py achieves a reduction in the average temperature of the water in the boiler, lowering energy losses, and the energy needed to deliver heat into the boiler.
+This solution assumes that the user has a boiler whose heating can be controlled by a Shelly smart plug <https://www.shelly.com/en/products/shop/shelly-plus-1-pm>.
+Another requirement is a Home Assistant running in the required household with an InfluxDB database, which stores household data as well as weather information, the presence of devices via NMAP <https://www.home-assistant.io/integrations/nmap_tracker/> integration, and a flow meter with a temperature sensor placed on the output of the boiler. Another temperature sensor must be placed inside the boiler casing to control the heating based on the water temperature in the boiler.
+Users can also utilize their Google Calendar to turn off the heating, for example, when they are on holiday. Another function using the calendar is heating to a needed temperature when unusually high consumption is expected.
 
-
-## How does it work?
-The solution is made with SHELLY 1PM plug and an additional temperature module with two connected DS18B20's. One is inside of a boiler and the second one on an output pipe of a boiler.
-Testing and appliance are managed by docker containers. One for collecting data from a plug, the second for controlling the plug. There is also one more for an InfluxDB where are data collected from plug stored.
-Review is managed by Graphana container connected to InfluxDB.
-### Problems in solution
-The hardest part was finding out, how much water was consumed based on a temperature of an output pipe. 
-This is managed by averaging a temperature during days, searching for peaks in consumption, and selecting possible consumptions.
-The peak's top temperature is multiplied by a coefficient, which is edited concerning maximal reducing of an average temperature in the boiler but also due to heat comfort of water.
-
-The second hardest thing was to guess or estimate the real temperature of water in the boiler because this thermometer couldn't be placed right into a water tank but only in an isolation, 
-so the temperature on a sensor is lower than it actually is and there is also an extrapolation in time when the water is heated on.
+The Home Assistant Add-On repository can be found at this address: <https://github.com/grinwi/smartboiler-add-on>.
