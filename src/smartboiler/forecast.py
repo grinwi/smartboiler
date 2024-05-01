@@ -23,8 +23,7 @@ from smartboiler.data_handler import DataHandler
 
 
 class Forecast:
-    """Class for training model for prediction and creating predictions
-    """
+    """Class for training model for prediction and creating predictions"""
 
     def __init__(
         self,
@@ -70,7 +69,7 @@ class Forecast:
             df_training_data (_type_, optional): Dataframe with data for training.
                                                 If not None, this data will be used for training. Defaults to None.
         """
-        
+
         # if the data for training is not provided, get the data from the dataHandler
         if df_training_data is None:
             if begin_of_training is None:
@@ -83,7 +82,7 @@ class Forecast:
             )
         # get the number of features
         self.num_of_features = len(df_training_data.columns) - 1
-        
+
         # fit the scaler
         self.df_train_norm = df_training_data.copy()
         self.df_train_norm[df_training_data.columns] = self.scaler.fit_transform(
@@ -116,7 +115,7 @@ class Forecast:
             shuffle=False,
             batch_size=self.batch_size,
         )
-        
+
         # devide validity and train steps
         self.val_steps = int(
             (self.df_train_norm.shape[0] * 0.1 - self.lookback) // self.batch_size
@@ -142,7 +141,7 @@ class Forecast:
                 save_weights_only=True,
             ),
         ]
-        
+
         # fit the model
         history = self.model.fit(
             self.train_gen,
@@ -161,8 +160,7 @@ class Forecast:
     def load_model(
         self,
     ) -> None:
-        """Load model and scaler from the files
-        """
+        """Load model and scaler from the files"""
         self.scaler = load(open(self.scaler_path, "rb"))
         self.model.load_weights(self.model_path, skip_mismatch=False)
 
@@ -181,9 +179,8 @@ class Forecast:
         return K.mean(K.maximum(q * e, (q - 1) * e), axis=-1)
 
     def build_model(self) -> None:
-        """Method for building the model
-        """
-        
+        """Method for building the model"""
+
         # Use the Sequential with LSTM layer with 100 units and Dense layer with 1 unit
         model = Sequential()
         model.add(Input(shape=(None, 14)))
@@ -240,7 +237,7 @@ class Forecast:
                 ]
             ],
         )
-        
+
         # concat the new row to the dataframe
         df = pd.concat([df, new_row_df], ignore_index=True)
         df = df.reset_index(drop=True)
@@ -347,7 +344,7 @@ class Forecast:
 
         num_targets = len(self.predicted_columns)
         len_columns = len(df_all.columns)
-        
+
         # dataframe with forecast
         forecast_future = pd.DataFrame()
 
@@ -364,7 +361,6 @@ class Forecast:
 
             # df_test_norm = df_test_zuka.copy()
             df_test_norm[df_test_norm.columns] = self.scaler.transform(df_test_norm)
-
 
             # get data for the last lookback * 4 hours
             df_test_norm = df_test_norm[-self.lookback * 4 :]
@@ -388,16 +384,16 @@ class Forecast:
             num_targets = len(self.predicted_columns)
             len_columns = len(df_test_norm.columns)
             num_features = len_columns - num_targets
-            
+
             # do the prediction of next step
             y_pred = self.model.predict(X_batch, verbose=0)
-        
+
             # inverse transform the prediction
             y_pred_inv = np.concatenate(
                 (y_pred, np.zeros((y_pred.shape[0], num_features))), axis=1
             )
             y_pred_inv = self.scaler.inverse_transform(y_pred_inv)
-            
+
             # get last predicted value
             y_pred_inv = y_pred_inv[-1, 0]
 
@@ -408,7 +404,6 @@ class Forecast:
             # set last longtime_mean value
             df_all.iloc[-1, df_all.columns.get_loc("longtime_mean")] = y_pred_inv
 
-            
             # add the prediction to the forecast
             forecast_future = pd.concat(
                 [
@@ -419,7 +414,6 @@ class Forecast:
             )
             forecast_future = forecast_future.reset_index(drop=True)
 
-            
             # add an empty row to the dataframe
             df_all = self.add_empty_row(df_all, current_forecast_begin_date, 0)
             current_forecast_begin_date += timedelta(hours=1)

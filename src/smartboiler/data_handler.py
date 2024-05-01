@@ -17,8 +17,8 @@ from haversine import haversine
 
 
 class DataHandler:
-    """Class for handling the data from the database.
-    """
+    """Class for handling the data from the database."""
+
     def __init__(
         self,
         influx_id: str,
@@ -551,7 +551,9 @@ class DataHandler:
 
         return df_reset
 
-    def transform_data_for_ml(self, df:pd.DataFrame) -> tuple[pd.DataFrame, pd.DatetimeIndex]:
+    def transform_data_for_ml(
+        self, df: pd.DataFrame
+    ) -> tuple[pd.DataFrame, pd.DatetimeIndex]:
         """Method to transform the data for ML model.
 
         Args:
@@ -560,7 +562,7 @@ class DataHandler:
         Returns:
             tuple[pd.DataFrame, pd.DatetimeIndex]: Transformed dataframe and datetime.
         """
-        
+
         # frequency i hours
         freq = 1
         df.index = pd.to_datetime(df.index)
@@ -659,8 +661,7 @@ class DataHandler:
 
         df_reverse = df.iloc[::-1]
 
-
-        #getting nan indices and filling them with rolling mean from the end of the dataframe
+        # getting nan indices and filling them with rolling mean from the end of the dataframe
         nan_indices = df_reverse[df_reverse["last_3_week_skew"].isna()].index
         for index in nan_indices:
 
@@ -689,7 +690,7 @@ class DataHandler:
         df["last_3_week_std"] = df_reverse["last_3_week_std"].iloc[::-1]
 
         df = df.drop(columns=["consumed_heat_kWh"])
-        
+
         # transform weekday, minute, hour to sin cos
         df["weekday_sin"] = np.sin(2 * df["weekday"] * np.pi / 7)
         df["weekday_cos"] = np.cos(2 * df["weekday"] * np.pi / 7)
@@ -731,8 +732,6 @@ class DataHandler:
         return (df.reset_index(drop=True), datetimes)
 
 
-
-
 if __name__ == "__main__":
 
     dataHandler = DataHandler(
@@ -746,6 +745,3 @@ if __name__ == "__main__":
         tmp_output_water_entity_id="esphome_web_c771e8_ntc_temperature_b_constant_2",
         start_of_data=datetime(2024, 3, 1, 0, 0, 0, 0),
     )
-
-
-

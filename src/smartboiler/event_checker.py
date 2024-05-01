@@ -19,12 +19,10 @@ from smartboiler.time_handler import TimeHandler
 
 
 class EventChecker:
-    """Class for communicating with Google Calendar API and searching for special events.
-    """
+    """Class for communicating with Google Calendar API and searching for special events."""
 
     def __init__(self):
-        """Initialize the class with the scopes for Google Calendar API and TimeHandler class.
-        """
+        """Initialize the class with the scopes for Google Calendar API and TimeHandler class."""
         self.SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
         self.TimeHandler = TimeHandler()
 

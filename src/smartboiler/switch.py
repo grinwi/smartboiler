@@ -9,9 +9,9 @@ import requests
 
 
 class Switch:
-    """Class for communicating with Shelly devices and turning them on or off.
-    """
-    def __init__(self, entity_id:str, base_url:str, token:str, headers:dict):
+    """Class for communicating with Shelly devices and turning them on or off."""
+
+    def __init__(self, entity_id: str, base_url: str, token: str, headers: dict):
         """Init method for the Switch class
 
         Args:
@@ -26,16 +26,14 @@ class Switch:
         self.headers = headers
 
     def turn_on(self):
-        """Turns the shelly on.
-        """
+        """Turns the shelly on."""
         self._turn_action("on")
 
     def turn_off(self):
-        """Turns the shelly off.
-        """
+        """Turns the shelly off."""
         self._turn_action("off")
 
-    def _turn_action(self, action:str):
+    def _turn_action(self, action: str):
         """Try to turn the Shelly on or off.
 
         Args:
