@@ -179,8 +179,7 @@ if __name__ == "__main__":
 
     device_tracker_entity_id = options["device_tracker_entity_id"]
     device_tracker_entity_id_2 = options["device_tracker_entity_id_2"]
-    model_path = options["model_path"]
-    scaler_path = options["scaler_path"]
+    model_type = options["model_type"]
     long_lived_token = options["long_lived_token"]
     influxdb_host = options["influxdb_host"]
     influxdb_port: 8086
@@ -213,6 +212,14 @@ if __name__ == "__main__":
     has_fotovoltaics = options["has_fotovoltaics"]
     fve_solax_sn = options["fve_solax_sn"]
     fve_solax_token = options["fve_solax_token"]
+    
+    # chosing the model based on size of household
+    if model_type == "smaller_household":
+        model_path = "app/model_form.weights.h5"
+        scaler_path = "app/scaler_form.pkl"
+    else:
+        model_path = "app/model_zuka.weights.h5"
+        scaler_path = "app/scaler_zuka.pkl"
 
     model_path = Path(model_path)
     scaler_path = Path(scaler_path)
