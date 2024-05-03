@@ -10,14 +10,20 @@ control/credentials.json
 boiler_venv/
 #arima model
 arima/
+models/
+csv/
+json/
+images/
 #turning on
 /turning_on
 #testing folders
 test/
 app/
-
-data_zuk.pkl
-
+*.keras
+*.h5
+*.ipynb
+*.pkl
+*.json
 # C extensions
 *.so
 src/smartboiler/*.pdf
@@ -159,3 +165,8 @@ Screenshot 2023-11-18 204400.png
 
 *.pkl
 .DS_Store
+src/smartboiler/stats_notebook.ipynb
+src/smartboiler/lstm_example_with_multivariate_time_series 2.ipynb
+src/smartboiler/lstm_example_with_multivariate_time_series 2.ipynb
+src/smartboiler/lstm_example_with_multivariate_time_series 2.ipynb
+src/smartboiler/lstm_example_with_multivariate_time_series 2.ipynb
