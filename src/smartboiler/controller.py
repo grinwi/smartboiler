@@ -215,11 +215,11 @@ if __name__ == "__main__":
     
     # chosing the model based on size of household
     if model_type == "smaller_household":
-        model_path = "app/model_form.weights.h5"
-        scaler_path = "app/scaler_form.pkl"
+        model_path = "/app/model_form.weights.h5"
+        scaler_path = "/app/scaler_form.pkl"
     else:
-        model_path = "app/model_zuka.weights.h5"
-        scaler_path = "app/scaler_zuka.pkl"
+        model_path = "/app/model_zuka.weights.h5"
+        scaler_path = "/app/scaler_zuka.pkl"
 
     model_path = Path(model_path)
     scaler_path = Path(scaler_path)

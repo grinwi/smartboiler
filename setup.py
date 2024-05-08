@@ -50,6 +50,8 @@ setup(
         "requests>=2.25.1",
         "beautifulsoup4>=4.9.3",
         "pulp>=2.4",
+        "tensorflow",
+        "keras",
         "Mako==1.3.2",
         "pyyaml>=5.4.1",
         "tables==3.7.0",
