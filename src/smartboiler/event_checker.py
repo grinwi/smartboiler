@@ -10,7 +10,6 @@ import datetime
 import pickle
 import os.path
 import re
-from tkinter import E
 
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
