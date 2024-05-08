@@ -10,6 +10,7 @@ import datetime
 import pickle
 import os.path
 import re
+from tkinter import E
 
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -69,8 +70,10 @@ class EventChecker:
             )
             events = events_result.get("items", [])
             return events
-        except:
+        except Exception as e:
             print("Error while loading events")
+            print(e)
+            print(e.with_traceback())
             return None
 
     def next_calendar_heat_up_event(self) -> dict:
