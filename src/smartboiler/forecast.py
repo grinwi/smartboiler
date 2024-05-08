@@ -186,7 +186,7 @@ class Forecast:
 
         # Use the Sequential with LSTM layer with 100 units and Dense layer with 1 unit
         model = Sequential()
-        model.add(Input(shape=(None, 18)))
+        model.add(Input(shape=(None, self.num_of_features)))
         model.add(LSTM(100))
         model.add(Dense(1))
 
