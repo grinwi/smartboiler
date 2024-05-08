@@ -7,7 +7,7 @@ The AccuWeather Add-On should be also set to retrieve the actual weather info us
 # Get the accessories
 The first thing you need to do is to get a smart socket to which will be connected boiler and a device, which will be able to measure temperature from a body of boiler. 
 The best and the easiest option is to buy a smart relay Shelly 1PM with a module for connecting temperature sensors DS18B20. On this relay connect the socket to which is connected the boiler.
-Second one physically needed is flow meter to calculate the amount of heat consumed. You can use YF-B6 with a temperature sensor or any other which can be integrated into a Home Assistant via microcotroller with ESPHome or any other solution.
+Second one physically needed is flow meter to calculate the amount of heat consumed. You can use YF-B6 with a temperature sensor or any other which can be integrated into a Home Assistant via microcotroller with ESPHome or any other solution. 
 
 # Connect sensors
 Temperature sensor need to be situated on a boiler. Place it into a case of boiler close to the top of the bottle tank. This one will be monitoring the temperature of the water in the boiler. 

@@ -32,6 +32,7 @@ class Forecast:
         model_path: Optional[str] = None,
         scaler_path: Optional[datetime] = None,
         predicted_columns: Optional[list] = None,
+        
     ):
         """Initialize the class of the forecast.
 
@@ -45,6 +46,8 @@ class Forecast:
         self.batch_size = 16
         self.lookback = 32
         self.delay = 1
+        
+        self.num_of_features = 18
 
         self.predicted_columns = predicted_columns
         self.dataHandler = dataHandler
@@ -165,12 +168,12 @@ class Forecast:
         self.model.load_weights(self.model_path, skip_mismatch=False)
 
     def quantile_loss(self, q, y_true, y_pred) -> float:
-        """Qunatile loss function used for training the model
+        """Quantile loss function used for training the model
 
         Args:
-            q (_type_): _description_
-            y_true (_type_): _description_
-            y_pred (_type_): _description_
+            q (float): quantil
+            y_true (float): value of the true data
+            y_pred (float): value of the predicted data
 
         Returns:
             float: the loss
@@ -183,7 +186,7 @@ class Forecast:
 
         # Use the Sequential with LSTM layer with 100 units and Dense layer with 1 unit
         model = Sequential()
-        model.add(Input(shape=(None, 14)))
+        model.add(Input(shape=(None, 18)))
         model.add(LSTM(100))
         model.add(Dense(1))
 
