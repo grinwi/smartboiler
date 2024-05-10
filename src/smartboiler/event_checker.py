@@ -41,8 +41,8 @@ class EventChecker:
             creds = None
             SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
 
-            if os.path.exists('/app/token.json'):
-                creds = Credentials.from_authorized_user_file('/app/token.json', SCOPES)
+            if os.path.exists("/app/token.json"):
+                creds = Credentials.from_authorized_user_file("/app/token.json", SCOPES)
                 print(creds)
             # If there are no (valid) credentials available, let the user log in.
             if not creds or not creds.valid:
@@ -50,12 +50,12 @@ class EventChecker:
                     creds.refresh(Request())
             else:
                 flow = InstalledAppFlow.from_client_secrets_file(
-                    'credentials.json', SCOPES
+                    "credentials.json", SCOPES
                 )
                 print(flow)
                 creds = flow.run_local_server(port=0)
             # Save the credentials for the next run
-            with open('token.json', "w") as token:
+            with open("/app/token.json", "w") as token:
                 token.write(creds.to_json())
 
             service = build("calendar", "v3", credentials=creds)
