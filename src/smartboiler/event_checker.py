@@ -41,8 +41,8 @@ class EventChecker:
             creds = None
             SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
 
-            if os.path.exists('token.json'):
-                creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+            if os.path.exists('/app/token.json'):
+                creds = Credentials.from_authorized_user_file('/app/token.json', SCOPES)
                 print(creds)
             # If there are no (valid) credentials available, let the user log in.
             if not creds or not creds.valid:
