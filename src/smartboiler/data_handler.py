@@ -250,12 +250,7 @@ class DataHandler:
         df = df_old.copy()
 
         df = df.dropna(subset=["mean_latitude", "mean_longitude"])
-        df.loc[:, "distance_from_home"] = np.vectorize(self.haversine_dist)(
-            df["mean_latitude"],
-            df["mean_longitude"],
-            self.home_latitude,
-            self.home_longitude,
-        )
+        df["distance_from_home"] = [self.haversine_dist(row["mean_latitude"], row["mean_longitude"], self.home_latitude, self.home_longitude) for index, row in df.iterrows()]
 
         df.loc[:, "heading_to_home"] = np.arctan2(
             df["mean_latitude"] - self.home_latitude,
