@@ -264,12 +264,7 @@ class DataHandler:
         df.loc[:, "time_diff"] = (
             df["time_stamp"].diff().dt.total_seconds() / 3600
         )  # Convert seconds to hours
-        df.loc[:, "distance"] = np.vectorize(self.haversine_dist)(
-            df["mean_latitude"],
-            df["mean_longitude"],
-            df["mean_latitude"].shift(1),
-            df["mean_longitude"].shift(1),
-        )  # calculate haversine distance
+        df['distance'] = df[self.haversine_dist(row["mean_latitude"], row["mean_longitude"], row["mean_latitude"].shift(1), row["mean_longitude"].shift(1)) for index, row in df.iterrows()]
 
         df.loc[:, "speed"] = df["distance"] / df["time_diff"]  # cal speed
         df.loc[df["speed"] > 200, "speed"] = 0
@@ -278,12 +273,8 @@ class DataHandler:
         #######
 
         df = df.dropna(subset=["mean_latitude_2", "mean_longitude_2"])
-        df.loc[:, "distance_from_home_2"] = np.vectorize(self.haversine_dist)(
-            df["mean_latitude_2"],
-            df["mean_longitude_2"],
-            self.home_latitude,
-            self.home_longitude,
-        )
+        df["distance_from_home_2"] = [self.haversine_dist(row["mean_latitude_2"], row["mean_longitude_2"], self.home_latitude, self.home_longitude) for index, row in df.iterrows()]
+
 
         df.loc[:, "heading_to_home_2"] = np.arctan2(
             df["mean_latitude_2"] - self.home_latitude,
@@ -297,12 +288,8 @@ class DataHandler:
         df.loc[:, "time_diff_2"] = (
             df["time_stamp_2"].diff().dt.total_seconds() / 3600
         )  # Convert seconds to hours
-        df.loc[:, "distance_2"] = np.vectorize(self.haversine_dist)(
-            df["mean_latitude_2"],
-            df["mean_longitude_2"],
-            df["mean_latitude_2"].shift(1),
-            df["mean_longitude_2"].shift(1),
-        )  # calculate haversine distance
+        df['distance_2'] = df[self.haversine_dist(row["mean_latitude_2"], row["mean_longitude_2"], row["mean_latitude_2"].shift(1), row["mean_longitude_2"].shift(1)) for index, row in df.iterrows()]
+
 
         df.loc[:, "speed_2"] = df["distance_2"] / df["time_diff_2"]  # cal speed
         df.loc[df["speed_2"] > 200, "speed_2"] = 0
