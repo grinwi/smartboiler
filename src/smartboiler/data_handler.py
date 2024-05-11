@@ -217,23 +217,18 @@ class DataHandler:
             },
         }
 
-    def haversine_dist(self, lat1: float, lon1: float, lat2: float, lon2: float) -> pd.Series:
+    def haversine_dist(self, x1: float, x2: float, y1: float, y2: float) -> float:
         """Calculates the distance between two coordinates
-            Args:
-                lat1 (pd.Series): Latitude of the first coordinate.
-                lon1 (pd.Series): Longitude of the first coordinate.
-                lat2 (pd.Series): Latitude of the second coordinate.
-                lon2 (pd.Series): Longitude of the second coordinate.
-            
-            Returns:
-                pd.Series: Distance between two coordinates.
-        """
-        
-        distances = []
-        for i in range(len(lat1)):
-            distances.append(haversine((lat1.iloc[i], lon1.iloc[i]), (lat2.iloc[i], lon2.iloc[i]), unit='km'))
-        return pd.Series(distances)
 
+        Args:
+            x1 (float): X of the first coordinate.
+            x2 (float): X of the second coordinate.
+            y1 (float): Y of the first coordinate.
+            y2 (float): Y of the second coordinate.
+
+        Returns:
+            float: Distance between two coordinates.
+        """
 
         return haversine((x1, x2), (y1, y2), unit="km")
 
@@ -250,15 +245,17 @@ class DataHandler:
         Returns:
             pd.DataFrame: Dataframe with extracted features.
         """
+
         # drop na in columns mean_latitude and mean_longitude
         df = df_old.copy()
 
         df = df.dropna(subset=["mean_latitude", "mean_longitude"])
-        home_df = pd.DataFrame({
-            'home_latitude': [self.home_latitude] * len(df),
-            'home_longitude': [self.home_longitude] * len(df)
-        })
-        df["distance_from_home"] = self.haversine_dist(df["mean_latitude"], df["mean_longitude"], home_df["home_latitude"], home_df["home_longitude"])
+        df.loc[:, "distance_from_home"] = np.vectorize(self.haversine_dist)(
+            df["mean_latitude"],
+            df["mean_longitude"],
+            self.home_latitude,
+            self.home_longitude,
+        )
 
         df.loc[:, "heading_to_home"] = np.arctan2(
             df["mean_latitude"] - self.home_latitude,
@@ -272,12 +269,12 @@ class DataHandler:
         df.loc[:, "time_diff"] = (
             df["time_stamp"].diff().dt.total_seconds() / 3600
         )  # Convert seconds to hours
-        df["distance"] = self.haversine_dist(
+        df.loc[:, "distance"] = np.vectorize(self.haversine_dist)(
             df["mean_latitude"],
             df["mean_longitude"],
             df["mean_latitude"].shift(1),
             df["mean_longitude"].shift(1),
-)
+        )  # calculate haversine distance
 
         df.loc[:, "speed"] = df["distance"] / df["time_diff"]  # cal speed
         df.loc[df["speed"] > 200, "speed"] = 0
@@ -286,7 +283,12 @@ class DataHandler:
         #######
 
         df = df.dropna(subset=["mean_latitude_2", "mean_longitude_2"])
-        df["distance_from_home_2"] = self.haversine_dist(df["mean_latitude_2"], df["mean_longitude_2"], home_df["home_latitude"], home_df["home_longitude"])
+        df.loc[:, "distance_from_home_2"] = np.vectorize(self.haversine_dist)(
+            df["mean_latitude_2"],
+            df["mean_longitude_2"],
+            self.home_latitude,
+            self.home_longitude,
+        )
 
         df.loc[:, "heading_to_home_2"] = np.arctan2(
             df["mean_latitude_2"] - self.home_latitude,
@@ -300,13 +302,12 @@ class DataHandler:
         df.loc[:, "time_diff_2"] = (
             df["time_stamp_2"].diff().dt.total_seconds() / 3600
         )  # Convert seconds to hours
-        df["distance_2"] = self.haversine_dist(
+        df.loc[:, "distance_2"] = np.vectorize(self.haversine_dist)(
             df["mean_latitude_2"],
             df["mean_longitude_2"],
             df["mean_latitude_2"].shift(1),
             df["mean_longitude_2"].shift(1),
-)
-
+        )  # calculate haversine distance
 
         df.loc[:, "speed_2"] = df["distance_2"] / df["time_diff_2"]  # cal speed
         df.loc[df["speed_2"] > 200, "speed_2"] = 0
