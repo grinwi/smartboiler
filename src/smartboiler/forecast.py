@@ -47,7 +47,7 @@ class Forecast:
         self.lookback = 32
         self.delay = 1
         
-        self.num_of_features = 14#18
+        self.num_of_features = 18
 
         self.predicted_columns = predicted_columns
         self.dataHandler = dataHandler

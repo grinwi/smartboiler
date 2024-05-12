@@ -76,7 +76,6 @@ class EventChecker:
             return events
         except Exception as e:
             print("Error while loading events")
-            print(e)
             print(e.with_traceback())
             return None
 

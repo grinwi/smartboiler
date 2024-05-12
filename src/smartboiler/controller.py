@@ -82,7 +82,7 @@ class Controller:
             [boolean]: [True if in learing]
         """
 
-        return (datetime.now() - self.start_date) < timedelta(days=7)
+        return (datetime.now() - self.start_date) < timedelta(days=28)
 
     def actualize_forecast(self):
         self.actual_forecast = self.forecast.get_forecast_next_steps()
@@ -117,15 +117,17 @@ class Controller:
         if tmp_act < 5:
             self.boiler.turn_on()
 
-        # if self._learning():
-        #     if tmp_act > 60:
-        #         if is_on:
-        #             self.boiler.turn_off()
-        #     else:
-        #         if tmp_act < 57:
-        #             if not is_on:
-        #                 self.boiler.turn_on()
-        #     return
+        if self._learning():
+            if tmp_act > 60:
+                if is_on:
+                    self.boiler.turn_off()
+            else:
+                if tmp_act < 57:
+                    if not is_on:
+                        self.boiler.turn_on()
+            return
+        else:
+            self._check_data()
 
         # if the boiler is needed to heat up before the next predicted consumption
         is_needed_to_heat, minutes_needed_to_heat = self.boiler.is_needed_to_heat(
