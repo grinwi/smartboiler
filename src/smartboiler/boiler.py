@@ -104,7 +104,6 @@ class Boiler(Switch):
         """
         tmp_delta = tmp_act - self.area_tmp
         kWh_loss = (time_minutes * self.cooldown_coef_B * tmp_delta / 1000) / 60
-        # print(f"kWh_loss: {kWh_loss}, time_minutes: {time_minutes}, tmp_act: {tmp_act}, tmp_delta: {tmp_delta}")
         return kWh_loss
 
     def time_needed_to_heat_up_minutes(self, consumption_kWh: float) -> float:

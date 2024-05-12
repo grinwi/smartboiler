@@ -43,7 +43,6 @@ class EventChecker:
 
             if os.path.exists("/app/token.json"):
                 creds = Credentials.from_authorized_user_file("/app/token.json", SCOPES)
-                print(creds)
             # If there are no (valid) credentials available, let the user log in.
             if not creds or not creds.valid:
                 if creds and creds.expired and creds.refresh_token:
@@ -52,7 +51,6 @@ class EventChecker:
                 flow = InstalledAppFlow.from_client_secrets_file(
                     "credentials.json", SCOPES
                 )
-                print(flow)
                 creds = flow.run_local_server(port=0)
             # Save the credentials for the next run
             with open("/app/token.json", "w") as token:
@@ -123,7 +121,6 @@ class EventChecker:
 
                         return return_dict
 
-        print("No event found, return_dict: ", return_dict)
         return return_dict
 
     def check_off_event(self) -> bool:

@@ -329,7 +329,6 @@ class DataHandler:
         # iterate over key an value in data
         for _, value in queries.items():
 
-            # print(value["sql_query"])
             result = self.dataframe_client.query(value["sql_query"])[
                 value["measurement"]
             ]
@@ -517,7 +516,6 @@ class DataHandler:
             pd.DataFrame: Dataframe with high tarif schedule by hour in each weekday.
         """
 
-        print("Getting high tarif schedule")
         left_time_interval = datetime.now() - timedelta(days=14)
         queries = self.get_database_queries(
             left_time_interval=left_time_interval, right_time_interval=datetime.now()

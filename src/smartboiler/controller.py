@@ -144,12 +144,10 @@ class Controller:
             self.boiler.turn_off()
 
         if self.last_legionella_heating - datetime.now() > timedelta(days=21):
-            print("starting heating for reduce legionella, this occurs every 3 weeks")
             self.boiler.turn_on()
             if tmp_act >= (65):
                 time.sleep(1200)
                 self.last_legionella_heating = datetime.now()
-                print("legionella was eliminated, see you in 3 weeks")
                 self.boiler.turn_off()
                 return
 
@@ -174,11 +172,6 @@ if __name__ == "__main__":
     hass_url = options["hass_url"]
     home_longitude = options["home_longitude"]
     home_latitude = options["home_latitude"]
-    print(f"home longitude: {home_longitude}, home latitude: {home_latitude}")
-    print(
-        f"home longitude type: {type(home_longitude)}, home latitude type: {type(home_latitude)}"
-    )
-
     device_tracker_entity_id = options["device_tracker_entity_id"]
     device_tracker_entity_id_2 = options["device_tracker_entity_id_2"]
     model_type = options["model_type"]
@@ -226,7 +219,6 @@ if __name__ == "__main__":
     model_path = Path(model_path)
     scaler_path = Path(scaler_path)
 
-    print(f"Starting SmartBoiler Controller with the following settings: {options}")
     base_url = hass_url
     url = base_url + "/config"
     web_ui = "0.0.0.0"
