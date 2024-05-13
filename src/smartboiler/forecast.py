@@ -46,8 +46,9 @@ class Forecast:
         self.batch_size = 16
         self.lookback = 32
         self.delay = 1
+        self.step = 1
         
-        self.num_of_features = 18
+        self.num_of_features = 14
 
         self.predicted_columns = predicted_columns
         self.dataHandler = dataHandler
@@ -98,25 +99,17 @@ class Forecast:
         self.train_gen = self.mul_generator(
             dataframe=self.df_train_norm,
             target_names=self.predicted_columns,
-            lookback=self.lookback,
-            delay=self.delay,
             min_index=0,
             max_index=int(df_training_data.shape[0] * 0.8),
-            step=1,
             shuffle=True,
-            batch_size=self.batch_size,
         )
 
         self.valid_gen = self.mul_generator(
             dataframe=self.df_train_norm,
             target_names=self.predicted_columns,
-            lookback=self.lookback,
-            delay=self.delay,
             min_index=int(df_training_data.shape[0] * 0.8),
             max_index=None,
-            step=1,
             shuffle=False,
-            batch_size=self.batch_size,
         )
 
         # devide validity and train steps
@@ -251,33 +244,29 @@ class Forecast:
         self,
         dataframe: pd.DataFrame,
         target_names: list,
-        lookback: int,
-        delay: int,
         min_index: int,
         max_index: int,
         shuffle: Optional[bool] = False,
-        batch_size: Optional[int] = 128,
-        step: Optional[int] = 6,
     ):
         """
-        Method to create a generator for the model
+        Method to create a generator for the model. 
+        Concept of the generator is taken from the time-series-h2o-automl-example repository.
+        https://github.com/SeanPLeary/time-series-h2o-automl-example by Leary, Sean P.
+        
 
         Args:
             dataframe (pd.DataFrame): Dataframe with the data
             target_names (list): Names of the target values
-            lookback (int): Lookback size
-            delay (int): Delay size
             min_index (int): Min index of the data
             max_index (int): Max index of the data
             shuffle (Optional[bool], optional): Choose if shuffle the data. Defaults to False.
-            batch_size (Optional[int], optional): Size of the batch. Defaults to 128.
-            step (Optional[int], optional): Size of the step. Defaults to 6.
 
         Yields:
             _type_: The data for the model
         """
         data = dataframe.values
         data = data.astype(np.float32)
+        
 
         data_without_targets = dataframe.copy()
         data_without_targets = data_without_targets.drop(columns="longtime_mean")
@@ -290,33 +279,33 @@ class Forecast:
         ]
 
         if max_index is None:
-            max_index = len(data) - delay - 1
-        i = min_index + lookback
+            max_index = len(data) - self.delay - 1
+        i = min_index + self.lookback
         while 1:
             if shuffle:
                 rows = np.random.randint(
-                    min_index + lookback, max_index, size=batch_size
+                    min_index + self.lookback, max_index, size=self.batch_size
                 )
             else:
-                if i + batch_size >= max_index:
-                    i = min_index + lookback
-                rows = np.arange(i, min(i + batch_size, max_index))
+                if i + self.batch_size >= max_index:
+                    i = min_index + self.lookback
+                rows = np.arange(i, min(i + self.batch_size, max_index))
                 i += len(rows)
 
             samples = np.zeros(
-                (len(rows), lookback // step, data_without_targets.shape[-1])
+                (len(rows), self.lookback // self.step, data_without_targets.shape[-1])
             )
 
             # Modify targets array to accommodate multiple target columns
             targets = np.zeros((len(rows), len(target_indices)))
 
             for j, row in enumerate(rows):
-                indices = range(rows[j] - lookback, rows[j], step)
+                indices = range(rows[j] - self.lookback, rows[j], self.step)
                 samples[j] = data_without_targets[indices]
 
                 # Assign values for each target column
                 for k, target_indx in enumerate(target_indices):
-                    targets[j][k] = data[rows[j] + delay][target_indx]
+                    targets[j][k] = data[rows[j] + self.delay][target_indx]
 
             yield samples, targets
 
@@ -371,13 +360,9 @@ class Forecast:
             test_gen = self.mul_generator(
                 dataframe=df_test_norm,
                 target_names=self.predicted_columns,
-                lookback=self.lookback,
-                delay=self.delay,
                 min_index=0,
                 max_index=None,
-                step=1,
                 shuffle=False,
-                batch_size=self.batch_size,
             )
 
             last_batch = next(test_gen)
