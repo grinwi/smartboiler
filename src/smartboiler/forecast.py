@@ -47,7 +47,7 @@ class Forecast:
         self.delay = 1
         self.step = 1
 
-        self.num_of_features = 14
+        self.num_of_features = 18
 
         self.predicted_columns = predicted_columns
         self.dataHandler = dataHandler
@@ -219,12 +219,16 @@ class Forecast:
                     prev_week_values[2],  # 3 weeak std
                     last_row_values[3],  # distance_from_home
                     last_row_values[4],  # speed_towards_home
-                    last_row_values[5],  # count
-                    last_row_values[6],  # heading to home sin
-                    last_row_values[7],  # heading to home cos
-                    last_row_values[8],  # temperature
-                    last_row_values[9],  # humidity
-                    last_row_values[10],  # wind_speed
+                    last_row_values[5],  # distance_from_home 2
+                    last_row_values[6],  # speed_towards_home 2
+                    last_row_values[7],  # count
+                    last_row_values[8],  # heading to home sin
+                    last_row_values[9],  # heading to home cos
+                    last_row_values[10],  # heading to home sin 2
+                    last_row_values[11],  # heading to home cos 2
+                    last_row_values[12],  # temperature
+                    last_row_values[13],  # humidity
+                    last_row_values[14],  # wind_speed
                     np.sin(2 * np.pi * date_time.weekday() / 7),
                     np.cos(2 * np.pi * date_time.weekday() / 7),
                     np.sin(2 * np.pi * date_time.hour / 24),
