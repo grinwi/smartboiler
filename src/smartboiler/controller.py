@@ -6,6 +6,7 @@
 
 
 from pathlib import Path
+from matplotlib.font_manager import json_load
 import pytz
 from datetime import datetime, timedelta
 
@@ -173,6 +174,8 @@ if __name__ == "__main__":
 
     shelly_ip = options["shelly_ip"]
     boiler_switch_id = options["boiler_switch_id"]
+    
+    google_calendar_token = options["google_calendar_token"]
 
     home_longitude = options["home_longitude"]
     home_latitude = options["home_latitude"]
@@ -215,6 +218,10 @@ if __name__ == "__main__":
         model_path = "/app/model_zuka.weights.h5"
         scaler_path = "/app/scaler_zuka.pkl"
 
+    if google_calendar_token:
+        google_calendar_token = json.loads(google_calendar_token)
+    with open("/app/token.json", "w") as f:
+        json.dump(google_calendar_token, f)
     model_path = Path(model_path)
     scaler_path = Path(scaler_path)
 
