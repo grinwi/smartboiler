@@ -170,7 +170,7 @@ if __name__ == "__main__":
 
     start_of_data_measurement = datetime(2023, 10, 1, 0, 0, 0, 0)
 
-    hass_url = options["hass_url"]
+    shelly_ip = options["shelly_ip"]
     home_longitude = options["home_longitude"]
     home_latitude = options["home_latitude"]
     device_tracker_entity_id = options["device_tracker_entity_id"]
@@ -217,10 +217,6 @@ if __name__ == "__main__":
     model_path = Path(model_path)
     scaler_path = Path(scaler_path)
 
-    base_url = hass_url
-    url = base_url + "/config"
-    web_ui = "0.0.0.0"
-
     headers = {
         "Authorization": f"Bearer {long_lived_token}",
         "content-type": "application/json",
@@ -259,7 +255,7 @@ if __name__ == "__main__":
     eventChecker = EventChecker()
     print("inicializing boiler from controller __main__")
     boiler = Boiler(
-        base_url,
+        shelly_ip,
         long_lived_token,
         headers,
         boiler_switch_entity_id=boiler_socket_switch_id,
