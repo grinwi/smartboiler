@@ -13,19 +13,16 @@ class Fotovoltaics:
 
     def __init__(
         self,
-        efficiency: float,
         token: str,
         sn: str,
     ):
-        """Initialize the class with the power, efficiency, token and sn of the Solax fotovoltaics.
+        """Initialize the class with the token and sn of the Solax fotovoltaics.
 
         Args:
             power (float): Power of the fotovoltaics on W.
-            efficiency (float): Efficiency of the fotovoltaics (0,1).
             token (str): Token for the Solax API.
             sn (str): SN of the Solax fotovoltaics.
         """
-        self.efficiency = efficiency
         self.token = token
         self.sn = sn
         self.stats_url = f"https://www.solaxcloud.com/proxyApp/proxy/api/getRealtimeInfo.do?tokenId={token}&sn={sn}"
@@ -91,7 +88,6 @@ class Fotovoltaics:
 
 if __name__ == "__main__":
     fotovoltaics = Fotovoltaics(
-        efficiency=0.9,
         token="",
         sn="",
         battery_capacity=10,

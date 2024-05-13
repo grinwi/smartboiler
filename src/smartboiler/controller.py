@@ -175,7 +175,6 @@ if __name__ == "__main__":
     shelly_ip = options["shelly_ip"]
     boiler_switch_id = options["boiler_switch_id"]
     
-    google_calendar_token = options["google_calendar_token"]
 
     home_longitude = options["home_longitude"]
     home_latitude = options["home_latitude"]
@@ -217,11 +216,7 @@ if __name__ == "__main__":
     else:
         model_path = "/app/model_zuka.weights.h5"
         scaler_path = "/app/scaler_zuka.pkl"
-
-    if google_calendar_token:
-        google_calendar_token = json.loads(google_calendar_token)
-    with open("/app/token.json", "w") as f:
-        json.dump(google_calendar_token, f)
+        
     model_path = Path(model_path)
     scaler_path = Path(scaler_path)
 
@@ -244,11 +239,8 @@ if __name__ == "__main__":
     print("inicializing fotovoltaics from controller __main__")
     if has_fotovoltaics:
         fotovoltaics = Fotovoltaics(
-            efficiency=0.9,
             token=fve_solax_token,
             sn=fve_solax_sn,
-            battery_capacity=10,
-            battery_power=5,
         )
     else:
         fotovoltaics = None
