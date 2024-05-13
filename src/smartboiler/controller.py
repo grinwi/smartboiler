@@ -172,20 +172,19 @@ if __name__ == "__main__":
     start_of_data_measurement = datetime(2023, 10, 1, 0, 0, 0, 0)
 
     shelly_ip = options["shelly_ip"]
+    boiler_switch_id = options["boiler_switch_id"]
+
     home_longitude = options["home_longitude"]
     home_latitude = options["home_latitude"]
     device_tracker_entity_id = options["device_tracker_entity_id"]
     device_tracker_entity_id_2 = options["device_tracker_entity_id_2"]
-    model_type = options["model_type"]
-    long_lived_token = options["long_lived_token"]
+
     influxdb_host = options["influxdb_host"]
     influxdb_port: 8086
     influxdb_user = options["influxdb_user"]
     influxdb_pass = options["influxdb_pass"]
     influxdb_name = options["influxdb_name"]
-    boiler_socket_switch_id = options["boiler_entidy_id"]
-    boiler_socket_id = options["boiler_socket_id"]
-    boiler_socket_power_id = options["boiler_socket_power_id"]
+
     boiler_case_tmp_entity_id = options["boiler_case_tmp_entity_id"]
     boiler_case_tmp_measurement = options["boiler_case_tmp_measurement"]
     boiler_water_flow_entity_id = options["boiler_water_flow_entity_id"]
@@ -199,14 +198,18 @@ if __name__ == "__main__":
     average_boiler_surroundings_temp = options["average_boiler_surroundings_temp"]
     boiler_case_max_tmp = options["boiler_case_max_tmp"]
     boiler_watt_power = options["boiler_watt_power"]
+
     logging_level = options["logging_level"]
+
     load_model = options["load_model"]
+    model_type = options["model_type"]
     learning = options["learning"]
+
     hdo = options["hdo"]
     has_fotovoltaics = options["has_fotovoltaics"]
     fve_solax_sn = options["fve_solax_sn"]
     fve_solax_token = options["fve_solax_token"]
-    
+
     # chosing the model based on size of household
     if model_type == "smaller_household":
         model_path = "/app/model_form.weights.h5"
@@ -218,18 +221,12 @@ if __name__ == "__main__":
     model_path = Path(model_path)
     scaler_path = Path(scaler_path)
 
-    headers = {
-        "Authorization": f"Bearer {long_lived_token}",
-        "content-type": "application/json",
-    }
-
     dataHandler = DataHandler(
         influx_id=influxdb_host,
         db_name=influxdb_name,
         db_username=influxdb_user,
         db_password=influxdb_pass,
-        relay_entity_id=boiler_socket_id,
-        relay_power_entity_id=boiler_socket_power_id,
+        relay_entity_id=boiler_switch_id,
         tmp_boiler_case_entity_id=boiler_case_tmp_entity_id,
         tmp_output_water_entity_id=boiler_water_temp_entity_id,
         tmp_output_water_entity_id_2=boiler_water_temp_entity_id_2,
@@ -239,12 +236,10 @@ if __name__ == "__main__":
         home_latitude=home_latitude,
         start_of_data=start_of_data_measurement,
     )
-    boiler_switch_entity_id = "switch." + boiler_socket_id
 
     print("inicializing fotovoltaics from controller __main__")
     if has_fotovoltaics:
         fotovoltaics = Fotovoltaics(
-            power=100,
             efficiency=0.9,
             token=fve_solax_token,
             sn=fve_solax_sn,
@@ -257,9 +252,6 @@ if __name__ == "__main__":
     print("inicializing boiler from controller __main__")
     boiler = Boiler(
         shelly_ip,
-        long_lived_token,
-        headers,
-        boiler_switch_entity_id=boiler_socket_switch_id,
         dataHandler=dataHandler,
         eventChecker=eventChecker,
         fotovoltaics=fotovoltaics,
@@ -288,7 +280,7 @@ if __name__ == "__main__":
         forecast=forecast,
         eventChecker=eventChecker,
         load_model=load_model,
-        learning = learning,
+        learning=learning,
     )
 
     while 1:

@@ -1,4 +1,3 @@
-
 # Created as a part of Master's Thesis "Using machine learning methods to save energy in a smart home"
 # Faculty of Information Technology, Brno University of Technology, 2024
 # Author: Adam Grünwald
@@ -8,12 +7,12 @@
 
 import requests
 
+
 class Fotovoltaics:
-    """Class for communicating with solaxcloud api and retrieving the actual stats.
-    """
+    """Class for communicating with solaxcloud api and retrieving the actual stats."""
+
     def __init__(
         self,
-        power: float,
         efficiency: float,
         token: str,
         sn: str,
@@ -26,7 +25,6 @@ class Fotovoltaics:
             token (str): Token for the Solax API.
             sn (str): SN of the Solax fotovoltaics.
         """
-        self.power = power
         self.efficiency = efficiency
         self.token = token
         self.sn = sn
@@ -93,7 +91,6 @@ class Fotovoltaics:
 
 if __name__ == "__main__":
     fotovoltaics = Fotovoltaics(
-        power=100,
         efficiency=0.9,
         token="",
         sn="",

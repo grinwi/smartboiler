@@ -268,7 +268,7 @@ class Forecast:
         Yields:
             _type_: The data for the model
         """
-        
+
         if batch_size is None:
             batch_size = self.batch_size
         data = dataframe.values

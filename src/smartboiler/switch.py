@@ -11,19 +11,13 @@ import requests
 class Switch:
     """Class for communicating with Shelly devices and turning them on or off."""
 
-    def __init__(self, entity_id: str, base_url: str, token: str, headers: dict):
+    def __init__(self, shelly_ip: str):
         """Init method for the Switch class
 
         Args:
-            entity_id (str): Entity ID of the switch.
-            base_url (str): Base URL of the Shelly device.
-            token (str): Token for the Shelly device.
-            headers (dict): Headers for the Shelly device.
+            shelly_ip (str): IP address of the Shelly device.
         """
-        self.entity_id = entity_id
-        self.base_url = base_url
-        self.token = token
-        self.headers = headers
+        self.shelly_ip = shelly_ip
 
     def turn_on(self):
         """Turns the shelly on."""
@@ -40,7 +34,7 @@ class Switch:
             action (str): String to turn the Shelly on or off.
         """
         try:
-            endpoint = f"http://{self.base_url}/relay/0?turn={action}"
+            endpoint = f"http://{self.shelly_ip}/relay/0?turn={action}"
 
             requests.post(endpoint, timeout=5)
 

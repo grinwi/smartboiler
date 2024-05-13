@@ -26,7 +26,6 @@ class DataHandler:
         db_username: str,
         db_password: str,
         relay_entity_id: str,
-        relay_power_entity_id: str,
         tmp_boiler_case_entity_id: str,
         tmp_output_water_entity_id: str,
         tmp_output_water_entity_id_2: str,
@@ -44,7 +43,6 @@ class DataHandler:
             db_username (str): Username for influxdb.
             db_password (str): Password for influxdb.
             relay_entity_id (str): Entity ID of shelly relay in home assistant.
-            relay_power_entity_id (str): Entity ID of the shelly relay power in home assistant.
             tmp_boiler_case_entity_id (str): Entity ID of the boiler case temperature sensor.
             tmp_output_water_entity_id (str): Entity ID of the output water temperature sensor.
             tmp_output_water_entity_id_2 (str): Entity ID for the case of two output water temperature sensors.
@@ -61,7 +59,6 @@ class DataHandler:
         self.db_password = db_password
         self.group_by_time_interval = "30min"
         self.relay_entity_id = relay_entity_id
-        self.relay_power_entity_id = relay_power_entity_id
         self.tmp_boiler_case_entity_id = tmp_boiler_case_entity_id
         self.tmp_output_water_entity_id = tmp_output_water_entity_id
         self.tmp_output_water_entity_id_2 = tmp_output_water_entity_id_2
@@ -738,7 +735,6 @@ if __name__ == "__main__":
         db_username="root",
         db_password="root",
         relay_entity_id="shelly1pm_84cca8b07eae",
-        relay_power_entity_id="shelly1pm_84cca8b07eae_power",
         tmp_boiler_case_entity_id="esphome_web_c771e8_tmp3",
         tmp_output_water_entity_id="esphome_web_c771e8_ntc_temperature_b_constant_2",
         start_of_data=datetime(2024, 3, 1, 0, 0, 0, 0),

@@ -41,7 +41,7 @@ class EventChecker:
             creds = None
             token_file = "/app/token.json"
             creds_file = "/app/credentials.json"
-            
+
             if os.path.exists(token_file):
                 creds = Credentials.from_authorized_user_file(token_file, self.SCOPES)
             # If there are no (valid) credentials available, let the user log in.
@@ -60,7 +60,7 @@ class EventChecker:
             service = build("calendar", "v3", credentials=creds)
 
             now = datetime.now().isoformat() + "Z"
-            
+
             events_result = (
                 service.events()
                 .list(
@@ -108,7 +108,7 @@ class EventChecker:
                     time_to_end_event = (
                         end - (datetime.now() + timedelta(hours=1))
                     ) / timedelta(hours=1)
-                    
+
                     if time_to_event > 0:
 
                         return_dict["minutes_to_event"] = time_to_event * 60

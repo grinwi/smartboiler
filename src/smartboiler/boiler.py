@@ -24,10 +24,7 @@ class Boiler(Switch):
 
     def __init__(
         self,
-        base_url: str,
-        token: str,
-        headers: dict,
-        boiler_switch_entity_id: str,
+        shelly_ip: str,
         dataHandler: DataHandler,
         eventChecker: EventChecker,
         fotovoltaics: Optional[Fotovoltaics] = None,
@@ -46,10 +43,7 @@ class Boiler(Switch):
         """Init method for the Boiler class.
 
         Args:
-            base_url (str): Url of the Shelly device.
-            token (str): Token for the Shelly device.
-            headers (dict): Headers for the Shelly device.
-            boiler_switch_entity_id (str): Entity ID of the boiler switch.
+            shelly_ip (str): IP address of the Shelly device.
             dataHandler (DataHandler): Instance of the DataHandler class.
             eventChecker (EventChecker): Instance of the EventChecker class.
             fotovoltaics (Optional[Fotovoltaics], optional): Instance of the Fotovoltaics slass. Defaults to None.
@@ -69,10 +63,7 @@ class Boiler(Switch):
         # Call the parent class constructor
         Switch.__init__(
             self,
-            entity_id=boiler_switch_entity_id,
-            base_url=base_url,
-            token=token,
-            headers=headers,
+            shelly_ip=shelly_ip,
         )
 
         self.dataHandler = dataHandler
