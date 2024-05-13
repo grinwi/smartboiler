@@ -16,7 +16,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 
-from time_handler import TimeHandler
+from smartboiler.time_handler import TimeHandler
 
 
 class EventChecker:
@@ -39,7 +39,7 @@ class EventChecker:
         try:
 
             creds = None
-            token_file = "json/form_token.json"
+            token_file = "/app/token.json"
             creds_file = "/app/credentials.json"
             
             if os.path.exists(token_file):
