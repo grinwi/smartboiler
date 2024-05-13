@@ -42,6 +42,7 @@ class Controller:
         """
 
         self.tmp_min = 5
+        self.learning = learning
 
         self.start_date = datetime.now()
 
