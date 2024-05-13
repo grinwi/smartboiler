@@ -6,7 +6,7 @@
 
 
 from __future__ import print_function
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import pickle
 import os.path
 import re
@@ -16,7 +16,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 
-from smartboiler.time_handler import TimeHandler
+from time_handler import TimeHandler
 
 
 class EventChecker:
@@ -39,7 +39,7 @@ class EventChecker:
         try:
 
             creds = None
-            token_file = "/app/token.json"
+            token_file = "json/form_token.json"
             creds_file = "/app/credentials.json"
             
             if os.path.exists(token_file):
@@ -103,11 +103,11 @@ class EventChecker:
                         e["end"].get("dateTime", e["end"].get("date"))
                     )
                     time_to_event = (
-                        start - (datetime.now() + datetime.timedelta(hours=1))
-                    ) / datetime.timedelta(hours=1)
+                        start - (datetime.now() + timedelta(hours=1))
+                    ) / timedelta(hours=1)
                     time_to_end_event = (
-                        end - (datetime.now() + datetime.timedelta(hours=1))
-                    ) / datetime.timedelta(hours=1)
+                        end - (datetime.now() + timedelta(hours=1))
+                    ) / timedelta(hours=1)
                     
                     if time_to_event > 0:
 
@@ -147,4 +147,4 @@ class EventChecker:
 
 if __name__ == "__main__":
     e = EventChecker()
-    print(e.check_off_event())
+    print(e.next_calendar_heat_up_event())
