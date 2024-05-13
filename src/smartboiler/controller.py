@@ -186,12 +186,9 @@ if __name__ == "__main__":
     influxdb_name = options["influxdb_name"]
 
     boiler_case_tmp_entity_id = options["boiler_case_tmp_entity_id"]
-    boiler_case_tmp_measurement = options["boiler_case_tmp_measurement"]
     boiler_water_flow_entity_id = options["boiler_water_flow_entity_id"]
-    boiler_water_flow_measurement = options["boiler_water_flow_measurement"]
     boiler_water_temp_entity_id = options["boiler_water_temp_entity_id"]
     boiler_water_temp_entity_id_2 = options["boiler_water_temp_entity_id_2"]
-    boiler_water_temp_measurement = options["boiler_water_temp_measurement"]
     boiler_volume = options["boiler_volume"]
     boiler_set_tmp = options["boiler_set_tmp"]
     boiler_min_operation_tmp = options["boiler_min_operation_tmp"]
