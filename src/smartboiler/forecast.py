@@ -32,7 +32,6 @@ class Forecast:
         model_path: Optional[str] = None,
         scaler_path: Optional[datetime] = None,
         predicted_columns: Optional[list] = None,
-        
     ):
         """Initialize the class of the forecast.
 
@@ -47,7 +46,7 @@ class Forecast:
         self.lookback = 32
         self.delay = 1
         self.step = 1
-        
+
         self.num_of_features = 14
 
         self.predicted_columns = predicted_columns
@@ -247,12 +246,13 @@ class Forecast:
         min_index: int,
         max_index: int,
         shuffle: Optional[bool] = False,
+        batch_size=None,
     ):
         """
-        Method to create a generator for the model. 
+        Method to create a generator for the model.
         Concept of the generator is taken from the time-series-h2o-automl-example repository.
         https://github.com/SeanPLeary/time-series-h2o-automl-example by Leary, Sean P.
-        
+
 
         Args:
             dataframe (pd.DataFrame): Dataframe with the data
@@ -264,9 +264,11 @@ class Forecast:
         Yields:
             _type_: The data for the model
         """
+        
+        if batch_size is None:
+            batch_size = self.batch_size
         data = dataframe.values
         data = data.astype(np.float32)
-        
 
         data_without_targets = dataframe.copy()
         data_without_targets = data_without_targets.drop(columns="longtime_mean")
@@ -284,12 +286,12 @@ class Forecast:
         while 1:
             if shuffle:
                 rows = np.random.randint(
-                    min_index + self.lookback, max_index, size=self.batch_size
+                    min_index + self.lookback, max_index, size=batch_size
                 )
             else:
-                if i + self.batch_size >= max_index:
+                if i + batch_size >= max_index:
                     i = min_index + self.lookback
-                rows = np.arange(i, min(i + self.batch_size, max_index))
+                rows = np.arange(i, min(i + batch_size, max_index))
                 i += len(rows)
 
             samples = np.zeros(
@@ -334,8 +336,9 @@ class Forecast:
             right_time_interval=right_time_interval,
         )
 
-        num_targets = len(self.predicted_columns)
-        len_columns = len(df_all.columns)
+        number_of_targets = len(self.predicted_columns)
+        number_of_columns = len(df_all.columns)
+        number_of_features = number_of_columns - number_of_targets
 
         # dataframe with forecast
         forecast_future = pd.DataFrame()
@@ -360,6 +363,7 @@ class Forecast:
             test_gen = self.mul_generator(
                 dataframe=df_test_norm,
                 target_names=self.predicted_columns,
+                batch_size=self.batch_size,
                 min_index=0,
                 max_index=None,
                 shuffle=False,
@@ -369,16 +373,12 @@ class Forecast:
 
             (X_batch, y_truth) = last_batch
 
-            num_targets = len(self.predicted_columns)
-            len_columns = len(df_test_norm.columns)
-            num_features = len_columns - num_targets
-
             # do the prediction of next step
             y_pred = self.model.predict(X_batch, verbose=0)
 
             # inverse transform the prediction
             y_pred_inv = np.concatenate(
-                (y_pred, np.zeros((y_pred.shape[0], num_features))), axis=1
+                (y_pred, np.zeros((y_pred.shape[0], number_of_features))), axis=1
             )
             y_pred_inv = self.scaler.inverse_transform(y_pred_inv)
 
