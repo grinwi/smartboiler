@@ -499,7 +499,6 @@ class DataHandler:
 
         # Create dictionary
         result_dict = df.squeeze().to_dict()
-        print(f"Writing forecast to influxdb: {result_dict}")
         # Create a dictionary
         measurement_dict = {
             "measurement": "prediction",
@@ -507,6 +506,7 @@ class DataHandler:
             "fields": result_dict,
         }
 
+        print(f"Writing forecast to influxdb: {measurement_dict}")
         self.influxdb_client.write_points([measurement_dict])
 
     def get_high_tarif_schedule(self) -> pd.DataFrame:

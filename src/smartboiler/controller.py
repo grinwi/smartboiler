@@ -33,6 +33,7 @@ class Controller:
         forecast: Forecast,
         eventChecker: EventChecker,
         load_model=False,
+        learning=True,
     ):
         """Inits class of Controller. Loads settings from a settings file
 
@@ -81,7 +82,8 @@ class Controller:
         Returns:
             [boolean]: [True if in learing]
         """
-
+        if not self.learning:
+            return False
         return (datetime.now() - self.start_date) < timedelta(days=28)
 
     def actualize_forecast(self):
@@ -98,7 +100,6 @@ class Controller:
         if self.eventChecker.check_off_event():
             print("turning off boiler, event in calendar")
             self.boiler.turn_off()
-            time.sleep(600)
             return
         # check scheduled heating target event
 
@@ -203,6 +204,7 @@ if __name__ == "__main__":
     thermostat_entity_id = options["thermostat_entity_id"]
     logging_level = options["logging_level"]
     load_model = options["load_model"]
+    learning = options["learning"]
     hdo = options["hdo"]
     has_fotovoltaics = options["has_fotovoltaics"]
     fve_solax_sn = options["fve_solax_sn"]
@@ -293,6 +295,7 @@ if __name__ == "__main__":
         forecast=forecast,
         eventChecker=eventChecker,
         load_model=load_model,
+        learning = learning,
     )
 
     while 1:
