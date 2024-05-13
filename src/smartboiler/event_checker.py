@@ -6,7 +6,7 @@
 
 
 from __future__ import print_function
-import datetime
+from datetime import datetime, timezone
 import pickle
 import os.path
 import re
@@ -16,7 +16,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 
-from smartboiler.time_handler import TimeHandler
+from time_handler import TimeHandler
 
 
 class EventChecker:
@@ -39,26 +39,28 @@ class EventChecker:
         try:
 
             creds = None
-            SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
-
-            if os.path.exists("/app/token.json"):
-                creds = Credentials.from_authorized_user_file("/app/token.json", SCOPES)
+            token_file = "/app/token.json"
+            creds_file = "/app/credentials.json"
+            
+            if os.path.exists(token_file):
+                creds = Credentials.from_authorized_user_file(token_file, self.SCOPES)
             # If there are no (valid) credentials available, let the user log in.
             if not creds or not creds.valid:
                 if creds and creds.expired and creds.refresh_token:
                     creds.refresh(Request())
-            else:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    "credentials.json", SCOPES
-                )
-                creds = flow.run_local_server(port=0)
-            # Save the credentials for the next run
-            with open("/app/token.json", "w") as token:
-                token.write(creds.to_json())
+                else:
+                    flow = InstalledAppFlow.from_client_secrets_file(
+                        creds_file, self.SCOPES
+                    )
+                    creds = flow.run_local_server(port=0)
+                # Save the credentials for the next run
+                with open(token_file, "w") as token:
+                    token.write(creds.to_json())
 
             service = build("calendar", "v3", credentials=creds)
 
-            now = datetime.datetime.now(datetime.UTC).isoformat() + "Z"
+            now = datetime.now().isoformat() + "Z"
+            
             events_result = (
                 service.events()
                 .list(
@@ -74,14 +76,13 @@ class EventChecker:
             return events
         except Exception as e:
             print("Error while loading events")
-            print(e.with_traceback())
+            print(e)
             return None
 
     def next_calendar_heat_up_event(self) -> dict:
         """Search next event in a calendar which contains specific words describing the process of heating up.
 
         Args:
-            Boiler ([class]): [class of boiler]
 
         Returns:
             [dict]: [dictionary describing next heating up event]
@@ -102,12 +103,12 @@ class EventChecker:
                         e["end"].get("dateTime", e["end"].get("date"))
                     )
                     time_to_event = (
-                        start - (datetime.datetime.now() + datetime.timedelta(hours=1))
+                        start - (datetime.now() + datetime.timedelta(hours=1))
                     ) / datetime.timedelta(hours=1)
                     time_to_end_event = (
-                        end - (datetime.datetime.now() + datetime.timedelta(hours=1))
+                        end - (datetime.now() + datetime.timedelta(hours=1))
                     ) / datetime.timedelta(hours=1)
-                    # case before event
+                    
                     if time_to_event > 0:
 
                         return_dict["minutes_to_event"] = time_to_event * 60
@@ -127,14 +128,10 @@ class EventChecker:
         """Search for an event for turning off the boiler.
 
         Returns:
-            [type]: [description]
+            [bool]: [if the turn offevent is happening now or not]
         """
         events = self.load_events()
-        if events is None:
-            return False
-        if not events:
-            return False
-        else:
+        if events:
             for e in events:
 
                 if "#off" in e["summary"]:
@@ -145,9 +142,9 @@ class EventChecker:
                         e["end"].get("dateTime", e["end"].get("date"))
                     )
                     return self.TimeHandler.is_date_between(start, end)
-            return False
+        return False
 
 
 if __name__ == "__main__":
     e = EventChecker()
-    e.check_event()
+    print(e.check_off_event())
