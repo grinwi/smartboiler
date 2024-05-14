@@ -176,7 +176,7 @@ if __name__ == "__main__":
     shelly_ip = options["shelly_ip"]
     boiler_switch_id = options["boiler_switch_id"]
     
-    start_of_data_measurement = parser.parse(options["start_of_data_measurement"])
+    start_of_data_measurement = parser.parse(options["data_measurement_date_start"])
 
     home_longitude = options["home_longitude"]
     home_latitude = options["home_latitude"]
