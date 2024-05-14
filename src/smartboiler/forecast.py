@@ -185,12 +185,17 @@ class Forecast:
         # compile the model with the quantile loss and adam optimizer
         self.model = model
         self.model.compile(
-            loss=[
-                lambda y_true, y_pred: self.quantile_loss(q, y_true, y_pred)
-                for q in self.quantiles
-            ],
+          loss=lambda y_true, y_pred: self.quantile_loss_wrapper(y_true, y_pred),
+
             optimizer="adam",
         )
+        
+    def quantile_loss_wrapper(self, y_true, y_pred) -> float:
+        """Wrapper function to compute quantile loss for multiple quantiles"""
+        loss = 0
+        for i, q in enumerate(self.quantiles):
+            loss += self.quantile_loss(q, y_true, y_pred)
+        return loss
 
     def add_empty_row(
         self, df: pd.DataFrame, date_time: datetime, predicted_value: float
