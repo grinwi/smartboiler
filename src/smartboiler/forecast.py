@@ -134,7 +134,6 @@ class Forecast:
                 filepath=self.model_path,
                 save_best_only=True,
                 save_weights_only=True,
-                include_optimizer=True,
             ),
         ]
 
