@@ -551,26 +551,26 @@ class DataHandler:
         df["consumed_heat_kWh"] = df["consumed_heat_kWh"].clip(lower=0)
 
         # ffill na in df based on column
-        df["temperature"] = df[f"outside_temperature_mean"].fillna(method="ffill")
-        df["humidity"] = df[f"outside_humidity_mean"].fillna(method="ffill")
-        df["wind_speed"] = df[f"outside_wind_speed_mean"].fillna(method="ffill")
-        df["count"] = df["device_presence_distinct_count"].fillna(method="ffill")
+        df["temperature"] = df[f"outside_temperature_mean"].ffill()
+        df["humidity"] = df[f"outside_humidity_mean"].ffill()
+        df["wind_speed"] = df[f"outside_wind_speed_mean"].ffill()
+        df["count"] = df["device_presence_distinct_count"].ffill()
 
-        df["mean_longitude"] = df["mean_longitude"].fillna(method="ffill")
-        df["mean_latitude"] = df["mean_latitude"].fillna(method="ffill")
+        df["mean_longitude"] = df["mean_longitude"].ffill()
+        df["mean_latitude"] = df["mean_latitude"].ffill()
         df["speed"] = df["speed"].fillna(0)
         df["speed_towards_home"] = df["speed_towards_home"].fillna(0)
-        df["distance_from_home"] = df["distance_from_home"].fillna(method="ffill")
-        df["heading_to_home_sin"] = df["heading_to_home_sin"].fillna(method="ffill")
-        df["heading_to_home_cos"] = df["heading_to_home_cos"].fillna(method="ffill")
+        df["distance_from_home"] = df["distance_from_home"].ffill()
+        df["heading_to_home_sin"] = df["heading_to_home_sin"].ffill()
+        df["heading_to_home_cos"] = df["heading_to_home_cos"].ffill()
 
-        df["mean_longitude_2"] = df["mean_longitude_2"].fillna(method="ffill")
-        df["mean_latitude_2"] = df["mean_latitude_2"].fillna(method="ffill")
+        df["mean_longitude_2"] = df["mean_longitude_2"].ffill()
+        df["mean_latitude_2"] = df["mean_latitude_2"].ffill()
         df["speed_2"] = df["speed_2"].fillna(0)
         df["speed_towards_home_2"] = df["speed_towards_home_2"].fillna(0)
-        df["distance_from_home_2"] = df["distance_from_home_2"].fillna(method="ffill")
-        df["heading_to_home_sin_2"] = df["heading_to_home_sin_2"].fillna(method="ffill")
-        df["heading_to_home_cos_2"] = df["heading_to_home_cos_2"].fillna(method="ffill")
+        df["distance_from_home_2"] = df["distance_from_home_2"].ffill()
+        df["heading_to_home_sin_2"] = df["heading_to_home_sin_2"].ffill()
+        df["heading_to_home_cos_2"] = df["heading_to_home_cos_2"].ffill()
 
         # adding cooling down to the consumed heat
         df["consumed_heat_kWh"] += 1.25 / (24 // freq)
@@ -589,7 +589,7 @@ class DataHandler:
             .mean()
             .reset_index(level=[0, 1], drop=True)
         )
-        df["last_3_week_mean"] = df["last_3_week_mean"].fillna(method="ffill")
+        df["last_3_week_mean"] = df["last_3_week_mean"].ffill()
 
         df["last_3_week_std"] = (
             df.groupby([df.index.weekday, df.index.hour])["consumed_heat_kWh"]
@@ -597,7 +597,7 @@ class DataHandler:
             .std()
             .reset_index(level=[0, 1], drop=True)
         )
-        df["last_3_week_std"] = df["last_3_week_std"].fillna(method="ffill")
+        df["last_3_week_std"] = df["last_3_week_std"].ffill()
 
         df["last_3_week_max"] = (
             df.groupby([df.index.weekday, df.index.hour])["consumed_heat_kWh"]
@@ -605,7 +605,7 @@ class DataHandler:
             .max()
             .reset_index(level=[0, 1], drop=True)
         )
-        df["last_3_week_max"] = df["last_3_week_max"].fillna(method="ffill")
+        df["last_3_week_max"] = df["last_3_week_max"].ffill()
 
         df["last_3_week_min"] = (
             df.groupby([df.index.weekday, df.index.hour])["consumed_heat_kWh"]
@@ -613,7 +613,7 @@ class DataHandler:
             .min()
             .reset_index(level=[0, 1], drop=True)
         )
-        df["last_3_week_min"] = df["last_3_week_min"].fillna(method="ffill")
+        df["last_3_week_min"] = df["last_3_week_min"].ffill()
 
         df["last_3_week_skew"] = (
             df.groupby([df.index.weekday, df.index.hour])["consumed_heat_kWh"]
@@ -621,7 +621,7 @@ class DataHandler:
             .skew()
             .reset_index(level=[0, 1], drop=True)
         )
-        df["last_3_week_skew"] = df["last_3_week_skew"].fillna(method="ffill")
+        df["last_3_week_skew"] = df["last_3_week_skew"].ffill()
         # fill
 
         df["last_3_week_median"] = (
@@ -630,7 +630,7 @@ class DataHandler:
             .median()
             .reset_index(level=[0, 1], drop=True)
         )
-        df["last_3_week_median"] = df["last_3_week_median"].fillna(method="ffill")
+        df["last_3_week_median"] = df["last_3_week_median"].ffill()
 
         df_reverse = df.iloc[::-1]
 
