@@ -364,7 +364,7 @@ class DataHandler:
         df.loc[df["speed"] > 200, "speed"] = 0
 
         # aggregate by 60 minutes
-        df = df.groupby(pd.Grouper(freq="60T"))
+        df = df.groupby(pd.Grouper(freq="60min"))
         df = df.agg(
             {
                 "consumed_heat_kJ": "sum",
@@ -497,10 +497,10 @@ class DataHandler:
         )
         df_all = self.get_df_from_queries(queries)
         df_all.index = df_all.index.tz_localize(None)
-        data_resampled = df_all.resample("10T").max()
+        data_resampled = df_all.resample("10min").max()
         data_resampled = data_resampled["boiler_relay_status"]
         data_resampled = data_resampled.notna().astype(int)
-        data_resampled = data_resampled.resample("30T").sum() * 10
+        data_resampled = data_resampled.resample("30min").sum() * 10
         # group by weekday and hour and minute and calculate max
         grouped = data_resampled.groupby(
             [
