@@ -54,7 +54,7 @@ setup(
         "requests>=2.25.1",
         "scipy<1.9.0",
         "skforecast>=0.10.1",
-        "tensorflow==2.15.0",
+        "tensorflow",
         "wheel",
     ],
     # Optional
