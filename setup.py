@@ -52,6 +52,7 @@ setup(
         "pandas>=1.4.1",
         "pytz>=2021.1",
         "requests>=2.25.1",
+        "scikit-learn==1.3.2",
         "scipy<1.9.0",
         "skforecast>=0.10.1",
         "tensorflow",
