@@ -92,9 +92,9 @@ class EventChecker:
 
         if events:
             for e in events:
-                if re.match("^.*boiler heat up at (\d+) degrees$", e["summary"]):
+                if re.match("^.*heat water at (\d+) degrees$", e["summary"]):
                     degree_target = int(
-                        re.split("^.*boiler heat up at (\d+) degrees$", e["summary"])[1]
+                        re.split("^.*heat water at (\d+) degrees$", e["summary"])[1]
                     )
                     start = self.TimeHandler.date_to_datetime(
                         e["start"].get("dateTime", e["start"].get("date"))

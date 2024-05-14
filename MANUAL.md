@@ -26,7 +26,7 @@ You can use the preset events as:
 - Holiday
 Place a string "#off" into a name of an event and during this event, the water in the boiler won't be heated.
 - Prepare water at a certain temperature
-The event with string "boiler heat up at <number> degrees" in the name of an event ensures the water of required temperature prepared on a start of the event."
+The event with string "heat water at <number> degrees" in the name of an event ensures the water of required temperature prepared on a start of the event."
 
 
 # Enjoy the advantages of a water heating with use of the machone learning!
