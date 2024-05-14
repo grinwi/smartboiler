@@ -151,14 +151,14 @@ class Forecast:
         )
 
         # save the weights of the model
-        self.model.save_weights(self.model_path, overwrite=True, include_optimizer=True)
+        self.model.save_weights(self.model_path, overwrite=True)
 
     def load_model(
         self,
     ) -> None:
         """Load model and scaler from the files"""
         self.scaler = load(open(self.scaler_path, "rb"))
-        self.model.load_weights(self.model_path, skip_mismatch=False, compile=True)
+        self.model.load_weights(self.model_path, skip_mismatch=False)
 
     def quantile_loss(self, q, y_true, y_pred) -> float:
         """Quantile loss function used for training the model
