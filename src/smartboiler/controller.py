@@ -15,6 +15,8 @@ import logging
 import time
 import os
 import json
+from dateutil import parser
+
 
 
 from smartboiler.event_checker import EventChecker
@@ -170,11 +172,11 @@ if __name__ == "__main__":
 
     data_path = Path(DATA_PATH)
 
-    start_of_data_measurement = datetime(2023, 10, 1, 0, 0, 0, 0)
 
     shelly_ip = options["shelly_ip"]
     boiler_switch_id = options["boiler_switch_id"]
     
+    start_of_data_measurement = parser.parse(options["start_of_data_measurement"])
 
     home_longitude = options["home_longitude"]
     home_latitude = options["home_latitude"]
