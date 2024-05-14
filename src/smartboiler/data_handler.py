@@ -397,46 +397,7 @@ class DataHandler:
 
         return df
 
-    def get_data_for_training_model(
-        self,
-        left_time_interval: Optional[datetime] = None,
-        right_time_interval: Optional[datetime] = None,
-    ) -> pd.DataFrame:
-        """Method to retrieve data for training.
-
-        Args:
-            left_time_interval (Optional[datetime], optional): Left time datetime. Defaults to self.start_of_data.
-            right_time_interval (Optional[datetime], optional): Right time datetime. Defaults to datetime.now().
-
-        Returns:
-            pd.DataFrame: Resulting dataframe.
-        """
-
-        # default the intervals if None
-        if left_time_interval is None:
-            left_time_interval = self.start_of_data
-
-        if right_time_interval is None:
-            right_time_interval = datetime.now()
-
-        left_time_interval = left_time_interval.replace(
-            minute=0, second=0, microsecond=0
-        )
-        right_time_interval = right_time_interval.replace(
-            minute=0, second=0, microsecond=0
-        )
-
-        # retrieve the queries based on the intervals
-        queries = self.get_database_queries(
-            left_time_interval=left_time_interval,
-            right_time_interval=right_time_interval,
-        )
-        # get the data from the database
-        df_all = self.get_df_from_queries(queries)
-        # process the data
-        df_all = self.process_kWh_water_consumption(df_all)
-        # transform for ML
-        return self.transform_data_for_ml(df_all)
+    
 
     def get_data_for_prediction(
         self,
@@ -480,9 +441,26 @@ class DataHandler:
         df_all.index = df_all.index.tz_localize(None)
 
         # return the dataframe and the datetimes
-        df_all, datetimes = self.transform_data_for_ml(df_all)
+        df_all, _ = self.transform_data_for_ml(df_all)
+        
+        df_all['temperature'] = df_all['temperature'].combine_first(df_all['temperature'])
+        df_all['humidity'] = df_all['humidity'].combine_first(df_all['humidity'])
+        df_all['wind_speed'] = df_all['wind_speed'].combine_first(df_all['wind_speed'])
 
-        return df_all, datetimes
+        # ffill this values
+        df_all['temperature'] = df_all['temperature'].ffill()
+        df_all['humidity'] = df_all['humidity'].ffill()
+        df_all['wind_speed'] = df_all['wind_speed'].ffill()
+        df_all = df_all.reset_index(drop=True)
+        
+        df_all = df_all.reset_index(drop=True).copy()
+        # drop rows where last_3_week_skew is nan
+        df_all = df_all.dropna(subset=['last_3_week_skew'])
+        # reduce distance greater than 50
+        df_all['distance_from_home'] = df_all['distance_from_home'].apply(lambda x: x if x < 50 else 50)
+
+
+        return df_all
 
     def write_forecast_to_influxdb(self, df: pd.DataFrame) -> None:
         """Method which writes the current forecast to the influxdb.

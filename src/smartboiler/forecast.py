@@ -79,7 +79,7 @@ class Forecast:
                 begin_of_training = self.start_of_data
             if end_of_training is None:
                 end_of_training = datetime.now()
-            df_training_data, _ = self.dataHandler.get_data_for_training_model(
+            df_training_data = self.dataHandler.get_data_for_prediction(
                 left_time_interval=begin_of_training,
                 right_time_interval=end_of_training,
             )
@@ -340,7 +340,7 @@ class Forecast:
             right_time_interval = datetime.now()
 
         # get data for creatig a prediction
-        df_all, datetimes = self.dataHandler.get_data_for_prediction(
+        df_all = self.dataHandler.get_data_for_prediction(
             left_time_interval=left_time_interval,
             right_time_interval=right_time_interval,
         )
