@@ -103,10 +103,10 @@ class EventChecker:
                         e["end"].get("dateTime", e["end"].get("date"))
                     )
                     time_to_event = (
-                        start - (datetime.now() + timedelta(hours=1))
+                        start - datetime.now(timezone.utc)
                     ) / timedelta(hours=1)
                     time_to_end_event = (
-                        end - (datetime.now() + timedelta(hours=1))
+                        end - datetime.now(timezone.utc)
                     ) / timedelta(hours=1)
 
                     if time_to_event > 0:
