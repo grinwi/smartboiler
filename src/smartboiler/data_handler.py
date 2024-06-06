@@ -446,19 +446,16 @@ class DataHandler:
         df_all['temperature'] = df_all['temperature'].combine_first(df_all['temperature'])
         df_all['humidity'] = df_all['humidity'].combine_first(df_all['humidity'])
         df_all['wind_speed'] = df_all['wind_speed'].combine_first(df_all['wind_speed'])
-
-        # ffill this values
         df_all['temperature'] = df_all['temperature'].ffill()
         df_all['humidity'] = df_all['humidity'].ffill()
         df_all['wind_speed'] = df_all['wind_speed'].ffill()
         df_all = df_all.reset_index(drop=True)
+        # df_all = df_all.dropna(subset=['last_3_week_skew'])
         
-        df_all = df_all.reset_index(drop=True).copy()
-        # drop rows where last_3_week_skew is nan
-        df_all = df_all.dropna(subset=['last_3_week_skew'])
-        # reduce distance greater than 50
-        df_all['distance_from_home'] = df_all['distance_from_home'].apply(lambda x: x if x < 50 else 50)
+        
+        # df_all['distance_from_home'] = df_all['distance_from_home'].apply(lambda x: x if x < 50 else 50)
 
+        df_all = df_all.reset_index(drop=True).copy()
 
         return df_all
 
@@ -678,17 +675,17 @@ class DataHandler:
         df = df[
             [
                 "longtime_mean",
-                "last_3_week_skew",
-                "last_3_week_std",
-                "distance_from_home",
-                "speed_towards_home",
-                "distance_from_home_2",
-                "speed_towards_home_2",
+                # "last_3_week_skew",
+                # "last_3_week_std",
+                # "distance_from_home",
+                # "speed_towards_home",
+                # "distance_from_home_2",
+                # "speed_towards_home_2",
                 "count",
-                "heading_to_home_sin",
-                "heading_to_home_cos",
-                "heading_to_home_sin_2",
-                "heading_to_home_cos_2",
+                # "heading_to_home_sin",
+                # "heading_to_home_cos",
+                # "heading_to_home_sin_2",
+                # "heading_to_home_cos_2",
                 "temperature",
                 "humidity",
                 "wind_speed",

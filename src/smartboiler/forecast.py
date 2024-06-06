@@ -10,13 +10,16 @@ from sklearn.preprocessing import RobustScaler
 from keras.models import Sequential
 
 from keras.layers import LSTM
-from keras.layers import Input, Dense
-from keras.callbacks import EarlyStopping, ModelCheckpoint
+from keras.layers import Input, Dense, Dropout, BatchNormalization
+from keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
+
 import keras.backend as K
 import numpy as np
 import pandas as pd
 from pickle import load
 from pickle import dump
+# import Adam
+from keras.optimizers import Adam
 
 
 from smartboiler.data_handler import DataHandler
@@ -42,12 +45,12 @@ class Forecast:
             scaler_path (Optional[datetime], optional): Path of the scaler. Defaults to None.
             predicted_columns (Optional[list], optional): List of columns for prediction. Defaults to None.
         """
-        self.batch_size = 16
+        self.batch_size = 128
         self.lookback = 32
         self.delay = 1
         self.step = 1
 
-        self.num_of_features = 18
+        self.num_of_features = 8
 
         self.predicted_columns = predicted_columns
         self.dataHandler = dataHandler
@@ -120,6 +123,7 @@ class Forecast:
         )
 
         # create a callbacks for training of the model
+
         callbacks = [
             EarlyStopping(
                 monitor="loss",
@@ -138,7 +142,7 @@ class Forecast:
         ]
 
         # fit the model
-        history = self.model.fit(
+        self.history = self.model.fit(
             self.train_gen,
             steps_per_epoch=self.train_steps,
             epochs=100,
@@ -179,7 +183,10 @@ class Forecast:
         # Use the Sequential with LSTM layer with 100 units and Dense layer with 1 unit
         model = Sequential()
         model.add(Input(shape=(None, self.num_of_features)))
-        model.add(LSTM(100))
+        model.add(LSTM(100, return_sequences=True))
+        model.add(BatchNormalization())
+        model.add(LSTM(20))
+        model.add(Dropout(0.5))
         model.add(Dense(1))
 
         # compile the model with the quantile loss and adam optimizer
@@ -190,7 +197,7 @@ class Forecast:
                 for q in self.quantiles
             ],
 
-            optimizer="adam",
+            optimizer=Adam(learning_rate=0.0001),
         )
 
     def add_empty_row(

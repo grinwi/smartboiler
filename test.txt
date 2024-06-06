@@ -1,0 +1,135 @@
+Architektura superskalárních procesorů, algoritmy pro zpracování instrukcí mimo pořadí,  predikce skoků.
+Paměťová konzistence a předbíhání operací čtení a zápisu, podpora virtuálního adresového  prostoru.
+Datový paralelismus SIMD, HW implementace a SW podpora.
+Architektury se sdílenou pamětí UMA a NUMA, zajištění lokality dat.
+Koherence pamětí cache na systémech se sdílenou pamětí, protokol MSI. 
+Paralelní zpracování v OpenMP: Smyčky, sekce, tasky a synchronizační prostředky. 
+Pravděpodobnost, podmíněná pravděpodobnost, nezávislost.
+Náhodná proměnná, typy náhodné proměnné, funkční a číselné charakteristiky, významná  rozdělení pravděpodobnosti.
+Bodové a intervalové odhady parametrů, testování hypotéz o parametrech. 
+Vícevýběrové testy, testy o rozdělení, testy dobré shody.
+Regresní analýza.
+Markovské řetězce a základní techniky pro jejich analýzu.
+Randomizované algoritmy (Monte Carlo a Las Vegas algoritmy)
+Problém generalizace strojového učení a přístup k jeho řešení (trénovací, validační a testovací  sada, regularizace, předtrénování, multi-task learning, augmentace dat, dropout, ...). 
+Generativní modely a diskriminativní přístup ke klasifikaci (gaussovský klasifikátor, logistická  regrese, ...).
+Neuronové sítě a jejich trénování (metoda gradientního sestupu, účelová (loss) funkce,  výpočetní graf, aktivační funkce, zápis pomocí maticového násobení, ...).
+Neuronové sítě pro strukturovaná data (konvoluční a rekurentní sítě, motivace, základní  vlastnosti, použití).
+Prohledávání stavového prostoru (informované a neinformované metody, lokální prohledávání,  prohledávání v nejistém prostředí, hraní sekvenčních her, CSP úlohy).
+Klasifikace formálních jazyků (Chomského hierarchie), vlastnosti formálních jazyků a jejich  rozhodnutelnost.
+Konečné automaty (jazyky přijímané KA, varianty KA, minimalizace KA, Myhill-Nerodova věta). 
+Regulární množiny, regulární výrazy a rovnice nad regulárními výrazy.
+Zásobníkové automaty (jazyky přijímané ZA, varianty ZA).
+Turingovy stroje (jazyky přijímané TS, varianty TS, lineárně omezené automaty, vyčíslitelné  funkce).
+Nerozhodnutelnost (problém zastavení TS, princip diagonalizace a redukce, Postův  korespondenční problém).
+Časová a paměťová složitost (asymptotická a amortizovaná složitost, třídy složitosti, úplnost, SAT  problém).
+Postrelační a rozšířené relační databáze (objektový a objektově relační databázový model - struktura a operace; podpora práce s XML a JSON dokumenty v databázích).
+NoSQL databáze (porovnání relačních a NoSQL; CAP věta a ACID/BASE principy; typy NoSQL  databází; dotazování v NoSQL databázích; agregace dat pomocí Map-Reduce a agregační  pipeline).
+Získávání znalostí z dat (pojem znalost; typické zdroje dat; základní úlohy získávání znalostí;  analytické projekty a proces získávání znalostí z dat).
+Porozumění datům (důvod a cíl; popisné charakteristiky dat a vizualizační techniky; korelační  analýza).
+Prostorové DB (problematika mapování prostoru, ukládání, indexace; využití). 
+Indexace (nejen) v prostorových DB (kD-Tree a Grid File vč. jejich variant a R-Tree). 
+Lambda kalkul (definice všech pojmů, operací...).
+Práce v lambda kalkulu (demonstrace reprezentace čísel a pravdivostních hodnot a operací nad  nimi).
+Haskell - lazy evaluation (typy v jazyce včetně akcí, uživatelské typy, význam typových tříd,  demonstrace lazy evaluation).
+Prolog - způsob vyhodnocení (základní princip, unifikace, chování vestavěných predikátů,  operátor řezu - vhodné a nevhodné užití).
+Prolog - změna DB/programu za běhu (demonstrace na prohledávání stavového prostoru, práce  se seznamy).
+Klasifikace a vlastnosti paralelních a distribuovaných architektur, základní typy jejich topologií. 
+Distribuované a paralelní algoritmy - algoritmy řazení, select, algoritmy vyhledávání. 
+Model PRAM, suma prefixů a její aplikace.
+Distribuované a paralelní algoritmy - algoritmy nad seznamy, stromy a grafy. 
+Interakce mezi procesy a typické problémy paralelismu (synchronizační a komunikační  mechanismy).
+Distribuované a paralelní algoritmy - předávání zpráv a knihovny pro paralelní zpracování (MPI). 
+Distribuovaný broadcast, synchronizace v distribuovaných systémech.
+Moderní modely životního cyklu vývoje software (iterativní model životního cyklu; MDA, agilní  vývoj; agilní modelování; Unified Process).
+Modelovací techniky UML (charakteristika jazyka UML; rozšiřitelnost jazyka; charakteristika,  základní prvky a použití diagramů UML).
+Logická architektura software (pojem logické architektury; vrstvená architektura; závislosti  vrstev a balíčků; princip oddělení pohledu; vzor Model-View-Controller).
+Návrhové vzory (podstata a význam návrhových vzorů; vzory Singleton, Abstract Factory,  Strategy, Composite, Facade, Observer; podstata a význam návrhových anti-vzorů, příklad  návrhového anti-vzoru).
+Testování softwaru založené na modelech (kritéria pokrytí grafu a kódu, jednotkové testy). 
+Výkonnostní testování (principy a vlastnosti jednotlivých typů testů, měřitelné parametry). 
+Verifikace programů za běhu (testovací vlastnosti a odpovídající metody testování,  instrumentace programů).
+Hrozby, slabá místa, aktiva, škodlivý software (malware), funkce prosazující bezpečnost (řízení  přístupu, autentizace, skryté kanály, audit, přenos dat).
+Kritéria hodnocení bezpečnosti informačních systémů, historie, kritéria CC (Common Criteria),  standardy pro management bezpečnosti, ISO27k.
+Analýza rizik bezpečnosti informačních systémů (vstupy, výstupy, jednotlivé generace). 
+Bezpečnost systémů a sítí.
+Model checking, paralelní kompozice (handshake).
+Časované automaty a jejich analýza (abstrakce založená na regionech, logika TCTL).
+Markovské řetězce a jejich analýza (transientní analýza, výpočet stabilního stavu, ověřování PCTL  vlastností).
+Životní cyklus projektu z hlediska projektového řízení. Souvislosti projektového řízení (objekty  řízení projektu, princip trojího omezení, faktory podnikového prostředí, organizační struktury,  zainteresované strany, socioekonomické vlivy).
+Znalostní oblasti managementu projektů (vyjmenovat, každou oblast stručně charakterizovat).  Management rozsahu projektu (procesy, metody, strukturovaná dekompozice práce). 
+Management času a nákladů v rámci projektů (procesy, metody, metoda kritické cesty CPM - Critical Path Method, metoda odhadu pracnosti FPA - Function Point Analysis, řízení dosažené  hodnoty projektu EVM - Earned Value Management, prognózování).
+Management rizik v rámci projektů (procesy, metody, rozhodovací strom, matice  pravděpodobnosti a dopadu, analýza očekávané peněžní hodnoty, kategorie rizik v projektech  IT, eliminace rizik v softwarových projektech).
+Management kvality v rámci projektu (procesy, metody, Paretova analýza, diagram příčin a  účinků, kvalitativní charakteristiky softwarových produktů).
+Metoda Logického rámce (LFM - Logical Framework Matrix).
+Management procesů (co je to proces, základní charakteristiky a dělení procesů, charakteristiky  procesní organizace a postup jejího zavádění). Analýza a modelování procesů - CASE nástroje  (charakteristika, klasifikace, komponenty a přínosy).
+Business Process Reengineering (pojem a podstata, klíčové charakteristiky, postup  implementace).
+Efektivnost IS/IT (efektivita vs. efektivnost, metrika - pojem, atributy, typy, klasifikace výdajů,  hodnocení přínosů).
+
+
+Architektura superskalárních procesorů a algoritmy zpracování instrukcí mimo pořadí, predikce  skoků.
+Paměťová konzistence a předbíhání operací čtení a zápisu, podpora virtuálního adresového  prostoru.
+Datový paralelismus SIMD, HW implementace a SW podpora.
+Architektury se sdílenou pamětí UMA a NUMA, zajištění lokality dat.
+Problém koherence pamětí cache na systémech se sdílenou pamětí, protokol MSI. 
+Paralelní zpracování v OpenMP: Smyčky, sekce a tasky a synchronizační prostředky. 
+Pravděpodobnost, podmíněná pravděpodobnost, nezávislost.
+Náhodná proměnná, typy náhodné proměnné, funkční a číselné charakteristiky, významná  rozdělení pravděpodobnosti.
+Bodové a intervalové odhady parametrů, testování hypotéz o parametrech. 
+Vícevýběrové testy, testy o rozdělení, testy dobré shody.
+Regresní analýza.
+Markovské řetězce a základní techniky pro jejich analýzu.
+Randomizované algoritmy (Monte Carlo a Las Vegas algoritmy).
+Problém generalizace strojového učení a přístup k jeho řešení (trénovací, validační a testovací  sada, regularizace, předtrénování, multi-task learning, augmentace dat, dropout, ...). 
+Generativní modely a diskriminativní přístup ke klasifikaci (gaussovský klasifikátor, logistická  regrese, ...).
+Neuronové sítě a jejich trénování (metoda gradientního sestupu, účelová (loss) funkce,  výpočetní graf, aktivační funkce, zápis pomocí maticového násobení, ...).
+Neuronové sítě pro strukturovaná data (konvoluční a rekurentní sítě, motivace, základní  vlastnosti, použití).
+Prohledávání stavového prostoru (informované a neinformované metody, lokální prohledávání,  prohledávání v nejistém prostředí, hraní her, CSP úlohy).
+Klasifikace formálních jazyků (Chomského hierarchie), vlastnosti formálních jazyků a jejich  rozhodnutelnost.
+Konečné automaty (jazyky přijímané KA, varianty KA, minimalizace KA, Myhill-Nerodova věta). 
+Regulární množiny, regulární výrazy a rovnice nad regulárními výrazy.
+Zásobníkové automaty (jazyky přijímané ZA, varianty ZA).
+Turingovy stroje (jazyky přijímané TS, varianty TS, lineárně omezené automaty, vyčíslitelné  funkce).
+Nerozhodnutelnost (problém zastavení TS, princip diagonalizace a redukce, Postův  korespondenční problém).
+Časová a paměťová složitost (třídy složitosti, úplnost, SAT problém).
+Postrelační a rozšířené relační databáze (objektový a objektově relační databázový model - struktura a operace; podpora práce s XML a JSON dokumenty v databázích). 
+NoSQL databáze (porovnání relačních a NoSQL; CAP věta a ACID/BASE principy; typy NoSQL  databází; dotazování v NoSQL databázích; agregace dat pomocí Map-Reduce a agregační  pipeline).
+Získávání znalostí z dat (pojem znalost; typické zdroje dat; základní úlohy získávání znalostí;  analytické projekty a proces získávání znalostí z dat).
+Porozumění datům (důvod a cíl; popisné charakteristiky dat a vizualizační techniky; korelační  analýza).
+Prostorové DB (problematika mapování prostoru, ukládání, indexace; využití). 
+Indexace (nejen) v prostorových DB (kD-Tree a Grid File vč. jejich variant a R-Tree). 
+Lambda kalkul (definice všech pojmů, operací...).
+Práce v lambda kalkulu (demonstrace reprezentace čísel a pravdivostních hodnot a operací nad  nimi).
+Haskell - lazy evaluation (typy v jazyce včetně akcí, uživatelské typy, význam typových tříd,  demonstrace lazy evaluation).
+Prolog - způsob vyhodnocení (základní princip, unifikace, chování vestavěných predikátů,  operátor řezu - vhodné a nevhodné užití).
+Prolog - změna DB/programu za běhu (demonstrace na prohledávání stavového prostoru, práce  se seznamy).
+Algebry s jednou a dvěma operacemi.
+Klasifikace a vlastnosti paralelních a distribuovaných architektur, základní typy jejich topologií. 
+Distribuované a paralelní algoritmy - algoritmy řazení, select, algoritmy vyhledávání. 
+Model PRAM, suma prefixů a její aplikace.
+Distribuované a paralelní algoritmy - algoritmy nad seznamy, stromy a grafy. 
+Interakce mezi procesy a typické problémy paralelismu (synchronizační a komunikační  mechanismy).
+Distribuované a paralelní algoritmy - předávání zpráv a knihovny pro paralelní zpracování (MPI). 
+Distribuovaný broadcast, synchronizace v distribuovaných systémech.
+Moderní modely životního cyklu vývoje software (iterativní model životního cyklu; MDA, agilní  vývoj; agilní modelování; Unified Process).
+Modelovací techniky UML (charakteristika jazyka UML; rozšiřitelnost jazyka; charakteristika,  základní prvky a použití diagramů UML).
+Logická architektura software (pojem logické architektury; vrstvena architektura; závislosti  vrstev a balíčků; princip oddělení pohledu; vzor Model-View-Controller).
+Návrhové vzory (podstata a význam návrhových vzorů; vzory Singleton, Abstract Factory,  Strategy, Composite, Facade, Observer; podstata a význam návrhových anti-vzorů, příklad  návrhového anti-vzoru).
+Testování softwaru založené na modelech (kritéria pokrytí grafu a kódu, jednotkové testy). 
+Testování založené na požadavcích (CEG grafy, automatizace pomocí BDD). 
+Výkonnostní testování (principy a vlastnosti jednotlivých typů testů, měřitelné parametry). 
+Verifikace programů za běhu (testovací vlastnosti a odpovídající metody testování,  instrumentace programů).
+Hrozby, slabá místa, aktiva, škodlivý software (malware), funkce prosazující bezpečnost (řízení  přístupu, autentizace, skryté kanály, audit, přenos dat).
+Kritéria hodnocení bezpečnosti informačních systémů, historie, kritéria CC (Common Criteria),  standardy pro management bezpečnosti.
+Analýza rizik bezpečnosti informačních systémů (vstupy, výstupy, jednotlivé generace). 
+Bezpečnost systémů a sítí.
+Model checking, paralelní kompozice (handshake).
+Časované automaty a jejich analýza (abstrakce založená na regionech, logika TCTL). 
+Markovské řetězce a jejich analýza (transientní analýza, výpočet stabilního stavu, ověřování PCTL  vlastností).
+Životní cyklus projektu z hlediska projektového řízení. Souvislosti projektového řízení (objekty  řízení projektu, princip trojího omezení, faktory podnikového prostředí, organizační struktury,  zainteresované strany, socioekonomické vlivy).
+Znalostní oblasti managementu projektů (vyjmenovat, každou oblast stručně charakterizovat).  Management rozsahu projektu (procesy, metody, strukturovaná dekompozice práce). 
+Management rizik v rámci projektů (procesy, metody, rozhodovací strom, matice  pravděpodobnosti a dopadu, analýza očekávané peněžní hodnoty, kategorie rizik v projektech  IT, eliminace rizik v softwarových projektech).
+Management kvality v rámci projektu (procesy, metody, Paretova analýza, diagram příčin a  účinků, kvalitativní charakteristiky softwarových produktů).
+Metoda Logického rámce (LFM - Logical Framework Matrix).
+Management procesů (co je to proces, základní charakteristiky a dělení procesů, charakteristiky  procesní organizace a postup jejího zavádění). Analýza a modelování procesů - CASE nástroje  (charakteristika, klasifikace, komponenty a přínosy)
+Business Process Reengineering (pojem a podstata, klíčové charakteristiky, postup  implementace).
+Efektivnost IS/IT (efektivita vs. efektivnost, metrika - pojem, atributy, typy, klasifikace výdajů,  hodnocení přínosů).

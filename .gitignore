@@ -26,6 +26,8 @@ app/
 *.json
 # C extensions
 *.so
+*.gz
+0606*
 src/smartboiler/*.pdf
 src/smartboiler/*.png
 src/smartboiler/*.svg
@@ -170,3 +172,7 @@ src/smartboiler/lstm_example_with_multivariate_time_series 2.ipynb
 src/smartboiler/lstm_example_with_multivariate_time_series 2.ipynb
 src/smartboiler/lstm_example_with_multivariate_time_series 2.ipynb
 src/smartboiler/lstm_example_with_multivariate_time_series 2.ipynb
+prediction_zuka.pdf
+features_plot.pdf
+prediction_form.pdf
+prediction_form.pdf

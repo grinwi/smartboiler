@@ -16,7 +16,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 
-from smartboiler.time_handler import TimeHandler
+from time_handler import TimeHandler
 
 
 class EventChecker:
@@ -40,6 +40,7 @@ class EventChecker:
 
             creds = None
             token_file = "/app/token.json"
+            token_file = "token.json"
             creds_file = "/app/credentials.json"
 
             if os.path.exists(token_file):
@@ -147,4 +148,4 @@ class EventChecker:
 
 if __name__ == "__main__":
     e = EventChecker()
-    print(e.next_calendar_heat_up_event())
+    print(e.check_off_event())
