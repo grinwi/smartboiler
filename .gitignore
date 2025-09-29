@@ -21,7 +21,6 @@ test/
 app/
 *.keras
 *.h5
-*.ipynb
 *.pkl
 *.json
 # C extensions
@@ -168,11 +167,15 @@ Screenshot 2023-11-18 204400.png
 *.pkl
 .DS_Store
 src/smartboiler/stats_notebook.ipynb
-src/smartboiler/lstm_example_with_multivariate_time_series 2.ipynb
-src/smartboiler/lstm_example_with_multivariate_time_series 2.ipynb
-src/smartboiler/lstm_example_with_multivariate_time_series 2.ipynb
-src/smartboiler/lstm_example_with_multivariate_time_series 2.ipynb
+
 prediction_zuka.pdf
 features_plot.pdf
 prediction_form.pdf
 prediction_form.pdf
+model_plot.png
+presentation.ipynb
+vaha_priznaku.png
+24h_stats.pdf
+24h_stats.png
+loss_function.png
+.DS_Store

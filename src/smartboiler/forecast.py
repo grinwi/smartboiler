@@ -50,7 +50,7 @@ class Forecast:
         self.delay = 1
         self.step = 1
 
-        self.num_of_features = 8
+        self.num_of_features = 18
 
         self.predicted_columns = predicted_columns
         self.dataHandler = dataHandler
@@ -183,10 +183,10 @@ class Forecast:
         # Use the Sequential with LSTM layer with 100 units and Dense layer with 1 unit
         model = Sequential()
         model.add(Input(shape=(None, self.num_of_features)))
-        model.add(LSTM(100, return_sequences=True))
-        model.add(BatchNormalization())
-        model.add(LSTM(20))
-        model.add(Dropout(0.5))
+        model.add(LSTM(100, return_sequences=False))
+        # model.add(BatchNormalization())
+        # model.add(LSTM(50))
+        # model.add(Dropout(0.5))
         model.add(Dense(1))
 
         # compile the model with the quantile loss and adam optimizer
