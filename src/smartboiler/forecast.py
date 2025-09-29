@@ -21,7 +21,6 @@ from pickle import dump
 # import Adam
 from keras.optimizers import Adam
 
-
 from smartboiler.data_handler import DataHandler
 
 
