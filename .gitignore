@@ -3,6 +3,24 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# ── Security: never commit secrets ──────────────────────────────────────────
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+*credentials*.json
+token.json
+token.pickle
+client_secret*.json
+secrets.yaml
+secrets.json
+api.token
+influx-configs
+# ─────────────────────────────────────────────────────────────────────────────
+
 #settings
 # settings.json
 control/token.pickle

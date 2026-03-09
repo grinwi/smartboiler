@@ -1,0 +1,23 @@
+# Gitleaks configuration for the smartboiler library repo.
+# Docs: https://github.com/gitleaks/gitleaks#configuration
+
+title = "smartboiler gitleaks config"
+
+[extend]
+# Extend the default ruleset shipped with gitleaks
+useDefault = true
+
+[allowlist]
+description = "Known safe patterns in this repo"
+regexes = [
+  # setup.py version placeholder is not a real secret
+  '''\{\{VERSION_PLACEHOLDER\}\}''',
+  # Example/test credentials in __main__ blocks
+  '''influx_id="localhost"''',
+  '''db_username="root"''',
+  '''db_password="root"''',
+]
+paths = [
+  # Jupyter notebooks may contain example output, not real secrets
+  '''.*\.ipynb''',
+]

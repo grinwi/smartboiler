@@ -1,0 +1,68 @@
+name: Security scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  gitleaks:
+    name: Scan for secrets (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history so gitleaks can scan all commits in the PR
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Set to 'true' to upload SARIF results to GitHub Security tab
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: true
+          GITLEAKS_ENABLE_COMMENTS: true
+
+  forbidden-files:
+    name: Block sensitive files from being committed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for forbidden file patterns
+        run: |
+          FORBIDDEN_PATTERNS=(
+            '\.env$'
+            '\.env\.'
+            '\.pem$'
+            '\.key$'
+            '\.p12$'
+            '\.pfx$'
+            'credentials\.json$'
+            'token\.json$'
+            'token\.pickle$'
+            'client_secret.*\.json$'
+            'secrets\.yaml$'
+            'secrets\.json$'
+            'influx-configs$'
+            'api\.token$'
+          )
+
+          FOUND=0
+          for pattern in "${FORBIDDEN_PATTERNS[@]}"; do
+            matches=$(git ls-files | grep -Ei "$pattern" || true)
+            if [ -n "$matches" ]; then
+              echo "ERROR: Forbidden file tracked by git: $matches"
+              FOUND=1
+            fi
+          done
+
+          if [ "$FOUND" -eq 1 ]; then
+            echo ""
+            echo "Remove these files from git tracking:"
+            echo "  git rm --cached <file>"
+            echo "Then add them to .gitignore."
+            exit 1
+          fi
+
+          echo "No forbidden files found."
