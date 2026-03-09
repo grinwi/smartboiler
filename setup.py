@@ -46,7 +46,7 @@ setup(
         "haversine",
         "h5py==3.10.0",
         "influxdb==5.3.1",
-        "keras==2.15.0",
+        "keras==3.13.2",
         "matplotlib==3.5.1",
         "numpy>=1.22.2",
         "pandas>=1.4.1",
