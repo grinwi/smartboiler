@@ -1,34 +1,28 @@
 """
 Stub out heavy / network-bound libraries before any smartboiler module is imported.
-This allows unit tests to run without installing influxdb, keras, sklearn, etc.
+Only stubs for libraries still referenced by old modules (boiler.py, event_checker.py)
+that may be imported transitively during test collection.
 """
 import sys
 from unittest.mock import MagicMock
 
 _STUBS = [
-    # InfluxDB
+    # Legacy — kept because boiler.py / event_checker.py still exist
     "influxdb",
-    # Keras / TensorFlow
     "keras",
     "keras.models",
     "keras.layers",
     "keras.callbacks",
     "keras.optimizers",
     "keras.backend",
-    # scikit-learn
     "sklearn",
     "sklearn.preprocessing",
-    # skforecast
     "skforecast",
     "skforecast.ForecasterAutoreg",
-    # geopy
     "geopy",
     "geopy.distance",
-    # haversine
     "haversine",
-    # h5py
     "h5py",
-    # Google API client
     "googleapiclient",
     "googleapiclient.discovery",
     "google",
@@ -39,11 +33,13 @@ _STUBS = [
     "google.oauth2.credentials",
     "google_auth_oauthlib",
     "google_auth_oauthlib.flow",
-    # statsmodels
     "statsmodels",
     "statsmodels.tsa",
     "statsmodels.tsa.statespace",
     "statsmodels.tsa.statespace.sarimax",
+    # New controller uses Flask; stub it so tests don't need Flask installed
+    "flask",
+    "flask.limiter",
 ]
 
 for _mod in _STUBS:

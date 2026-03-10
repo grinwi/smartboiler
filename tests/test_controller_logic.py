@@ -1,188 +1,214 @@
-"""Unit tests for Controller decision logic (no network / DB required)."""
+"""Unit tests for SmartBoilerController decision logic (no network / HA required)."""
 import pytest
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch, PropertyMock
 
-import pandas as pd
-
-from smartboiler.controller import Controller
+from smartboiler.controller import SmartBoilerController
 
 
 # ---------------------------------------------------------------------------
-# Fixture: a Controller with all heavy dependencies mocked out
+# Fixture: SmartBoilerController with all heavy deps mocked out
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
 def ctrl():
-    """Return a Controller instance with __init__ bypassed and state set manually."""
-    with patch.object(Controller, "__init__", return_value=None):
-        c = Controller()
+    """Return a SmartBoilerController with __init__ bypassed and state injected."""
+    with patch.object(SmartBoilerController, "__init__", return_value=None):
+        c = SmartBoilerController.__new__(SmartBoilerController)
 
-    c.dataHandler = MagicMock()
-    c.boiler = MagicMock()
-    c.forecast = MagicMock()
-    c.eventChecker = MagicMock()
+    # Core component mocks
+    c.ha = MagicMock()
+    c.store = MagicMock()
+    c.collector = MagicMock()
+    c.predictor = MagicMock()
+    c.hdo_learner = MagicMock()
+    c.scheduler = MagicMock()
+    c.spot_fetcher = None
+    c._run_dashboard = MagicMock()
 
-    c.tmp_min = 5
-    c.learning = False
-    c.start_date = datetime.now()
-    c.heating_until = None
-    c.HEATING_TIMEOUT_MINUTES = 180
-    c.last_model_training = datetime.now()
-    c.last_legionella_heating = datetime.now()
-    c.actual_forecast = pd.DataFrame({"prediction": [0.1] * 6})
+    # Config
+    c.boiler_switch_entity_id = "switch.boiler"
+    c.boiler_power_entity_id = None
+    c.boiler_direct_tmp_entity_id = None
+    c.boiler_case_tmp_entity_id = None
+    c.boiler_volume_l = 120.0
+    c.boiler_set_tmp = 60.0
+    c.boiler_min_tmp = 37.0
+    c.boiler_watt = 2000.0
+    c.area_tmp = 20.0
+    c.boiler_case_max_tmp = 40.0
+    c.has_spot_price = False
+    c.has_hdo = False
+    c.hdo_explicit_schedule = ""
+    c.prediction_conservatism = "medium"
+    c.min_training_days = 30
+    c.pv_surplus_entity_id = None
 
-    # Default sensor reading: 50 °C, relay off
-    c.dataHandler.get_actual_boiler_stats.return_value = {
-        "boiler_case_tmp": 50,
-        "is_boiler_on": False,
-    }
-    c.boiler.real_tmp.return_value = 50
+    # Mutable state
+    import threading
+    c._heating_plan = [False] * 24
+    c._plan_slots = []
+    c._forecast_24h = [0.0] * 24
+    c._spot_prices = {}
+    c._last_boiler_tmp = 50.0
+    c._plan_generated_at = datetime.now()
+    c._lock = threading.Lock()
+
+    # Default: relay off, no recent legionella, no power sensor
+    c.ha.is_entity_on.return_value = False
+    c.ha.get_state_value.return_value = None
+    c.store.get_last_legionella_heating.return_value = datetime.now()
 
     return c
 
 
 # ---------------------------------------------------------------------------
-# _learning
+# _interpolate_from_case_tmp
 # ---------------------------------------------------------------------------
 
-class TestLearning:
-    def test_returns_false_when_learning_disabled(self, ctrl):
-        ctrl.learning = False
-        assert ctrl._learning() is False
+class TestInterpolateFromCaseTmp:
+    def test_at_case_max_returns_set_tmp(self, ctrl):
+        # area=20, case_max=40, set_tmp=60
+        # ratio = (40-20)/(40-20) = 1.0  →  1.0*(60-20)+20 = 60
+        assert ctrl._interpolate_from_case_tmp(40.0) == pytest.approx(60.0)
 
-    def test_returns_true_within_28_days(self, ctrl):
-        ctrl.learning = True
-        ctrl.start_date = datetime.now() - timedelta(days=10)
-        assert ctrl._learning() is True
+    def test_at_area_tmp_returns_area_tmp(self, ctrl):
+        # ratio = 0  →  0*(60-20)+20 = 20
+        assert ctrl._interpolate_from_case_tmp(20.0) == pytest.approx(20.0)
 
-    def test_returns_false_after_28_days(self, ctrl):
-        ctrl.learning = True
-        ctrl.start_date = datetime.now() - timedelta(days=29)
-        assert ctrl._learning() is False
+    def test_midpoint(self, ctrl):
+        # case_tmp=30, ratio=(30-20)/(40-20)=0.5  →  0.5*(60-20)+20 = 40
+        assert ctrl._interpolate_from_case_tmp(30.0) == pytest.approx(40.0)
 
-    def test_boundary_at_exactly_28_days(self, ctrl):
-        ctrl.learning = True
-        ctrl.start_date = datetime.now() - timedelta(days=28, seconds=1)
-        assert ctrl._learning() is False
-
-
-# ---------------------------------------------------------------------------
-# _check_data  (model retraining)
-# ---------------------------------------------------------------------------
-
-class TestCheckData:
-    def test_no_retrain_when_recent(self, ctrl):
-        ctrl.last_model_training = datetime.now() - timedelta(days=3)
-        ctrl._check_data()
-        ctrl.forecast.train_model.assert_not_called()
-
-    def test_retrain_when_stale(self, ctrl):
-        ctrl.last_model_training = datetime.now() - timedelta(days=8)
-        ctrl._check_data()
-        ctrl.forecast.train_model.assert_called_once()
-
-    def test_last_model_training_updated_after_retrain(self, ctrl):
-        ctrl.last_model_training = datetime.now() - timedelta(days=8)
-        before = datetime.now()
-        ctrl._check_data()
-        assert ctrl.last_model_training >= before
-
-    def test_no_update_to_last_training_when_not_stale(self, ctrl):
-        ts = datetime.now() - timedelta(days=3)
-        ctrl.last_model_training = ts
-        ctrl._check_data()
-        assert ctrl.last_model_training == ts
+    def test_below_area_tmp_returns_input(self, ctrl):
+        # Below area_tmp: ratio numerator is negative → guarded
+        result = ctrl._interpolate_from_case_tmp(10.0)
+        assert result == pytest.approx(10.0)
 
 
 # ---------------------------------------------------------------------------
-# control() – off-event branch
+# _get_boiler_tmp — level selection
 # ---------------------------------------------------------------------------
 
-class TestControlOffEvent:
-    def test_turns_off_when_off_event_active(self, ctrl):
-        ctrl.eventChecker.check_off_event.return_value = True
-        ctrl.control()
-        ctrl.boiler.turn_off.assert_called_once()
+class TestGetBoilerTmp:
+    def test_uses_direct_sensor_when_configured(self, ctrl):
+        ctrl.boiler_direct_tmp_entity_id = "sensor.direct_tmp"
+        ctrl.ha.get_state_value.return_value = 55.0
+        assert ctrl._get_boiler_tmp() == pytest.approx(55.0)
 
-    def test_does_not_turn_on_when_off_event_active(self, ctrl):
-        ctrl.eventChecker.check_off_event.return_value = True
-        ctrl.control()
-        ctrl.boiler.turn_on.assert_not_called()
+    def test_falls_back_to_case_tmp_interpolation(self, ctrl):
+        ctrl.boiler_case_tmp_entity_id = "sensor.case_tmp"
+        ctrl.ha.get_state_value.return_value = 30.0  # midpoint → 40°C
+        result = ctrl._get_boiler_tmp()
+        assert result == pytest.approx(40.0)
 
-    def test_returns_early_on_off_event(self, ctrl):
-        """is_needed_to_heat must NOT be consulted when off-event is active."""
-        ctrl.eventChecker.check_off_event.return_value = True
-        ctrl.control()
-        ctrl.boiler.is_needed_to_heat.assert_not_called()
+    def test_returns_last_known_when_no_sensors(self, ctrl):
+        ctrl._last_boiler_tmp = 48.0
+        assert ctrl._get_boiler_tmp() == pytest.approx(48.0)
+
+    def test_direct_sensor_takes_priority_over_case(self, ctrl):
+        ctrl.boiler_direct_tmp_entity_id = "sensor.direct_tmp"
+        ctrl.boiler_case_tmp_entity_id = "sensor.case_tmp"
+        ctrl.ha.get_state_value.return_value = 52.0
+        result = ctrl._get_boiler_tmp()
+        assert result == pytest.approx(52.0)
 
 
 # ---------------------------------------------------------------------------
-# control() – freeze-protection branch
+# _current_plan_hour_index
 # ---------------------------------------------------------------------------
 
-class TestControlFreezeProtection:
+class TestCurrentPlanHourIndex:
+    def test_returns_zero_when_no_plan(self, ctrl):
+        ctrl._plan_generated_at = None
+        assert ctrl._current_plan_hour_index() == 0
+
+    def test_returns_zero_immediately_after_plan(self, ctrl):
+        ctrl._plan_generated_at = datetime.now()
+        assert ctrl._current_plan_hour_index() == 0
+
+    def test_returns_correct_index_after_two_hours(self, ctrl):
+        ctrl._plan_generated_at = datetime.now() - timedelta(hours=2, minutes=5)
+        assert ctrl._current_plan_hour_index() == 2
+
+    def test_capped_at_23(self, ctrl):
+        ctrl._plan_generated_at = datetime.now() - timedelta(hours=30)
+        assert ctrl._current_plan_hour_index() == 23
+
+
+# ---------------------------------------------------------------------------
+# run_control_workflow — freeze protection
+# ---------------------------------------------------------------------------
+
+class TestFreezeProtection:
     def test_turns_on_when_below_5_degrees(self, ctrl):
-        ctrl.eventChecker.check_off_event.return_value = False
-        ctrl.dataHandler.get_actual_boiler_stats.return_value = {
-            "boiler_case_tmp": 3,
-            "is_boiler_on": False,
-        }
-        ctrl.boiler.real_tmp.return_value = 3
-        ctrl.boiler.is_needed_to_heat.return_value = (False, 0)
-        ctrl.control()
-        ctrl.boiler.turn_on.assert_called()
+        ctrl._last_boiler_tmp = 3.0
+        ctrl.ha.get_state_value.return_value = None
+        ctrl.ha.is_entity_on.return_value = False
+        ctrl.run_control_workflow()
+        ctrl.ha.turn_on.assert_called_with("switch.boiler")
+
+    def test_does_not_call_turn_off_when_freezing(self, ctrl):
+        ctrl._last_boiler_tmp = 2.0
+        ctrl.ha.is_entity_on.return_value = False
+        ctrl.run_control_workflow()
+        ctrl.ha.turn_off.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
-# control() – active heating-window branch
+# run_control_workflow — legionella protection
 # ---------------------------------------------------------------------------
 
-class TestControlHeatingWindow:
-    def test_keeps_on_within_active_window(self, ctrl):
-        ctrl.eventChecker.check_off_event.return_value = False
-        ctrl.heating_until = datetime.now() + timedelta(minutes=30)
-        ctrl.control()
-        ctrl.boiler.turn_on.assert_called()
+class TestLegionellaProtection:
+    def test_turns_on_when_overdue(self, ctrl):
+        ctrl.store.get_last_legionella_heating.return_value = (
+            datetime.now() - timedelta(days=22)
+        )
+        ctrl._last_boiler_tmp = 50.0
+        ctrl.run_control_workflow()
+        ctrl.ha.turn_on.assert_called_with("switch.boiler")
 
-    def test_does_not_consult_is_needed_within_window(self, ctrl):
-        ctrl.eventChecker.check_off_event.return_value = False
-        ctrl.heating_until = datetime.now() + timedelta(minutes=30)
-        ctrl.control()
-        ctrl.boiler.is_needed_to_heat.assert_not_called()
+    def test_marks_complete_and_turns_off_at_65(self, ctrl):
+        ctrl.store.get_last_legionella_heating.return_value = (
+            datetime.now() - timedelta(days=22)
+        )
+        ctrl._last_boiler_tmp = 66.0
+        ctrl.run_control_workflow()
+        ctrl.store.set_last_legionella_heating.assert_called_once()
+        ctrl.ha.turn_off.assert_called_with("switch.boiler")
 
-    def test_expired_window_falls_through_to_is_needed(self, ctrl):
-        ctrl.eventChecker.check_off_event.return_value = False
-        ctrl.heating_until = datetime.now() - timedelta(minutes=1)
-        ctrl.boiler.is_needed_to_heat.return_value = (False, 0)
-        ctrl.control()
-        ctrl.boiler.is_needed_to_heat.assert_called_once()
+    def test_no_legionella_action_when_recent(self, ctrl):
+        ctrl.store.get_last_legionella_heating.return_value = datetime.now()
+        ctrl._last_boiler_tmp = 50.0
+        ctrl._heating_plan = [False] * 24
+        ctrl.run_control_workflow()
+        # Should NOT have turned on for legionella (may have other calls for plan)
+        # Verify set_last_legionella_heating was not called
+        ctrl.store.set_last_legionella_heating.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
-# control() – is_needed_to_heat outcomes
+# run_control_workflow — heating plan execution
 # ---------------------------------------------------------------------------
 
-class TestControlIsNeededToHeat:
-    def test_turns_on_and_sets_window_when_heating_needed(self, ctrl):
-        ctrl.eventChecker.check_off_event.return_value = False
-        ctrl.boiler.is_needed_to_heat.return_value = (True, 90)
-        ctrl.control()
-        ctrl.boiler.turn_on.assert_called()
-        assert ctrl.heating_until is not None
-        assert ctrl.heating_until > datetime.now()
+class TestHeatingPlanExecution:
+    def test_turns_on_when_plan_says_heat(self, ctrl):
+        ctrl._plan_generated_at = datetime.now()
+        ctrl._heating_plan = [True] + [False] * 23  # heat in hour 0
+        ctrl._last_boiler_tmp = 45.0
+        ctrl.run_control_workflow()
+        ctrl.ha.turn_on.assert_called_with("switch.boiler")
 
-    def test_turns_off_and_clears_window_when_no_heat_needed(self, ctrl):
-        ctrl.eventChecker.check_off_event.return_value = False
-        ctrl.boiler.is_needed_to_heat.return_value = (False, 0)
-        ctrl.control()
-        ctrl.boiler.turn_off.assert_called()
-        assert ctrl.heating_until is None
+    def test_turns_off_when_plan_says_idle(self, ctrl):
+        ctrl._plan_generated_at = datetime.now()
+        ctrl._heating_plan = [False] * 24  # no heating
+        ctrl._last_boiler_tmp = 50.0
+        ctrl.run_control_workflow()
+        ctrl.ha.turn_off.assert_called_with("switch.boiler")
 
-    def test_heating_window_capped_at_timeout(self, ctrl):
-        ctrl.eventChecker.check_off_event.return_value = False
-        ctrl.boiler.is_needed_to_heat.return_value = (True, 999)
-        ctrl.control()
-        expected_max = datetime.now() + timedelta(minutes=ctrl.HEATING_TIMEOUT_MINUTES)
-        # Allow 5-second tolerance for execution time
-        assert ctrl.heating_until <= expected_max + timedelta(seconds=5)
+    def test_forces_on_below_min_tmp_even_if_plan_idle(self, ctrl):
+        ctrl._plan_generated_at = datetime.now()
+        ctrl._heating_plan = [False] * 24
+        ctrl._last_boiler_tmp = 30.0  # below boiler_min_tmp=37
+        ctrl.run_control_workflow()
+        ctrl.ha.turn_on.assert_called_with("switch.boiler")
