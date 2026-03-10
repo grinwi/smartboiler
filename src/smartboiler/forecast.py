@@ -188,14 +188,10 @@ class Forecast:
         # model.add(Dropout(0.5))
         model.add(Dense(1))
 
-        # compile the model with the quantile loss and adam optimizer
+        # compile the model with median quantile loss (q=0.5) and adam optimizer
         self.model = model
         self.model.compile(
-          loss=[
-                lambda y_true, y_pred: self.quantile_loss(q, y_true, y_pred)
-                for q in self.quantiles
-            ],
-
+            loss=lambda y_true, y_pred: self.quantile_loss(0.5, y_true, y_pred),
             optimizer=Adam(learning_rate=0.0001),
         )
 

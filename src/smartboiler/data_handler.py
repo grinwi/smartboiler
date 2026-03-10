@@ -33,7 +33,8 @@ class DataHandler:
         device_tracker_entity_id_2: str,
         home_longitude: float,
         home_latitude: float,
-        start_of_data: Optional[datetime] = datetime(2023, 1, 1, 0, 0, 0, 0),
+        start_of_data: Optional[datetime] = None,
+        weather_entity_id: str = "domov",
     ):
         """Init function for the DataHandler class.
 
@@ -69,7 +70,8 @@ class DataHandler:
         self.device_tracker_entity_id = device_tracker_entity_id
         self.device_tracker_entity_id_2 = device_tracker_entity_id_2
 
-        self.start_of_data = start_of_data
+        self.weather_entity_id = weather_entity_id
+        self.start_of_data = start_of_data if start_of_data is not None else datetime(2023, 1, 1, 0, 0, 0, 0)
         self.last_time_data_update = datetime.now()
 
         # initialize clients
@@ -94,8 +96,8 @@ class DataHandler:
         self,
         group_by_time_interval: Optional[str] = "10m",
         limit: Optional[int] = 300,
-        left_time_interval: Optional[datetime] = datetime.now() - timedelta(hours=6),
-        right_time_interval: Optional[datetime] = datetime.now() - timedelta(hours=1),
+        left_time_interval: Optional[datetime] = None,
+        right_time_interval: Optional[datetime] = None,
     ) -> dict:
         # TODO handle correct the timezones
         """Method to retrieve the actual stats for the boilers. Serves for algorithm of controling the boiler.
@@ -109,6 +111,10 @@ class DataHandler:
         Returns:
             dict: Dictionary of the actual stats for boiler_case_tmp, is_boiler_on, boiler_case_last_time_entry, is_boiler_on_last_time_entry.
         """
+        if left_time_interval is None:
+            left_time_interval = datetime.now() - timedelta(hours=6)
+        if right_time_interval is None:
+            right_time_interval = datetime.now() - timedelta(hours=1)
         left_time_interval = f"'{left_time_interval.strftime('%Y-%m-%dT%H:%M:%SZ')}'"
         right_time_interval = f"'{right_time_interval.strftime('%Y-%m-%dT%H:%M:%SZ')}'"
         actual_boiler_stats = {
@@ -173,15 +179,15 @@ class DataHandler:
                 "measurement": "°C",
             },
             "temperature": {
-                "sql_query": f'SELECT mean("temperature") AS "outside_temperature_mean" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time <= {right_time_interval} AND "domain"=\'weather\' AND "entity_id"=\'domov\' GROUP BY time({group_by_time_interval}) FILL(null)',
+                "sql_query": f'SELECT mean("temperature") AS "outside_temperature_mean" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time <= {right_time_interval} AND "domain"=\'weather\' AND "entity_id"=\'{self.weather_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(null)',
                 "measurement": "state",
             },
             "humidity": {
-                "sql_query": f'SELECT mean("humidity") AS "outside_humidity_mean" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time <= {right_time_interval} AND "domain"=\'weather\' AND "entity_id"=\'domov\' GROUP BY time({group_by_time_interval}) FILL(null)',
+                "sql_query": f'SELECT mean("humidity") AS "outside_humidity_mean" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time <= {right_time_interval} AND "domain"=\'weather\' AND "entity_id"=\'{self.weather_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(null)',
                 "measurement": "state",
             },
             "wind_speed": {
-                "sql_query": f'SELECT mean("wind_speed") AS "outside_wind_speed_mean" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time <= {right_time_interval} AND "entity_id"=\'domov\' GROUP BY time({group_by_time_interval}) FILL(null)',
+                "sql_query": f'SELECT mean("wind_speed") AS "outside_wind_speed_mean" FROM "{self.db_name}"."autogen"."state" WHERE time > {left_time_interval} AND time <= {right_time_interval} AND "entity_id"=\'{self.weather_entity_id}\' GROUP BY time({group_by_time_interval}) FILL(null)',
                 "measurement": "state",
             },
             "presence": {
@@ -443,9 +449,6 @@ class DataHandler:
         # return the dataframe and the datetimes
         df_all, _ = self.transform_data_for_ml(df_all)
         
-        df_all['temperature'] = df_all['temperature'].combine_first(df_all['temperature'])
-        df_all['humidity'] = df_all['humidity'].combine_first(df_all['humidity'])
-        df_all['wind_speed'] = df_all['wind_speed'].combine_first(df_all['wind_speed'])
         df_all['temperature'] = df_all['temperature'].ffill()
         df_all['humidity'] = df_all['humidity'].ffill()
         df_all['wind_speed'] = df_all['wind_speed'].ffill()
@@ -568,9 +571,6 @@ class DataHandler:
         df["distance_from_home_2"] = df["distance_from_home_2"].ffill()
         df["heading_to_home_sin_2"] = df["heading_to_home_sin_2"].ffill()
         df["heading_to_home_cos_2"] = df["heading_to_home_cos_2"].ffill()
-
-        # adding cooling down to the consumed heat
-        df["consumed_heat_kWh"] += 1.25 / (24 // freq)
 
         window = 3
         # creating a 3 hour rolling window for the mean of the consumed heat for better prediction
