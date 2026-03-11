@@ -31,13 +31,15 @@ setup(
         "Intended Audience :: Developers",
         "Topic :: Software Development :: Build Tools",
         "License :: OSI Approved :: MIT License",
+        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
         "Operating System :: OS Independent",
     ],
     keywords="energy, management, optimization, hass",  # Optional
     package_dir={"": "src"},  # Optional
     packages=find_packages(where="src"),  # Required
-    python_requires=">=3.10",
+    python_requires=">=3.9",
     install_requires=[
         "flask>=3.0.0",
         "numpy>=1.24",
