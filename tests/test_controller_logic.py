@@ -31,18 +31,22 @@ def ctrl():
     c.boiler_power_entity_id = None
     c.boiler_direct_tmp_entity_id = None
     c.boiler_case_tmp_entity_id = None
+    c.boiler_area_tmp_entity_id = None
     c.boiler_volume_l = 120.0
     c.boiler_set_tmp = 60.0
     c.boiler_min_tmp = 37.0
     c.boiler_watt = 2000.0
     c.area_tmp = 20.0
-    c.boiler_case_max_tmp = 40.0
     c.has_spot_price = False
     c.has_hdo = False
     c.hdo_explicit_schedule = ""
     c.prediction_conservatism = "medium"
     c.min_training_days = 30
     c.pv_surplus_entity_id = None
+
+    # Thermal model mock
+    c.thermal_model = MagicMock()
+    c.thermal_model.estimate_water_tmp.return_value = None  # unfitted by default
 
     # Mutable state
     import threading
@@ -52,6 +56,7 @@ def ctrl():
     c._spot_prices = {}
     c._last_boiler_tmp = 50.0
     c._plan_generated_at = datetime.now()
+    c._last_calib_ts = 0.0
     c._lock = threading.Lock()
 
     # Default: relay off, no recent legionella, no power sensor
@@ -63,27 +68,40 @@ def ctrl():
 
 
 # ---------------------------------------------------------------------------
-# _interpolate_from_case_tmp
+# Level 3 temperature estimation via ThermalModel
+# (_interpolate_from_case_tmp was replaced by ThermalModel.estimate_water_tmp)
 # ---------------------------------------------------------------------------
 
-class TestInterpolateFromCaseTmp:
-    def test_at_case_max_returns_set_tmp(self, ctrl):
-        # area=20, case_max=40, set_tmp=60
-        # ratio = (40-20)/(40-20) = 1.0  →  1.0*(60-20)+20 = 60
-        assert ctrl._interpolate_from_case_tmp(40.0) == pytest.approx(60.0)
+class TestThermalModelEstimation:
+    def test_returns_thermal_model_estimate(self, ctrl):
+        ctrl.boiler_case_tmp_entity_id = "sensor.case_tmp"
+        ctrl.ha.get_state_value.return_value = 35.0
+        ctrl.thermal_model.estimate_water_tmp.return_value = 52.0
+        assert ctrl._get_boiler_tmp() == pytest.approx(52.0)
 
-    def test_at_area_tmp_returns_area_tmp(self, ctrl):
-        # ratio = 0  →  0*(60-20)+20 = 20
-        assert ctrl._interpolate_from_case_tmp(20.0) == pytest.approx(20.0)
+    def test_falls_back_to_last_known_when_model_returns_none(self, ctrl):
+        ctrl.boiler_case_tmp_entity_id = "sensor.case_tmp"
+        ctrl.ha.get_state_value.return_value = 35.0
+        ctrl.thermal_model.estimate_water_tmp.return_value = None
+        ctrl._last_boiler_tmp = 48.0
+        assert ctrl._get_boiler_tmp() == pytest.approx(48.0)
 
-    def test_midpoint(self, ctrl):
-        # case_tmp=30, ratio=(30-20)/(40-20)=0.5  →  0.5*(60-20)+20 = 40
-        assert ctrl._interpolate_from_case_tmp(30.0) == pytest.approx(40.0)
+    def test_skips_model_when_case_sensor_unavailable(self, ctrl):
+        ctrl.boiler_case_tmp_entity_id = "sensor.case_tmp"
+        ctrl.ha.get_state_value.return_value = None  # sensor offline
+        ctrl._last_boiler_tmp = 45.0
+        assert ctrl._get_boiler_tmp() == pytest.approx(45.0)
+        ctrl.thermal_model.estimate_water_tmp.assert_not_called()
 
-    def test_below_area_tmp_returns_input(self, ctrl):
-        # Below area_tmp: ratio numerator is negative → guarded
-        result = ctrl._interpolate_from_case_tmp(10.0)
-        assert result == pytest.approx(10.0)
+    def test_uses_live_ambient_when_area_sensor_configured(self, ctrl):
+        ctrl.boiler_case_tmp_entity_id = "sensor.case_tmp"
+        ctrl.boiler_area_tmp_entity_id = "sensor.area_tmp"
+        ctrl.ha.get_state_value.side_effect = lambda eid: (
+            35.0 if eid == "sensor.case_tmp" else 15.0
+        )
+        ctrl.thermal_model.estimate_water_tmp.return_value = 50.0
+        ctrl._get_boiler_tmp()
+        ctrl.thermal_model.estimate_water_tmp.assert_called_once_with(35.0, 15.0)
 
 
 # ---------------------------------------------------------------------------
@@ -96,9 +114,10 @@ class TestGetBoilerTmp:
         ctrl.ha.get_state_value.return_value = 55.0
         assert ctrl._get_boiler_tmp() == pytest.approx(55.0)
 
-    def test_falls_back_to_case_tmp_interpolation(self, ctrl):
+    def test_falls_back_to_thermal_model_estimate(self, ctrl):
         ctrl.boiler_case_tmp_entity_id = "sensor.case_tmp"
-        ctrl.ha.get_state_value.return_value = 30.0  # midpoint → 40°C
+        ctrl.ha.get_state_value.return_value = 30.0
+        ctrl.thermal_model.estimate_water_tmp.return_value = 40.0
         result = ctrl._get_boiler_tmp()
         assert result == pytest.approx(40.0)
 
