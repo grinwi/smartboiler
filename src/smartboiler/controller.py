@@ -148,6 +148,18 @@ class SmartBoilerController:
             self.thermal_model.mass_ratio  = self.thermal_mass_ratio
             logger.info("Thermal model restored from disk. %s", self.thermal_model.diagnostics())
 
+        # ── InfluxDB bootstrap (one-time cold-start import) ───────────────
+        from smartboiler.influx_bootstrap import InfluxBootstrapper
+        self._bootstrapper = InfluxBootstrapper(
+            options=options,
+            store=self.store,
+            thermal_model=self.thermal_model if self.boiler_case_tmp_entity_id else None,
+            boiler_set_tmp=self.boiler_set_tmp,
+            boiler_min_tmp=self.boiler_min_tmp,
+            boiler_watt=self.boiler_watt,
+            area_tmp=self.area_tmp,
+        )
+
         # ── Mutable state ─────────────────────────────────────────────────
         self._heating_plan: List[bool] = [False] * 24
         self._plan_slots: List = []
@@ -456,6 +468,14 @@ class SmartBoilerController:
         )
         dash_thread.start()
         logger.info("Dashboard started on :8099")
+
+        # Run InfluxDB bootstrap if needed (one-time, blocks until complete)
+        if self._bootstrapper.should_run():
+            logger.info("InfluxDB bootstrap starting — importing historical data…")
+            summary = self._bootstrapper.run()
+            # Persist refreshed thermal model immediately after seeding
+            self.store.save_pickle("thermal_model", self.thermal_model)
+            logger.info("InfluxDB bootstrap done: %s", summary)
 
         # Run initial forecast immediately
         self.run_forecast_workflow()

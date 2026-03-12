@@ -54,6 +54,19 @@ SAMPLE_MIN_INTERVAL_S = 15 * 60  # 15 min
 _K_MIN = 0.005   # cools at most over ~8 days
 _K_MAX = 3.0     # cools in under 20 minutes (unrealistic → reject)
 
+# Plausible temperature range for boiler/ambient readings [°C]
+_T_MIN_PLAUSIBLE = -30.0
+_T_MAX_PLAUSIBLE = 110.0
+
+
+def _is_valid_tmp(v) -> bool:
+    """Return True if v is a finite number within plausible boiler range."""
+    try:
+        f = float(v)
+        return math.isfinite(f) and _T_MIN_PLAUSIBLE <= f <= _T_MAX_PLAUSIBLE
+    except (TypeError, ValueError):
+        return False
+
 
 @dataclass
 class _CalibEvent:
@@ -135,6 +148,12 @@ class ThermalModel:
         Record a thermostat-trip calibration event.
         Call this when: relay is ON and power sensor reads < 50 W.
         """
+        if not (_is_valid_tmp(T_set) and _is_valid_tmp(T_case) and _is_valid_tmp(T_amb)):
+            _LOGGER.debug(
+                "ThermalModel: skipping calibration — invalid values "
+                "T_set=%s T_case=%s T_amb=%s", T_set, T_case, T_amb,
+            )
+            return
         ts = timestamp if timestamp is not None else self._clock()
         event = _CalibEvent(ts=ts, T_set=T_set, T_case=T_case, T_amb=T_amb)
         self._calib_events.append(event)
@@ -156,6 +175,8 @@ class ThermalModel:
         Record a case-temperature sample during passive cooling (relay OFF).
         Rate-limited to SAMPLE_MIN_INTERVAL_S; safe to call every 60 s.
         """
+        if not (_is_valid_tmp(T_case) and _is_valid_tmp(T_amb)):
+            return
         ts = timestamp if timestamp is not None else self._clock()
         if ts - self._last_sample_ts < SAMPLE_MIN_INTERVAL_S:
             return
@@ -186,6 +207,8 @@ class ThermalModel:
         Returns None if no calibration has been observed yet.
         Returns a value clamped to [T_amb, T_set].
         """
+        if not (_is_valid_tmp(T_case) and _is_valid_tmp(T_amb)):
+            return None
         if not self._calib_events:
             return None
 
