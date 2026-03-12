@@ -102,11 +102,13 @@ class HADataCollector:
         df.index = pd.to_datetime(df.index)
         df_hourly = df.resample("1h").agg(
             {
-                "consumed_kwh": "sum",
+                "consumed_kwh": lambda x: x.sum(min_count=1),
                 "relay_on": "mean",
                 "power_w": "mean",
             }
         )
+        # min_count=1 makes consumed_kwh NaN for hours with no valid flow/temp data,
+        # those rows are then removed by dropna so the predictor sees no phantom zeros.
         df_hourly["relay_on"] = df_hourly["relay_on"] > 0.5
         return df_hourly.dropna(how="all")
 
@@ -129,7 +131,11 @@ class HADataCollector:
             raw = state_obj.get("state", "")
             try:
                 ts = pd.to_datetime(ts_str, utc=True).tz_localize(None)
-                if dtype == "bool":
+                if raw in ("unavailable", "unknown", ""):
+                    # Explicitly mark the gap as NaN so it doesn't silently
+                    # forward-fill a stale reading over a long outage.
+                    val = float("nan")
+                elif dtype == "bool":
                     val = 1.0 if raw in ("on", "true", "1") else 0.0
                 else:
                     val = float(raw)
@@ -161,11 +167,10 @@ class HADataCollector:
         """Compute consumed kWh from water flow (L/min) and outlet temperature."""
         minutes = pd.date_range(start, end, freq="1min")
         flow = self._states_to_series(flow_history, start, end, dtype="float").fillna(0)
-        temp_out = self._states_to_series(temp_history, start, end, dtype="float").fillna(
-            self.boiler_set_tmp
-        )
+        temp_out = self._states_to_series(temp_history, start, end, dtype="float")
         # Q = m * c * ΔT  where m = flow (L/min) * density (1 kg/L)
         # kWh per minute = flow_l_min * 4.186 kJ/(kg·K) * (T_out - T_cold) / 3600
+        # NaN temp: propagates to kwh_per_min → those minutes excluded from hourly sum
         delta_t = (temp_out - self.cold_water_tmp).clip(lower=0)
         kwh_per_min = flow * 4.186 * delta_t / 3600.0
         consumed = pd.Series(kwh_per_min.values, index=minutes)
