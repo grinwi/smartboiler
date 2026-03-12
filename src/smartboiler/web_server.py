@@ -82,8 +82,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     header{background:#2b6cb0;color:#fff;padding:1rem 1.5rem;
            display:flex;align-items:center;gap:.75rem}
     header h1{font-size:1.25rem;font-weight:700}
-    .dot{width:13px;height:13px;border-radius:50%;background:#fc8181;flex-shrink:0}
-    .dot.on{background:#68d391}
+    .dot{width:13px;height:13px;border-radius:50%;background:#a0aec0;flex-shrink:0}
+    .dot.off{background:#fc8181}
+    .dot.on_idle{background:#f6e05e}
+    .dot.on_heating{background:#68d391}
     #ts{margin-left:auto;font-size:.8rem;opacity:.75}
     main{max-width:1280px;margin:1.25rem auto;padding:0 1rem;
          display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1.25rem}
@@ -95,8 +97,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     .unit{font-size:1rem;color:#a0aec0}
     .badge{display:inline-block;padding:.2rem .7rem;border-radius:999px;
            font-size:.78rem;font-weight:600;margin-top:.6rem}
-    .badge.on{background:#c6f6d5;color:#276749}
+    .badge.unavailable{background:#e2e8f0;color:#4a5568}
     .badge.off{background:#fed7d7;color:#9b2c2c}
+    .badge.on_idle{background:#fefcbf;color:#744210}
+    .badge.on_heating{background:#c6f6d5;color:#276749}
     .row{display:flex;justify-content:space-between;padding:.3rem 0;
          border-bottom:1px solid #f7fafc;font-size:.88rem}
     .row:last-child{border-bottom:none}
@@ -193,10 +197,18 @@ function render(d){
   const tmp=d.boiler_temp;
   document.getElementById('temp').innerHTML=
     (tmp!==null?tmp.toFixed(1):'—')+'<span class="unit"> °C</span>';
-  document.getElementById('dot').className='dot'+(d.relay_on?' on':'');
+  const status=d.boiler_status||'unavailable';
+  const statusMeta={
+    unavailable:{dot:'',   label:'⚠️ Unavailable'},
+    off:         {dot:'off',      label:'💤 OFF'},
+    on_idle:     {dot:'on_idle',  label:'✓ On — standby'},
+    on_heating:  {dot:'on_heating',label:'🔥 Heating'},
+  };
+  const meta=statusMeta[status]||statusMeta.unavailable;
+  document.getElementById('dot').className='dot '+meta.dot;
   const rb=document.getElementById('relay-badge');
-  rb.className='badge '+(d.relay_on?'on':'off');
-  rb.textContent=d.relay_on?'🔥 Heating ON':'💤 Heating OFF';
+  rb.className='badge '+status;
+  rb.textContent=meta.label;
   document.getElementById('set-tmp').textContent=(d.set_tmp??'—')+' °C';
   document.getElementById('min-tmp').textContent=(d.min_tmp??'—')+' °C';
   document.getElementById('heat-until').textContent=d.heating_until||'—';
@@ -308,7 +320,7 @@ def api_status() -> Response:
         state = _get_state()
         # Strip any sensitive fields before returning
         safe_keys = {
-            "boiler_temp", "relay_on", "set_tmp", "min_tmp",
+            "boiler_temp", "relay_on", "boiler_status", "set_tmp", "min_tmp",
             "heating_until", "last_legionella", "predictor_has_data",
             "forecast_24h", "plan_slots", "spot_prices_today",
             "hdo_schedule", "sys_info",
