@@ -419,9 +419,9 @@ class SmartBoilerController:
             for i, slot in enumerate(slots_copy):
                 plan_slots_json.append({
                     "label": slot.dt.strftime("%H:00"),
-                    "heating": plan_copy[i] if i < len(plan_copy) else False,
-                    "hdo_blocked": slot.hdo_blocked,
-                    "pv_free": slot.pv_surplus_kwh > 0.1,
+                    "heating": bool(plan_copy[i]) if i < len(plan_copy) else False,
+                    "hdo_blocked": bool(slot.hdo_blocked),
+                    "pv_free": bool(slot.pv_surplus_kwh > 0.1),
                 })
 
         available_entities = [
@@ -438,7 +438,7 @@ class SmartBoilerController:
             "min_tmp": self.boiler_min_tmp,
             "heating_until": None,  # plan-based, no explicit deadline
             "last_legionella": last_leg.strftime("%Y-%m-%d") if last_leg else None,
-            "predictor_has_data": self.predictor.has_enough_data(self.min_training_days),
+            "predictor_has_data": bool(self.predictor.has_enough_data(self.min_training_days)),
             "forecast_24h": [round(v, 4) for v in forecast_copy],
             "plan_slots": plan_slots_json,
             "spot_prices_today": {str(k): round(v, 2) for k, v in spot_copy.items()},
