@@ -24,6 +24,7 @@ def ctrl():
     c.hdo_learner = MagicMock()
     c.scheduler = MagicMock()
     c.spot_fetcher = None
+    c.calendar = None
     c._run_dashboard = MagicMock()
 
     # Config
@@ -55,14 +56,15 @@ def ctrl():
     c._forecast_24h = [0.0] * 24
     c._spot_prices = {}
     c._last_boiler_tmp = 50.0
-    c._plan_generated_at = datetime.now()
+    c._plan_generated_at = datetime.now().astimezone().astimezone()
     c._last_calib_ts = 0.0
     c._lock = threading.Lock()
 
-    # Default: relay off, no recent legionella, no power sensor
+    # Default: relay state "off" (available, thermostat cut), no recent legionella
+    c.ha.get_state.return_value = {"state": "off", "attributes": {}}
     c.ha.is_entity_on.return_value = False
     c.ha.get_state_value.return_value = None
-    c.store.get_last_legionella_heating.return_value = datetime.now()
+    c.store.get_last_legionella_heating.return_value = datetime.now().astimezone().astimezone()
 
     return c
 
@@ -143,15 +145,15 @@ class TestCurrentPlanHourIndex:
         assert ctrl._current_plan_hour_index() == 0
 
     def test_returns_zero_immediately_after_plan(self, ctrl):
-        ctrl._plan_generated_at = datetime.now()
+        ctrl._plan_generated_at = datetime.now().astimezone()
         assert ctrl._current_plan_hour_index() == 0
 
     def test_returns_correct_index_after_two_hours(self, ctrl):
-        ctrl._plan_generated_at = datetime.now() - timedelta(hours=2, minutes=5)
+        ctrl._plan_generated_at = datetime.now().astimezone() - timedelta(hours=2, minutes=5)
         assert ctrl._current_plan_hour_index() == 2
 
     def test_capped_at_23(self, ctrl):
-        ctrl._plan_generated_at = datetime.now() - timedelta(hours=30)
+        ctrl._plan_generated_at = datetime.now().astimezone() - timedelta(hours=30)
         assert ctrl._current_plan_hour_index() == 23
 
 
@@ -181,7 +183,7 @@ class TestFreezeProtection:
 class TestLegionellaProtection:
     def test_turns_on_when_overdue(self, ctrl):
         ctrl.store.get_last_legionella_heating.return_value = (
-            datetime.now() - timedelta(days=22)
+            datetime.now().astimezone().astimezone() - timedelta(days=22)
         )
         ctrl._last_boiler_tmp = 50.0
         ctrl.run_control_workflow()
@@ -189,7 +191,7 @@ class TestLegionellaProtection:
 
     def test_marks_complete_and_turns_off_at_65(self, ctrl):
         ctrl.store.get_last_legionella_heating.return_value = (
-            datetime.now() - timedelta(days=22)
+            datetime.now().astimezone().astimezone() - timedelta(days=22)
         )
         ctrl._last_boiler_tmp = 66.0
         ctrl.run_control_workflow()
@@ -197,7 +199,7 @@ class TestLegionellaProtection:
         ctrl.ha.turn_off.assert_called_with("switch.boiler")
 
     def test_no_legionella_action_when_recent(self, ctrl):
-        ctrl.store.get_last_legionella_heating.return_value = datetime.now()
+        ctrl.store.get_last_legionella_heating.return_value = datetime.now().astimezone().astimezone()
         ctrl._last_boiler_tmp = 50.0
         ctrl._heating_plan = [False] * 24
         ctrl.run_control_workflow()
@@ -212,21 +214,21 @@ class TestLegionellaProtection:
 
 class TestHeatingPlanExecution:
     def test_turns_on_when_plan_says_heat(self, ctrl):
-        ctrl._plan_generated_at = datetime.now()
+        ctrl._plan_generated_at = datetime.now().astimezone()
         ctrl._heating_plan = [True] + [False] * 23  # heat in hour 0
         ctrl._last_boiler_tmp = 45.0
         ctrl.run_control_workflow()
         ctrl.ha.turn_on.assert_called_with("switch.boiler")
 
     def test_turns_off_when_plan_says_idle(self, ctrl):
-        ctrl._plan_generated_at = datetime.now()
+        ctrl._plan_generated_at = datetime.now().astimezone()
         ctrl._heating_plan = [False] * 24  # no heating
         ctrl._last_boiler_tmp = 50.0
         ctrl.run_control_workflow()
         ctrl.ha.turn_off.assert_called_with("switch.boiler")
 
     def test_forces_on_below_min_tmp_even_if_plan_idle(self, ctrl):
-        ctrl._plan_generated_at = datetime.now()
+        ctrl._plan_generated_at = datetime.now().astimezone()
         ctrl._heating_plan = [False] * 24
         ctrl._last_boiler_tmp = 30.0  # below boiler_min_tmp=37
         ctrl.run_control_workflow()

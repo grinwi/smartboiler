@@ -50,7 +50,7 @@ class HADataCollector:
 
         Returns the updated full consumption history DataFrame.
         """
-        end = datetime.now()
+        end = datetime.now().astimezone()
         start = end - timedelta(hours=lookback_hours)
 
         df_new = self._fetch_hourly(start, end)
@@ -59,7 +59,7 @@ class HADataCollector:
             return self.store.load_consumption_history()
 
         df_all = self.store.append_consumption(df_new)
-        self.store.set_last_data_collection(datetime.now())
+        self.store.set_last_data_collection(datetime.now().astimezone())
         logger.info(
             "Collected %d new hourly rows; total history: %d rows",
             len(df_new),
@@ -69,23 +69,28 @@ class HADataCollector:
 
     def _fetch_hourly(self, start: datetime, end: datetime) -> pd.DataFrame:
         """Fetch entity history and aggregate to hourly kWh rows."""
+        # _states_to_series works with naive UTC-aligned timestamps internally.
+        # Strip timezone info here so start/end and parsed HA timestamps are comparable.
+        start_naive = start.replace(tzinfo=None) if start.tzinfo else start
+        end_naive = end.replace(tzinfo=None) if end.tzinfo else end
+
         # Get relay on/off state changes
         relay_history = self.ha.get_history(self.relay_entity_id, start, end)
-        # Get power history (optional, used for HDO detection)
+        # Get power history (optional)
         power_history: List[Dict] = []
         if self.relay_power_entity_id:
             power_history = self.ha.get_history(self.relay_power_entity_id, start, end)
 
         # Build minute-resolution series for relay state and power
-        relay_series = self._states_to_series(relay_history, start, end, dtype="bool")
-        power_series = self._states_to_series(power_history, start, end, dtype="float")
+        relay_series = self._states_to_series(relay_history, start_naive, end_naive, dtype="bool")
+        power_series = self._states_to_series(power_history, start_naive, end_naive, dtype="float")
 
         # Compute consumed kWh per hour via water flow sensor or fallback
         if self.water_flow_entity_id and self.water_temp_out_entity_id:
             flow_history = self.ha.get_history(self.water_flow_entity_id, start, end)
             temp_history = self.ha.get_history(self.water_temp_out_entity_id, start, end)
             consumed_series = self._compute_consumed_kwh_from_flow(
-                flow_history, temp_history, start, end
+                flow_history, temp_history, start_naive, end_naive
             )
         else:
             # Fallback: estimate from relay on-time (very rough)
