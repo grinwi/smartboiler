@@ -9,7 +9,10 @@
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+
+if TYPE_CHECKING:
+    from smartboiler.calendar_manager import BoilerEvent
 
 logger = logging.getLogger(__name__)
 
@@ -38,17 +41,46 @@ class HourSlot:
     pv_surplus_kwh: float   # free solar surplus available this hour
     spot_price: Optional[float]   # EUR/MWh; None = unknown
     hdo_blocked: bool
+    # Calendar override: vacation_min | vacation_off | boost_max | boost_temp | None
+    calendar_mode: Optional[str] = None
+    calendar_target_tmp: Optional[float] = None
     effective_cost: float = field(init=False)
 
     def __post_init__(self):
-        if self.hdo_blocked:
+        if self.hdo_blocked or self.calendar_mode == "vacation_off":
             self.effective_cost = float("inf")
+        elif self.calendar_mode in ("boost_max", "boost_temp"):
+            self.effective_cost = -2.0   # forced heat — higher priority than PV
         elif self.pv_surplus_kwh > 0.1:
-            self.effective_cost = -1.0   # free / highest priority
+            self.effective_cost = -1.0   # free solar
         elif self.spot_price is not None:
             self.effective_cost = self.spot_price
         else:
             self.effective_cost = DEFAULT_MEDIUM_PRICE
+
+
+# ── Calendar helpers ──────────────────────────────────────────────────────────
+
+def _calendar_mode_for_hour(
+    slot_dt: datetime,
+    calendar_events: Optional[List],
+) -> Tuple[Optional[str], Optional[float]]:
+    """Return (calendar_mode, target_temp) for the given hour slot."""
+    if not calendar_events:
+        return None, None
+    _priority = {"vacation_off": 0, "boost_max": 1, "boost_temp": 1, "vacation_min": 2}
+    covering = [e for e in calendar_events if e.covers_hour(slot_dt)]
+    if not covering:
+        return None, None
+    best = min(covering, key=lambda e: _priority.get(e.event_type, 99))
+    return best.event_type, best.target_temp
+
+
+def _slot_min_tmp(slot: HourSlot, normal_min_tmp: float, vacation_min_tmp: float) -> float:
+    """Effective min_tmp constraint for a given slot, respecting calendar mode."""
+    if slot.calendar_mode in ("vacation_min", "vacation_off"):
+        return vacation_min_tmp
+    return normal_min_tmp
 
 
 class HeatingScheduler:
@@ -87,13 +119,15 @@ class HeatingScheduler:
         spot_prices: Dict[int, Optional[float]],
         hdo_blocked: List[bool],
         from_dt: Optional[datetime] = None,
+        calendar_events: Optional[List] = None,
     ) -> List[HourSlot]:
         """Build a list of HourSlots for the next 24 hours."""
         if from_dt is None:
-            from_dt = datetime.now().replace(minute=0, second=0, microsecond=0)
+            from_dt = datetime.now().astimezone().replace(minute=0, second=0, microsecond=0)
         slots = []
         for i in range(24):
             dt_i = from_dt + timedelta(hours=i)
+            cal_mode, cal_target = _calendar_mode_for_hour(dt_i, calendar_events)
             slots.append(
                 HourSlot(
                     index=i,
@@ -102,6 +136,8 @@ class HeatingScheduler:
                     pv_surplus_kwh=pv_forecast[i] if i < len(pv_forecast) else 0.0,
                     spot_price=spot_prices.get(i),
                     hdo_blocked=hdo_blocked[i] if i < len(hdo_blocked) else False,
+                    calendar_mode=cal_mode,
+                    calendar_target_tmp=cal_target,
                 )
             )
         return slots
@@ -114,30 +150,37 @@ class HeatingScheduler:
         spot_prices: Dict[int, Optional[float]],
         hdo_blocked: List[bool],
         from_dt: Optional[datetime] = None,
+        calendar_events: Optional[List] = None,
+        vacation_min_tmp: Optional[float] = None,
     ) -> Tuple[List[bool], List[HourSlot]]:
         """Compute optimal heating plan for next 24 hours.
 
         Returns:
             (heating_plan, slots) — heating_plan[i] is True if hour i should heat.
         """
+        _vacation_min = vacation_min_tmp if vacation_min_tmp is not None else self.boiler.min_tmp
         slots = self.build_slots(
-            consumption_forecast, pv_forecast, spot_prices, hdo_blocked, from_dt
+            consumption_forecast, pv_forecast, spot_prices, hdo_blocked,
+            from_dt, calendar_events,
         )
         n = len(slots)
         heating_plan = [False] * n
 
-        # Step 1: always heat during PV surplus (free energy)
+        # Step 1: always heat during PV surplus and boost events (free / forced energy)
         for slot in slots:
-            if slot.pv_surplus_kwh > 0.1 and not slot.hdo_blocked:
+            if slot.effective_cost < 0:   # -2 (boost) or -1 (PV)
                 heating_plan[slot.index] = True
 
-        # Step 2: greedy fill — add cheapest hours until min_tmp constraint satisfied
+        # Step 2: greedy fill — add cheapest hours until per-slot min_tmp constraint satisfied
         max_iterations = n
         for _ in range(max_iterations):
             trajectory = self._simulate(current_tmp, slots, heating_plan)
-            violations = [i for i, t in enumerate(trajectory) if t < self.boiler.min_tmp]
+            violations = [
+                i for i, t in enumerate(trajectory)
+                if t < _slot_min_tmp(slots[i], self.boiler.min_tmp, _vacation_min)
+            ]
             if not violations:
-                break  # all hours satisfy min_tmp
+                break
 
             first_viol = min(violations)
             candidates = [
@@ -145,13 +188,12 @@ class HeatingScheduler:
                 for s in slots
                 if s.index <= first_viol
                 and not heating_plan[s.index]
-                and not s.hdo_blocked
                 and s.effective_cost < float("inf")
             ]
             if not candidates:
-                # No slots left — force-enable all unblocked hours
+                # No slots left — force-enable all non-blocked hours
                 for s in slots:
-                    if not s.hdo_blocked:
+                    if s.effective_cost < float("inf"):
                         heating_plan[s.index] = True
                 break
 
@@ -207,6 +249,8 @@ class HeatingScheduler:
                     "consumption_kwh": round(s.consumption_kwh, 4),
                     "spot_price": s.spot_price,
                     "label": s.dt.strftime("%H:00"),
+                    "calendar_mode": s.calendar_mode,
+                    "calendar_target_tmp": s.calendar_target_tmp,
                 }
                 for s in slots
             ],

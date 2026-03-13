@@ -152,10 +152,13 @@ class InfluxBootstrapper:
             return False
         return True
 
-    def run(self) -> dict:
+    def run(self, hdo_learner=None) -> dict:
         """
         Run the full bootstrap.  Returns a summary dict with counters.
         Marks 'influx_bootstrap_done' in state.json when complete.
+
+        Args:
+            hdo_learner: Optional HDOLearner instance to seed from relay history.
         """
         if not self.is_configured():
             logger.warning("InfluxDB bootstrap: not configured, skipping.")
@@ -168,7 +171,7 @@ class InfluxBootstrapper:
             return {}
 
         end = datetime.now()
-        summary = {"consumption_hours": 0, "calib_events": 0}
+        summary = {"consumption_hours": 0, "calib_events": 0, "hdo_observations": 0}
 
         logger.info(
             "InfluxDB bootstrap: importing from %s to %s in %d-day chunks",
@@ -207,9 +210,75 @@ class InfluxBootstrapper:
             except Exception as e:
                 logger.warning("InfluxDB bootstrap: thermal seeding failed: %s", e)
 
+        # ── 3. HDO learner seeding ─────────────────────────────────────────
+        if hdo_learner is not None and self.relay_entity:
+            try:
+                n = self._seed_hdo_learner(hdo_learner, self.start_date, end)
+                summary["hdo_observations"] = n
+                logger.info("InfluxDB bootstrap: seeded HDO learner with %d observations", n)
+            except Exception as e:
+                logger.warning("InfluxDB bootstrap: HDO seeding failed: %s", e)
+
         self.store.set("influx_bootstrap_done", True)
         logger.info("InfluxDB bootstrap complete: %s", summary)
         return summary
+
+    # ── HDO learner seeding ────────────────────────────────────────────────
+
+    def _seed_hdo_learner(self, hdo_learner, start: datetime, end: datetime) -> int:
+        """
+        Feed HDO learner from InfluxDB relay state history.
+
+        Scans minute-resolution relay states looking for "unavailable" (HDO blocking).
+        Each minute is fed as one observation — unavailable=True for HDO, False otherwise.
+        Returns the number of observations recorded.
+        """
+        t0 = _fmt(start)
+        t1 = _fmt(end)
+
+        # Query relay state at 1-min resolution, mapping "unavailable"→True, rest→False
+        unavail_series = self._query_series(
+            meas=self.meas_state,
+            entity=self.relay_entity,
+            field="value",
+            agg="last",
+            t0=t0, t1=t1,
+            fill="null",
+            dtype="unavailable",
+        )
+
+        if unavail_series.empty:
+            return 0
+
+        # Also need the "not-unavailable" evidence — query the bool series for on/off
+        relay_bool = self._query_series(
+            meas=self.meas_state,
+            entity=self.relay_entity,
+            field="value",
+            agg="last",
+            t0=t0, t1=t1,
+            fill="null",
+            dtype="bool",
+        )
+
+        # Merge: where unavail_series is True → relay_unavailable=True
+        #        where relay_bool is not None → relay_unavailable=False (available)
+        #        where both are NaN → skip (sensor offline, no evidence)
+        idx = unavail_series.index.union(relay_bool.index if not relay_bool.empty else unavail_series.index)
+        unavail = unavail_series.reindex(idx)
+        known = relay_bool.reindex(idx).notna() | unavail.notna()
+
+        n = 0
+        for ts in idx[known]:
+            try:
+                dt = ts.to_pydatetime()
+                is_unavailable = bool(unavail.get(ts, False) or False)
+                hdo_learner.observe(dt, relay_unavailable=is_unavailable)
+                n += 1
+            except Exception:
+                continue
+
+        return n
 
     # ── Consumption import ─────────────────────────────────────────────────
 
@@ -485,6 +554,11 @@ class InfluxBootstrapper:
             series = series.map(
                 lambda x: True if str(x).lower() in ("on", "true", "1", "1.0") else
                           (False if str(x).lower() in ("off", "false", "0", "0.0") else None)
+            )
+        elif dtype == "unavailable":
+            # True when state is "unavailable" (HDO signal), False for all other states
+            series = series.map(
+                lambda x: True if str(x).lower() == "unavailable" else False
             )
         else:
             series = pd.to_numeric(series, errors="coerce")

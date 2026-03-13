@@ -121,7 +121,7 @@ class StateStore:
             except Exception:
                 pass
         # Default: now (so legionella check doesn't immediately trigger)
-        return datetime.now()
+        return datetime.now().astimezone()
 
     def set_last_legionella_heating(self, dt: datetime) -> None:
         self.set("last_legionella_heating", dt.isoformat())
@@ -161,3 +161,13 @@ class StateStore:
 
     def set_heating_until(self, dt: Optional[datetime]) -> None:
         self.set("heating_until", dt.isoformat() if dt else None)
+
+    def get_last_boiler_tmp(self) -> Optional[float]:
+        val = self._state.get("last_boiler_tmp")
+        try:
+            return float(val) if val is not None else None
+        except (ValueError, TypeError):
+            return None
+
+    def set_last_boiler_tmp(self, tmp: float) -> None:
+        self.set("last_boiler_tmp", tmp)

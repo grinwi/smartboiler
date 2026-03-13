@@ -14,7 +14,7 @@ import threading
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ class SmartBoilerController:
         from smartboiler.hdo_learner import HDOLearner
         from smartboiler.scheduler import HeatingScheduler, BoilerParams
         from smartboiler.spot_price import SpotPriceFetcher
-        from smartboiler.web_server import set_state_provider, run_dashboard
+        from smartboiler.web_server import set_state_provider, set_extra_provider, set_calendar_manager, run_dashboard
         from smartboiler.thermal_model import ThermalModel
 
         self._run_dashboard = run_dashboard
@@ -70,22 +70,23 @@ class SmartBoilerController:
         self.boiler_area_tmp_entity_id = options.get("boiler_area_tmp_entity_id") or None
         self.boiler_direct_tmp_entity_id = options.get("boiler_direct_tmp_entity_id") or None
         self.pv_surplus_entity_id = options.get("pv_surplus_entity_id") or None
-        self.energy_tariff_entity_id = options.get("energy_tariff_entity_id") or None
         self.person_entity_ids: List[str] = options.get("person_entity_ids") or []
+
+        self.calendar_entity_id = options.get("calendar_entity_id") or ""
+        self.vacation_mode = options.get("vacation_mode", "min_temp")
+        self.vacation_min_tmp = float(options.get("vacation_min_temp", 30))
 
         self.boiler_volume_l = float(options.get("boiler_volume", 120))
         self.boiler_set_tmp = float(options.get("boiler_set_tmp", 60))
         self.boiler_min_tmp = float(options.get("boiler_min_operation_tmp", 37))
         self.boiler_watt = float(options.get("boiler_watt_power", 2000))
         self.area_tmp = float(options.get("average_boiler_surroundings_temp", 20))
-        self.boiler_case_max_tmp = float(options.get("boiler_case_max_tmp", 40))
 
         self.thermal_window_days = float(options.get("thermal_model_window_days", 7.0))
         self.thermal_mass_ratio  = float(options.get("thermal_mass_ratio", 0.3))
 
         self.has_spot_price = bool(options.get("has_spot_price", False))
         self.spot_price_region = options.get("spot_price_region", "CZ")
-        self.has_hdo = bool(options.get("hdo", False))
         self.hdo_explicit_schedule = options.get("hdo_explicit_schedule", "") or ""
         self.prediction_conservatism = options.get("prediction_conservatism", "medium")
         self.min_training_days = int(options.get("min_training_days", MIN_TRAINING_DAYS_DEFAULT))
@@ -135,6 +136,17 @@ class SmartBoilerController:
 
         self.spot_fetcher = SpotPriceFetcher(country=self.spot_price_region) if self.has_spot_price else None
 
+        # Calendar manager (optional — only when calendar_entity_id is configured)
+        self.calendar: Optional[Any] = None
+        if self.calendar_entity_id:
+            from smartboiler.calendar_manager import CalendarManager
+            self.calendar = CalendarManager(
+                ha_client=self.ha,
+                calendar_entity_id=self.calendar_entity_id,
+                vacation_mode=self.vacation_mode,
+            )
+            logger.info("Calendar integration enabled: %s", self.calendar_entity_id)
+
         # Thermal model (learned Newton's-law cooling for case-sensor estimation)
         self.thermal_model = ThermalModel(
             window_days=self.thermal_window_days,
@@ -165,13 +177,16 @@ class SmartBoilerController:
         self._plan_slots: List = []
         self._forecast_24h: List[float] = [0.0] * 24
         self._spot_prices: Dict[int, Optional[float]] = {}
-        self._last_boiler_tmp: Optional[float] = None
+        self._last_boiler_tmp: Optional[float] = self.store.get_last_boiler_tmp()
         self._plan_generated_at: Optional[datetime] = None
         self._last_calib_ts: float = 0.0   # debounce for thermostat-trip detection
         self._lock = threading.Lock()
 
         # ── Web dashboard ─────────────────────────────────────────────────
         set_state_provider(self._get_dashboard_state)
+        set_extra_provider(self._get_extra_data)
+        if self.calendar:
+            set_calendar_manager(self.calendar)
 
     # ── Temperature estimation ────────────────────────────────────────────
 
@@ -252,10 +267,17 @@ class SmartBoilerController:
             # 7. Get current boiler temperature
             boiler_tmp = self._get_boiler_tmp() or self.boiler_min_tmp
 
-            # 8. Run scheduler
+            # 8. Fetch upcoming calendar events (empty list when calendar not configured)
+            now_dt = datetime.now().astimezone()
+            calendar_events = (
+                self.calendar.get_events(now_dt, now_dt + timedelta(hours=24))
+                if self.calendar else []
+            )
+
+            # 9. Run scheduler
             with self._lock:
                 self._spot_prices_indexed = {
-                    i: self._spot_prices.get((datetime.now().hour + i) % 24)
+                    i: self._spot_prices.get((now_dt.hour + i) % 24)
                     for i in range(24)
                 }
                 self._heating_plan, self._plan_slots = self.scheduler.plan(
@@ -264,9 +286,11 @@ class SmartBoilerController:
                     pv_forecast=pv_forecast,
                     spot_prices=self._spot_prices_indexed,
                     hdo_blocked=hdo_blocked,
+                    calendar_events=calendar_events,
+                    vacation_min_tmp=self.vacation_min_tmp,
                 )
                 self._forecast_24h = forecast
-                self._plan_generated_at = datetime.now()
+                self._plan_generated_at = datetime.now().astimezone()
 
             # 9. Persist plan, HDO learner, and thermal model
             plan_serializable = [bool(h) for h in self._heating_plan]
@@ -303,16 +327,24 @@ class SmartBoilerController:
             boiler_tmp = self._get_boiler_tmp()
             if boiler_tmp is not None:
                 self._last_boiler_tmp = boiler_tmp
+                self.store.set_last_boiler_tmp(boiler_tmp)
             else:
                 boiler_tmp = self._last_boiler_tmp or self.boiler_min_tmp
 
-            relay_on = self.ha.is_entity_on(self.boiler_switch_entity_id) or False
+            # Read raw relay state once — drives both HDO learning and thermal model.
+            # "unavailable" = HDO cut the circuit (physical relay disconnected by utility).
+            # "on"/"off"    = relay available; "off" means boiler thermostat reached target.
+            relay_state_obj = self.ha.get_state(self.boiler_switch_entity_id)
+            relay_state_str = relay_state_obj["state"] if relay_state_obj else None
+            relay_on = relay_state_str == "on"
+            relay_unavailable = relay_state_str == "unavailable"
+
             power_w = 0.0
             if self.boiler_power_entity_id:
                 power_w = self.ha.get_state_value(self.boiler_power_entity_id, default=0.0) or 0.0
 
-            # HDO observation
-            self.hdo_learner.observe(datetime.now(), relay_on, float(power_w))
+            # HDO observation — unavailable state is the definitive HDO signal
+            self.hdo_learner.observe(datetime.now().astimezone(), relay_unavailable)
 
             # ── Thermal model observations ────────────────────────────────
             if self.boiler_case_tmp_entity_id:
@@ -346,14 +378,44 @@ class SmartBoilerController:
 
             # Legionella protection
             last_leg = self.store.get_last_legionella_heating()
-            if datetime.now() - last_leg > timedelta(days=LEGIONELLA_INTERVAL_DAYS):
+            now_tz = datetime.now().astimezone()
+            if now_tz - last_leg > timedelta(days=LEGIONELLA_INTERVAL_DAYS):
                 logger.info("Legionella protection: heating to 65°C (tmp=%.1f)", boiler_tmp)
                 self.ha.turn_on(self.boiler_switch_entity_id)
                 if boiler_tmp >= 65.0:
-                    self.store.set_last_legionella_heating(datetime.now())
+                    self.store.set_last_legionella_heating(now_tz)
                     self.ha.turn_off(self.boiler_switch_entity_id)
                     logger.info("Legionella protection complete.")
                 return
+
+            # ── Calendar event override (legionella already handled above) ──────
+            if self.calendar:
+                active_evt = self.calendar.get_active_event(now_tz)
+                if active_evt:
+                    etype = active_evt.event_type
+                    if etype == "vacation_off":
+                        logger.info("Calendar [%s]: boiler OFF (%s)", etype, active_evt.summary)
+                        self.ha.turn_off(self.boiler_switch_entity_id)
+                        return
+                    elif etype == "vacation_min":
+                        if boiler_tmp < self.vacation_min_tmp:
+                            logger.info("Calendar [%s]: heating to min %.1f°C", etype, self.vacation_min_tmp)
+                            self.ha.turn_on(self.boiler_switch_entity_id)
+                        else:
+                            self.ha.turn_off(self.boiler_switch_entity_id)
+                        return
+                    elif etype in ("boost_max", "boost_temp"):
+                        target = (
+                            active_evt.target_temp
+                            if etype == "boost_temp" and active_evt.target_temp
+                            else self.boiler_set_tmp
+                        )
+                        if boiler_tmp < target:
+                            logger.info("Calendar [%s]: heating to %.1f°C", etype, target)
+                            self.ha.turn_on(self.boiler_switch_entity_id)
+                        else:
+                            self.ha.turn_off(self.boiler_switch_entity_id)
+                        return
 
             # Execute current heating plan
             current_hour_idx = self._current_plan_hour_index()
@@ -386,7 +448,7 @@ class SmartBoilerController:
         """Return the index into the 24h plan for the current time."""
         if self._plan_generated_at is None:
             return 0
-        hours_elapsed = int((datetime.now() - self._plan_generated_at).total_seconds() / 3600)
+        hours_elapsed = int((datetime.now().astimezone() - self._plan_generated_at).total_seconds() / 3600)
         return min(hours_elapsed, 23)
 
     # ── Dashboard state ───────────────────────────────────────────────────
@@ -419,9 +481,10 @@ class SmartBoilerController:
             for i, slot in enumerate(slots_copy):
                 plan_slots_json.append({
                     "label": slot.dt.strftime("%H:00"),
-                    "heating": plan_copy[i] if i < len(plan_copy) else False,
-                    "hdo_blocked": slot.hdo_blocked,
-                    "pv_free": slot.pv_surplus_kwh > 0.1,
+                    "heating": bool(plan_copy[i]) if i < len(plan_copy) else False,
+                    "hdo_blocked": bool(slot.hdo_blocked),
+                    "pv_free": bool(slot.pv_surplus_kwh > 0.1),
+                    "calendar_mode": slot.calendar_mode,
                 })
 
         available_entities = [
@@ -438,12 +501,14 @@ class SmartBoilerController:
             "min_tmp": self.boiler_min_tmp,
             "heating_until": None,  # plan-based, no explicit deadline
             "last_legionella": last_leg.strftime("%Y-%m-%d") if last_leg else None,
-            "predictor_has_data": self.predictor.has_enough_data(self.min_training_days),
+            "predictor_has_data": bool(self.predictor.has_enough_data(self.min_training_days)),
             "forecast_24h": [round(v, 4) for v in forecast_copy],
             "plan_slots": plan_slots_json,
             "spot_prices_today": {str(k): round(v, 2) for k, v in spot_copy.items()},
             "hdo_schedule": self.hdo_learner.get_weekly_schedule(),
             "available_entities": available_entities,
+            "calendar_events": self.calendar.upcoming_events_json() if self.calendar else [],
+            "calendar_entity_id": self.calendar_entity_id,
             "sys_info": [
                 ["Boiler volume", f"{int(self.boiler_volume_l)} L"],
                 ["Boiler power", f"{int(self.boiler_watt)} W"],
@@ -454,6 +519,165 @@ class SmartBoilerController:
                 ["Plan generated", self._plan_generated_at.strftime("%H:%M") if self._plan_generated_at else "—"],
             ],
         }
+
+    # ── Extra data providers (history / accuracy / predictor) ─────────────
+
+    def _get_extra_data(self, endpoint: str, params: Dict) -> Dict:
+        if endpoint == "history":
+            return self._get_history_data(params.get("period", "7d"))
+        if endpoint == "accuracy":
+            return self._get_accuracy_data()
+        if endpoint == "predictor":
+            return self._get_predictor_data()
+        return {}
+
+    def _get_history_data(self, period: str = "7d") -> Dict:
+        import pandas as pd
+
+        empty: Dict = {"labels": [], "consumption": [], "relay_on": [], "power_w": [],
+                       "daily_stats": [], "period": period}
+        df = self.store.load_consumption_history()
+        if df.empty:
+            return empty
+
+        days_map = {"1d": 1, "7d": 7, "30d": 30, "90d": 90}
+        days = days_map.get(period, 7)
+        cutoff = pd.Timestamp.now() - pd.Timedelta(days=days)
+        df_f = df[df.index >= cutoff].copy()
+        if df_f.empty:
+            return empty
+
+        for col in ("relay_on", "power_w"):
+            if col not in df_f.columns:
+                df_f[col] = 0.0
+        df_f["relay_on"] = df_f["relay_on"].astype(float)
+        df_f["consumed_kwh"] = df_f["consumed_kwh"].clip(lower=0.0)
+        df_f = df_f.fillna(0.0)
+
+        freq = "1h" if days <= 7 else ("3h" if days <= 30 else "1D")
+        label_fmt = "%H:%M" if days <= 1 else ("%m-%d %H:00" if days <= 30 else "%m-%d")
+
+        agg = df_f.resample(freq).agg(
+            {"consumed_kwh": "sum", "relay_on": "mean", "power_w": "mean"}
+        ).fillna(0.0)
+
+        daily = df_f.resample("1D").agg(
+            {"consumed_kwh": "sum", "relay_on": "sum", "power_w": "mean"}
+        ).fillna(0.0)
+
+        daily_stats = [
+            {
+                "date": ts.strftime("%Y-%m-%d"),
+                "consumption_kwh": round(float(row["consumed_kwh"]), 3),
+                "heating_hours": int(round(float(row["relay_on"]))),
+                "avg_power_w": round(float(row["power_w"]), 0),
+            }
+            for ts, row in daily.iterrows()
+        ]
+
+        return {
+            "labels":       [ts.strftime(label_fmt) for ts in agg.index],
+            "consumption":  [round(float(v), 4) for v in agg["consumed_kwh"]],
+            "relay_on":     [round(float(v), 3) for v in agg["relay_on"]],
+            "power_w":      [round(float(v), 1) for v in agg["power_w"]],
+            "daily_stats":  daily_stats,
+            "period":       period,
+        }
+
+    def _get_accuracy_data(self) -> Dict:
+        import numpy as np
+
+        df = self.store.load_consumption_history()
+        if df.empty or "consumed_kwh" not in df.columns:
+            return {"by_hour": [], "mae": None, "bias": None}
+
+        by_hour = []
+        all_errors = []
+        for hour in range(24):
+            mask = df.index.hour == hour
+            actual_vals = df.loc[mask, "consumed_kwh"].clip(lower=0).dropna().tolist()
+            if not actual_vals:
+                continue
+            weekdays = df.loc[mask].index.weekday.unique().tolist()
+            pred_mean = float(np.mean(
+                [self.predictor.predict_hour(int(wd), hour) for wd in weekdays]
+            )) if weekdays else 0.0
+            act_mean = float(np.mean(actual_vals))
+            all_errors.append(pred_mean - act_mean)
+            by_hour.append({
+                "hour":        hour,
+                "predicted":   round(pred_mean, 4),
+                "actual_mean": round(act_mean, 4),
+                "count":       len(actual_vals),
+            })
+
+        if all_errors:
+            mae  = round(float(np.mean([abs(e) for e in all_errors])), 4)
+            bias = round(float(np.mean(all_errors)), 4)
+        else:
+            mae = bias = None
+        return {"by_hour": by_hour, "mae": mae, "bias": bias}
+
+    def _get_predictor_data(self) -> Dict:
+        day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        summary = self.predictor.get_histogram_summary()
+        grid: Dict = {}
+        for wd_idx, day in enumerate(day_names):
+            grid[day] = {}
+            for hour in range(24):
+                pred = self.predictor.predict_hour(wd_idx, hour)
+                slot = summary.get(day, {}).get(hour, {})
+                grid[day][str(hour)] = {
+                    "predicted": round(pred, 4),
+                    "p50":       slot.get("p50", 0.0),
+                    "p75":       slot.get("p75", 0.0),
+                    "count":     slot.get("count", 0),
+                }
+        return {
+            "heatmap":         grid,
+            "quantile":        self.predictor.quantile,
+            "total_samples":   self.predictor._total_samples,
+            "global_fallback": round(self.predictor._global_fallback, 4),
+        }
+
+    # ── HDO bootstrap from HA history ─────────────────────────────────────
+
+    def _bootstrap_hdo_from_ha(self) -> None:
+        """Seed HDO learner from HA REST API relay history on fresh startup.
+
+        Runs only when the learner has no observations (fresh install or cleared
+        state after InfluxDB bootstrap already ran without seeding the learner).
+        Pulls HISTORY_WEEKS weeks of relay history and feeds each minute's state
+        as an observe() call.
+        """
+        if self.hdo_learner.observation_count() > 0:
+            return
+        from smartboiler.hdo_learner import HISTORY_WEEKS
+        start = datetime.now().astimezone() - timedelta(weeks=HISTORY_WEEKS)
+        logger.info("Bootstrapping HDO learner from HA history (last %d weeks)…", HISTORY_WEEKS)
+        try:
+            history = self.ha.get_history(self.boiler_switch_entity_id, start)
+        except Exception as e:
+            logger.warning("HA HDO bootstrap failed to fetch history: %s", e)
+            return
+        if not history:
+            logger.info("HA HDO bootstrap: no relay history returned.")
+            return
+        count = 0
+        for entry in history:
+            state_str = entry.get("state", "")
+            last_changed = entry.get("last_changed") or entry.get("last_updated")
+            if not last_changed:
+                continue
+            try:
+                dt = datetime.fromisoformat(last_changed.replace("Z", "+00:00")).astimezone()
+            except Exception:
+                continue
+            relay_unavailable = state_str == "unavailable"
+            self.hdo_learner.observe(dt, relay_unavailable)
+            count += 1
+        self.store.save_pickle("hdo_learner", self.hdo_learner)
+        logger.info("HDO learner seeded from HA history: %d state transitions ingested.", count)
 
     # ── Main loops ────────────────────────────────────────────────────────
 
@@ -472,15 +696,19 @@ class SmartBoilerController:
         # Run InfluxDB bootstrap if needed (one-time, blocks until complete)
         if self._bootstrapper.should_run():
             logger.info("InfluxDB bootstrap starting — importing historical data…")
-            summary = self._bootstrapper.run()
-            # Persist refreshed thermal model immediately after seeding
+            summary = self._bootstrapper.run(hdo_learner=self.hdo_learner)
+            # Persist refreshed models immediately after seeding
             self.store.save_pickle("thermal_model", self.thermal_model)
+            self.store.save_pickle("hdo_learner", self.hdo_learner)
             logger.info("InfluxDB bootstrap done: %s", summary)
+
+        # HA-based HDO bootstrap (fallback: no InfluxDB or fresh install)
+        self._bootstrap_hdo_from_ha()
 
         # Run initial forecast immediately
         self.run_forecast_workflow()
 
-        last_forecast_run = datetime.now()
+        last_forecast_run = datetime.now().astimezone()
 
         logger.info("Starting control loop (interval: %ds)", CONTROL_LOOP_INTERVAL_S)
         while True:
@@ -490,10 +718,10 @@ class SmartBoilerController:
                 logger.error("Unhandled control error: %s", e)
 
             # Re-run forecast every hour
-            if datetime.now() - last_forecast_run >= timedelta(seconds=FORECAST_LOOP_INTERVAL_S):
+            if datetime.now().astimezone() - last_forecast_run >= timedelta(seconds=FORECAST_LOOP_INTERVAL_S):
                 try:
                     self.run_forecast_workflow()
-                    last_forecast_run = datetime.now()
+                    last_forecast_run = datetime.now().astimezone()
                 except Exception as e:
                     logger.error("Unhandled forecast error: %s", e)
 

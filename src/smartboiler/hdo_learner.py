@@ -3,107 +3,189 @@
 # Author: Adam Grünwald
 #
 # HDO (ripple control) pattern learner.
-# Detects when relay is ON but measured power ≈ 0W → HDO is blocking.
-# Builds a weekday×hour confidence map that adapts as the utility changes schedules.
+#
+# HDO blocking signal: the boiler switch entity reports state "unavailable" in HA.
+# This happens because the HDO relay physically cuts the circuit, making the smart
+# plug/switch unable to communicate.
+#
+# NOTE: relay available + power = 0  means the boiler thermostat target temperature
+# was reached — this is NOT HDO and must NOT be treated as a blocking signal.
+#
+# Resolution: 5-minute slots (288 per day).  HDO schedules like "12:05-13:35" can
+# only be represented correctly at this granularity.
+#
+# Trust policy: a slot is only considered blocked when observations span at least
+# MIN_WEEKS_TO_TRUST distinct ISO calendar weeks, ensuring we never rely on a single
+# anomalous reading.
 
 import logging
-from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from datetime import datetime, timezone
+from typing import Dict, List, Optional, Set, Tuple
 
 import numpy as np
 
 logger = logging.getLogger(__name__)
 
-POWER_ZERO_THRESHOLD_W = 50.0  # below this with relay ON = HDO blocking
-MIN_CONFIDENCE_TO_BLOCK = 0.6   # 60% of weighted observations = blocked
+SLOT_MINUTES = 5                # resolution: 5 minutes
+SLOTS_PER_DAY = 24 * 60 // SLOT_MINUTES   # 288 slots per day
 HISTORY_WEEKS = 8               # forget observations older than this
+MIN_WEEKS_TO_TRUST = 2          # need observations from ≥2 distinct calendar weeks
+MIN_CONFIDENCE_TO_BLOCK = 0.7   # ≥70% of weighted observations must be "unavailable"
+
+
+def _now_ts() -> float:
+    return datetime.now(tz=timezone.utc).timestamp()
+
+
+def _parse_hhmm(s: str) -> Tuple[int, int]:
+    """Parse "HH:MM" or "HH" into (hour, minute)."""
+    parts = s.strip().split(":")
+    h = int(parts[0])
+    m = int(parts[1]) if len(parts) > 1 else 0
+    return h, m
 
 
 class HDOLearner:
-    """Infers HDO blocking schedule from power consumption observations."""
+    """Infers HDO blocking schedule from relay-unavailable observations.
+
+    Call observe() every control-loop cycle (e.g. every 60 s) with the
+    current raw state of the boiler switch entity.  The learner accumulates
+    per-slot evidence and uses exponential decay so that schedule changes
+    propagate within a few weeks.
+    """
 
     def __init__(self, decay_weeks: int = 4):
         """
         Args:
-            decay_weeks: Exponential decay half-life for weighting recent vs old observations.
+            decay_weeks: Exponential decay half-life (weeks) for weighting
+                         recent vs old observations.
         """
         self.decay_weeks = decay_weeks
-        # (weekday, hour) → [(unix_timestamp, is_blocked), ...]
-        self._observations: Dict[Tuple[int, int], List[Tuple[float, bool]]] = {}
-        self._explicit_blocked: List[Tuple[int, int]] = []
+        # (weekday, slot_idx) → [(unix_ts, is_unavailable, (iso_year, iso_week)), ...]
+        self._observations: Dict[
+            Tuple[int, int],
+            List[Tuple[float, bool, Tuple[int, int]]]
+        ] = {}
+        # Set of (weekday, slot_idx) explicitly blocked by config string
+        self._explicit_blocked: Set[Tuple[int, int]] = set()
 
-    def set_explicit_schedule(self, blocked_hours: str) -> None:
-        """Parse an explicit HDO schedule from config string.
+    # ── Explicit schedule ─────────────────────────────────────────────────────
 
-        Format: "22:00-06:00,13:00-15:00" (start-end pairs, can wrap midnight).
-        Explicit schedule takes priority over learned schedule.
+    def set_explicit_schedule(self, schedule_str: Optional[str]) -> None:
+        """Parse an explicit HDO schedule from a config string.
+
+        Format: "HH:MM-HH:MM[,HH:MM-HH:MM,...]"  (5-minute resolution).
+        Examples:
+            "22:00-06:00"          night window, wraps midnight
+            "12:05-13:35"          sub-hour window
+            "22:00-06:00,13:00-15:00"  two segments
+
+        Applies to all weekdays.  Calling again replaces the previous schedule.
+        Explicit schedule always takes priority over learned schedule.
         """
-        self._explicit_blocked = []
-        if not blocked_hours or blocked_hours.strip() in ("", "empty"):
+        self._explicit_blocked = set()
+        if not schedule_str or schedule_str.strip().lower() in ("", "empty"):
             return
-        for segment in blocked_hours.split(","):
+        for segment in schedule_str.split(","):
             segment = segment.strip()
             if "-" not in segment:
                 continue
             try:
                 start_str, end_str = segment.split("-", 1)
-                start_h = int(start_str.split(":")[0])
-                end_h = int(end_str.split(":")[0])
-                if start_h < end_h:
-                    hours = range(start_h, end_h)
-                elif start_h > end_h:  # wraps midnight
-                    hours = list(range(start_h, 24)) + list(range(0, end_h))
-                else:
-                    continue  # zero-length, skip
-                for h in hours:
+                s_h, s_m = _parse_hhmm(start_str)
+                e_h, e_m = _parse_hhmm(end_str)
+                start_slot = (s_h * 60 + s_m) // SLOT_MINUTES
+                end_slot = (e_h * 60 + e_m) // SLOT_MINUTES
+                if start_slot == end_slot:
+                    continue  # zero-length segment — skip
+                if start_slot < end_slot:
+                    slot_range: List[int] = list(range(start_slot, end_slot))
+                else:  # wraps midnight
+                    slot_range = list(range(start_slot, SLOTS_PER_DAY)) + list(range(0, end_slot))
+                for s in slot_range:
                     for wd in range(7):
-                        self._explicit_blocked.append((wd, h))
-            except Exception as e:
-                logger.warning("Could not parse HDO segment '%s': %s", segment, e)
+                        self._explicit_blocked.add((wd, s))
+            except Exception as exc:
+                logger.warning("Could not parse HDO segment '%s': %s", segment, exc)
 
-    def observe(self, dt: datetime, relay_on: bool, power_w: float) -> None:
-        """Record one observation. Call each minute when relay state is known."""
-        if not relay_on:
-            return  # only meaningful when relay should be on
-        is_blocked = power_w < POWER_ZERO_THRESHOLD_W
-        key = (dt.weekday(), dt.hour)
-        self._observations.setdefault(key, []).append((dt.timestamp(), is_blocked))
-        # Prune old observations
-        cutoff = datetime.now().timestamp() - HISTORY_WEEKS * 7 * 24 * 3600
+    # ── Observation ───────────────────────────────────────────────────────────
+
+    def _slot_of(self, dt: datetime) -> Tuple[int, int]:
+        """Return (weekday, slot_index) for a datetime (uses local/aware time)."""
+        slot_idx = (dt.hour * 60 + dt.minute) // SLOT_MINUTES
+        return (dt.weekday(), slot_idx)
+
+    def observe(self, dt: datetime, relay_unavailable: bool) -> None:
+        """Record one observation.
+
+        Args:
+            dt: Timestamp of the observation (timezone-aware preferred).
+            relay_unavailable: True when the HA entity state == "unavailable",
+                indicating HDO has physically cut the relay circuit.
+                False when the relay is available (state "on" or "off"),
+                regardless of whether the boiler is actually heating.
+        """
+        key = self._slot_of(dt)
+        ts = dt.timestamp()
+        iso = dt.isocalendar()
+        year_week: Tuple[int, int] = (int(iso[0]), int(iso[1]))
+        self._observations.setdefault(key, []).append((ts, relay_unavailable, year_week))
+        # Prune observations older than HISTORY_WEEKS
+        cutoff_ts = _now_ts() - HISTORY_WEEKS * 7 * 24 * 3600
         self._observations[key] = [
-            (ts, b) for ts, b in self._observations[key] if ts > cutoff
+            (t, b, yw) for t, b, yw in self._observations[key] if t > cutoff_ts
         ]
 
-    def is_blocked(self, weekday: int, hour: int) -> bool:
-        """Return True if HDO is likely blocking at this weekday+hour."""
-        if (weekday, hour) in self._explicit_blocked:
+    # ── Blocking queries ──────────────────────────────────────────────────────
+
+    def _is_slot_blocked(self, weekday: int, slot_idx: int) -> bool:
+        """Return True if the 5-minute slot is HDO-blocked."""
+        if (weekday, slot_idx) in self._explicit_blocked:
             return True
-        key = (weekday, hour)
+        key = (weekday, slot_idx)
         obs = self._observations.get(key, [])
-        if len(obs) < 3:
-            return False  # insufficient data
-        now = datetime.now().timestamp()
+        if not obs:
+            return False
+        # Require data from at least MIN_WEEKS_TO_TRUST distinct calendar weeks
+        distinct_weeks = len({yw for _, _, yw in obs})
+        if distinct_weeks < MIN_WEEKS_TO_TRUST:
+            return False
+        # Exponentially-weighted confidence
+        now_ts = _now_ts()
         decay_s = self.decay_weeks * 7 * 24 * 3600
-        weights = [np.exp(-(now - ts) / decay_s) for ts, _ in obs]
+        weights = [np.exp(-(now_ts - t) / decay_s) for t, _, _ in obs]
         total_w = sum(weights)
-        blocked_w = sum(w for w, (_, b) in zip(weights, obs) if b)
+        blocked_w = sum(wt for wt, (_, b, _) in zip(weights, obs) if b)
         confidence = blocked_w / total_w if total_w > 0 else 0.0
-        return confidence >= MIN_CONFIDENCE_TO_BLOCK
+        return bool(confidence >= MIN_CONFIDENCE_TO_BLOCK)
+
+    def is_blocked_at(self, dt: datetime) -> bool:
+        """Return True if HDO is likely blocking at this exact datetime."""
+        key = self._slot_of(dt)
+        return self._is_slot_blocked(*key)
+
+    def is_blocked(self, weekday: int, hour: int) -> bool:
+        """Return True if HDO is blocking at any 5-min slot within this hour.
+
+        Backward-compatible interface used by the scheduler and dashboard.
+        """
+        start_slot = (hour * 60) // SLOT_MINUTES   # = hour * 12
+        return any(self._is_slot_blocked(weekday, s) for s in range(start_slot, start_slot + 12))
 
     def get_blocked_hours_next_24h(self, from_dt: Optional[datetime] = None) -> List[bool]:
-        """Return 24 booleans for whether each upcoming hour is HDO-blocked."""
+        """Return 24 booleans — one per upcoming hour — indicating HDO blocking."""
         if from_dt is None:
-            from_dt = datetime.now()
+            from_dt = datetime.now().astimezone()
         result = []
         for i in range(24):
             total_hours = from_dt.hour + i
             weekday = (from_dt.weekday() + total_hours // 24) % 7
             hour = total_hours % 24
-            result.append(self.is_blocked(weekday, hour))
+            result.append(bool(self.is_blocked(weekday, hour)))
         return result
 
     def get_weekly_schedule(self) -> Dict[str, List[int]]:
-        """Return inferred+explicit HDO schedule as day→blocked hours list."""
+        """Return inferred+explicit HDO schedule as {day_name → [blocked hours]}."""
         day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         schedule: Dict[str, List[int]] = {day: [] for day in day_names}
         for wd in range(7):
@@ -113,4 +195,5 @@ class HDOLearner:
         return schedule
 
     def observation_count(self) -> int:
+        """Total number of stored observations across all slots."""
         return sum(len(v) for v in self._observations.values())

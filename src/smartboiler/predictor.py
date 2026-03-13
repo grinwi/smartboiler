@@ -81,7 +81,7 @@ class RollingHistogramPredictor:
     def predict_next_24h(self, from_dt: Optional[datetime] = None) -> List[float]:
         """Return predicted consumption for the next 24 hours (starting from_dt)."""
         if from_dt is None:
-            from_dt = datetime.now()
+            from_dt = datetime.now().astimezone()
         base = from_dt.replace(minute=0, second=0, microsecond=0)
         predictions = []
         for i in range(24):
