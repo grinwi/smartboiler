@@ -70,7 +70,6 @@ class SmartBoilerController:
         self.boiler_area_tmp_entity_id = options.get("boiler_area_tmp_entity_id") or None
         self.boiler_direct_tmp_entity_id = options.get("boiler_direct_tmp_entity_id") or None
         self.pv_surplus_entity_id = options.get("pv_surplus_entity_id") or None
-        self.energy_tariff_entity_id = options.get("energy_tariff_entity_id") or None
         self.person_entity_ids: List[str] = options.get("person_entity_ids") or []
 
         self.calendar_entity_id = options.get("calendar_entity_id") or ""
@@ -82,14 +81,12 @@ class SmartBoilerController:
         self.boiler_min_tmp = float(options.get("boiler_min_operation_tmp", 37))
         self.boiler_watt = float(options.get("boiler_watt_power", 2000))
         self.area_tmp = float(options.get("average_boiler_surroundings_temp", 20))
-        self.boiler_case_max_tmp = float(options.get("boiler_case_max_tmp", 40))
 
         self.thermal_window_days = float(options.get("thermal_model_window_days", 7.0))
         self.thermal_mass_ratio  = float(options.get("thermal_mass_ratio", 0.3))
 
         self.has_spot_price = bool(options.get("has_spot_price", False))
         self.spot_price_region = options.get("spot_price_region", "CZ")
-        self.has_hdo = bool(options.get("hdo", False))
         self.hdo_explicit_schedule = options.get("hdo_explicit_schedule", "") or ""
         self.prediction_conservatism = options.get("prediction_conservatism", "medium")
         self.min_training_days = int(options.get("min_training_days", MIN_TRAINING_DAYS_DEFAULT))
