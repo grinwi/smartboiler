@@ -5,6 +5,10 @@
 # Main controller — dual-workflow architecture:
 #   ForecastWorkflow: runs hourly — collects data, updates predictor, plans day
 #   ControlWorkflow:  runs every 60s — executes heating plan, observes HDO
+#
+# Extracted helpers:
+#   temperature_estimator.py — multi-level water temp estimation
+#   legionella_protector.py  — periodic legionella heating cycle
 
 import json
 import logging
@@ -18,7 +22,6 @@ from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-LEGIONELLA_INTERVAL_DAYS = 21
 HEATING_TIMEOUT_MINUTES = 180
 CONTROL_LOOP_INTERVAL_S = 60
 FORECAST_LOOP_INTERVAL_S = 3600     # 1 hour
@@ -41,8 +44,8 @@ class SmartBoilerController:
       5. Persist state
 
     ControlWorkflow (every 60s):
-      1. Read current boiler temperature
-      2. Check legionella protection
+      1. Read current boiler temperature (via TemperatureEstimator)
+      2. Check legionella protection (via LegionellaProtector)
       3. Execute heating plan (turn on/off relay)
       4. Observe relay + power for HDO learning
     """
@@ -56,8 +59,12 @@ class SmartBoilerController:
         from smartboiler.hdo_learner import HDOLearner
         from smartboiler.scheduler import HeatingScheduler, BoilerParams
         from smartboiler.spot_price import SpotPriceFetcher
-        from smartboiler.web_server import set_state_provider, set_extra_provider, set_calendar_manager, run_dashboard
         from smartboiler.thermal_model import ThermalModel
+        from smartboiler.temperature_estimator import TemperatureEstimator
+        from smartboiler.legionella_protector import LegionellaProtector
+        from smartboiler.web_server import (
+            set_state_provider, set_extra_provider, set_calendar_manager, run_dashboard,
+        )
 
         self._run_dashboard = run_dashboard
 
@@ -111,7 +118,6 @@ class SmartBoilerController:
         )
 
         self.predictor = RollingHistogramPredictor(conservatism=self.prediction_conservatism)
-        # Restore trained predictor from disk if available
         saved_predictor = self.store.load_pickle("predictor")
         if saved_predictor is not None:
             self.predictor = saved_predictor
@@ -136,7 +142,7 @@ class SmartBoilerController:
 
         self.spot_fetcher = SpotPriceFetcher(country=self.spot_price_region) if self.has_spot_price else None
 
-        # Calendar manager (optional — only when calendar_entity_id is configured)
+        # Calendar manager (optional)
         self.calendar: Optional[Any] = None
         if self.calendar_entity_id:
             from smartboiler.calendar_manager import CalendarManager
@@ -147,7 +153,7 @@ class SmartBoilerController:
             )
             logger.info("Calendar integration enabled: %s", self.calendar_entity_id)
 
-        # Thermal model (learned Newton's-law cooling for case-sensor estimation)
+        # Thermal model (learned Newton's-law cooling)
         self.thermal_model = ThermalModel(
             window_days=self.thermal_window_days,
             mass_ratio=self.thermal_mass_ratio,
@@ -155,10 +161,28 @@ class SmartBoilerController:
         saved_thermal = self.store.load_pickle("thermal_model")
         if saved_thermal is not None:
             self.thermal_model = saved_thermal
-            # Apply any config changes (window / ratio may have changed)
             self.thermal_model.window_days = self.thermal_window_days
             self.thermal_model.mass_ratio  = self.thermal_mass_ratio
             logger.info("Thermal model restored from disk. %s", self.thermal_model.diagnostics())
+
+        # ── Extracted helpers ─────────────────────────────────────────────
+        self.temp_estimator = TemperatureEstimator(
+            ha=self.ha,
+            switch_entity_id=self.boiler_switch_entity_id,
+            power_entity_id=self.boiler_power_entity_id,
+            case_tmp_entity_id=self.boiler_case_tmp_entity_id,
+            area_tmp_entity_id=self.boiler_area_tmp_entity_id,
+            direct_tmp_entity_id=self.boiler_direct_tmp_entity_id,
+            thermal_model=self.thermal_model,
+            boiler_set_tmp=self.boiler_set_tmp,
+            area_tmp_default=self.area_tmp,
+        )
+
+        self.legionella = LegionellaProtector(
+            store=self.store,
+            ha=self.ha,
+            switch_entity_id=self.boiler_switch_entity_id,
+        )
 
         # ── InfluxDB bootstrap (one-time cold-start import) ───────────────
         from smartboiler.influx_bootstrap import InfluxBootstrapper
@@ -179,7 +203,7 @@ class SmartBoilerController:
         self._spot_prices: Dict[int, Optional[float]] = {}
         self._last_boiler_tmp: Optional[float] = self.store.get_last_boiler_tmp()
         self._plan_generated_at: Optional[datetime] = None
-        self._last_calib_ts: float = 0.0   # debounce for thermostat-trip detection
+        self._last_calib_ts: float = 0.0
         self._lock = threading.Lock()
 
         # ── Web dashboard ─────────────────────────────────────────────────
@@ -187,48 +211,6 @@ class SmartBoilerController:
         set_extra_provider(self._get_extra_data)
         if self.calendar:
             set_calendar_manager(self.calendar)
-
-    # ── Temperature estimation ────────────────────────────────────────────
-
-    def _get_ambient_tmp(self) -> float:
-        """Return current ambient temperature near the boiler."""
-        if self.boiler_area_tmp_entity_id:
-            val = self.ha.get_state_value(self.boiler_area_tmp_entity_id)
-            if val is not None:
-                return float(val)
-        return self.area_tmp   # static config fallback
-
-    def _get_boiler_tmp(self) -> Optional[float]:
-        """
-        Multi-level water temperature estimation:
-          L1  Direct NTC probe (most accurate)
-          L2  Power-feedback: relay ON + power ≈ 0 W → thermostat tripped → T_set
-          L3  Learned thermal model from case sensor (Newton's-law cooling)
-          L4  Last known value
-        """
-        # Level 1: direct water temperature sensor
-        if self.boiler_direct_tmp_entity_id:
-            val = self.ha.get_state_value(self.boiler_direct_tmp_entity_id)
-            if val is not None:
-                return float(val)
-
-        # Level 2: power feedback — thermostat tripped
-        if self.boiler_power_entity_id:
-            power = self.ha.get_state_value(self.boiler_power_entity_id)
-            relay_on = self.ha.is_entity_on(self.boiler_switch_entity_id)
-            if relay_on and power is not None and float(power) < 50:
-                return float(self.boiler_set_tmp)
-
-        # Level 3: learned thermal model from case sensor
-        if self.boiler_case_tmp_entity_id:
-            case_tmp = self.ha.get_state_value(self.boiler_case_tmp_entity_id)
-            if case_tmp is not None:
-                amb = self._get_ambient_tmp()
-                est = self.thermal_model.estimate_water_tmp(float(case_tmp), amb)
-                if est is not None:
-                    return est
-
-        return self._last_boiler_tmp  # Level 4: last known
 
     # ── Forecast workflow (hourly) ────────────────────────────────────────
 
@@ -265,9 +247,9 @@ class SmartBoilerController:
             forecast = self.predictor.predict_next_24h()
 
             # 7. Get current boiler temperature
-            boiler_tmp = self._get_boiler_tmp() or self.boiler_min_tmp
+            boiler_tmp = self.temp_estimator.get_boiler_tmp(self._last_boiler_tmp) or self.boiler_min_tmp
 
-            # 8. Fetch upcoming calendar events (empty list when calendar not configured)
+            # 8. Fetch upcoming calendar events
             now_dt = datetime.now().astimezone()
             calendar_events = (
                 self.calendar.get_events(now_dt, now_dt + timedelta(hours=24))
@@ -292,12 +274,11 @@ class SmartBoilerController:
                 self._forecast_24h = forecast
                 self._plan_generated_at = datetime.now().astimezone()
 
-            # 9. Persist plan, HDO learner, and thermal model
+            # 10. Persist plan, HDO learner, and thermal model
             plan_serializable = [bool(h) for h in self._heating_plan]
             self.store.set_heating_plan(plan_serializable)
             self.store.save_pickle("hdo_learner", self.hdo_learner)
 
-            # Re-fit thermal model if window has expired; always persist
             self.thermal_model.maybe_refit()
             self.store.save_pickle("thermal_model", self.thermal_model)
             logger.debug("Thermal model: %s", self.thermal_model.diagnostics())
@@ -314,7 +295,6 @@ class SmartBoilerController:
         """Get PV surplus for next 24 hours (zeroes if no sensor)."""
         if not self.pv_surplus_entity_id:
             return [0.0] * 24
-        # Read current surplus; assume it stays constant for forecast
         val = self.ha.get_state_value(self.pv_surplus_entity_id, default=0.0)
         surplus = max(0.0, float(val) / 1000.0)  # convert W → kWh/h approximation
         return [surplus] * 24
@@ -324,7 +304,7 @@ class SmartBoilerController:
     def run_control_workflow(self) -> None:
         """Execute heating plan; perform legionella check; observe HDO."""
         try:
-            boiler_tmp = self._get_boiler_tmp()
+            boiler_tmp = self.temp_estimator.get_boiler_tmp(self._last_boiler_tmp)
             if boiler_tmp is not None:
                 self._last_boiler_tmp = boiler_tmp
                 self.store.set_last_boiler_tmp(boiler_tmp)
@@ -332,8 +312,6 @@ class SmartBoilerController:
                 boiler_tmp = self._last_boiler_tmp or self.boiler_min_tmp
 
             # Read raw relay state once — drives both HDO learning and thermal model.
-            # "unavailable" = HDO cut the circuit (physical relay disconnected by utility).
-            # "on"/"off"    = relay available; "off" means boiler thermostat reached target.
             relay_state_obj = self.ha.get_state(self.boiler_switch_entity_id)
             relay_state_str = relay_state_obj["state"] if relay_state_obj else None
             relay_on = relay_state_str == "on"
@@ -343,7 +321,7 @@ class SmartBoilerController:
             if self.boiler_power_entity_id:
                 power_w = self.ha.get_state_value(self.boiler_power_entity_id, default=0.0) or 0.0
 
-            # HDO observation — unavailable state is the definitive HDO signal
+            # HDO observation
             self.hdo_learner.observe(datetime.now().astimezone(), relay_unavailable)
 
             # ── Thermal model observations ────────────────────────────────
@@ -351,7 +329,7 @@ class SmartBoilerController:
                 case_tmp_raw = self.ha.get_state_value(self.boiler_case_tmp_entity_id)
                 if case_tmp_raw is not None:
                     case_tmp = float(case_tmp_raw)
-                    amb = self._get_ambient_tmp()
+                    amb = self.temp_estimator.get_ambient_tmp()
 
                     # Thermostat-trip calibration: relay ON + power ≈ 0 W
                     now_ts = time.time()
@@ -377,19 +355,12 @@ class SmartBoilerController:
                 return
 
             # Legionella protection
-            last_leg = self.store.get_last_legionella_heating()
-            now_tz = datetime.now().astimezone()
-            if now_tz - last_leg > timedelta(days=LEGIONELLA_INTERVAL_DAYS):
-                logger.info("Legionella protection: heating to 65°C (tmp=%.1f)", boiler_tmp)
-                self.ha.turn_on(self.boiler_switch_entity_id)
-                if boiler_tmp >= 65.0:
-                    self.store.set_last_legionella_heating(now_tz)
-                    self.ha.turn_off(self.boiler_switch_entity_id)
-                    logger.info("Legionella protection complete.")
+            if self.legionella.check_and_act(boiler_tmp):
                 return
 
-            # ── Calendar event override (legionella already handled above) ──────
+            # ── Calendar event override ───────────────────────────────────
             if self.calendar:
+                now_tz = datetime.now().astimezone()
                 active_evt = self.calendar.get_active_event(now_tz)
                 if active_evt:
                     etype = active_evt.event_type
@@ -448,10 +419,10 @@ class SmartBoilerController:
         """Return the index into the 24h plan for the current time."""
         if self._plan_generated_at is None:
             return 0
-        hours_elapsed = int((datetime.now().astimezone() - self._plan_generated_at).total_seconds() / 3600)
-        return min(hours_elapsed, 23)
+        elapsed_h = int((datetime.now().astimezone() - self._plan_generated_at).total_seconds() // 3600)
+        return min(elapsed_h, 23)
 
-    # ── Dashboard state ───────────────────────────────────────────────────
+    # ── Dashboard state assembly ──────────────────────────────────────────
 
     def _get_dashboard_state(self) -> Dict:
         """Assemble current state dict for web dashboard."""
@@ -465,7 +436,6 @@ class SmartBoilerController:
         relay_on = self.ha.is_entity_on(self.boiler_switch_entity_id)
         last_leg = self.store.get_last_legionella_heating()
 
-        # Derive 4-state boiler status for dashboard
         if relay_on is None:
             boiler_status = "unavailable"
         elif not relay_on:
@@ -499,7 +469,7 @@ class SmartBoilerController:
             "boiler_status": boiler_status,
             "set_tmp": self.boiler_set_tmp,
             "min_tmp": self.boiler_min_tmp,
-            "heating_until": None,  # plan-based, no explicit deadline
+            "heating_until": None,
             "last_legionella": last_leg.strftime("%Y-%m-%d") if last_leg else None,
             "predictor_has_data": bool(self.predictor.has_enough_data(self.min_training_days)),
             "forecast_24h": [round(v, 4) for v in forecast_copy],
@@ -643,13 +613,7 @@ class SmartBoilerController:
     # ── HDO bootstrap from HA history ─────────────────────────────────────
 
     def _bootstrap_hdo_from_ha(self) -> None:
-        """Seed HDO learner from HA REST API relay history on fresh startup.
-
-        Runs only when the learner has no observations (fresh install or cleared
-        state after InfluxDB bootstrap already ran without seeding the learner).
-        Pulls HISTORY_WEEKS weeks of relay history and feeds each minute's state
-        as an observe() call.
-        """
+        """Seed HDO learner from HA REST API relay history on fresh startup."""
         if self.hdo_learner.observation_count() > 0:
             return
         from smartboiler.hdo_learner import HISTORY_WEEKS
@@ -673,17 +637,15 @@ class SmartBoilerController:
                 dt = datetime.fromisoformat(last_changed.replace("Z", "+00:00")).astimezone()
             except Exception:
                 continue
-            relay_unavailable = state_str == "unavailable"
-            self.hdo_learner.observe(dt, relay_unavailable)
+            self.hdo_learner.observe(dt, state_str == "unavailable")
             count += 1
         self.store.save_pickle("hdo_learner", self.hdo_learner)
         logger.info("HDO learner seeded from HA history: %d state transitions ingested.", count)
 
-    # ── Main loops ────────────────────────────────────────────────────────
+    # ── Main loop ─────────────────────────────────────────────────────────
 
     def start(self) -> None:
         """Start both workflows and web dashboard."""
-        # Dashboard in background thread
         dash_thread = threading.Thread(
             target=self._run_dashboard,
             kwargs={"host": "0.0.0.0", "port": 8099},
@@ -693,19 +655,14 @@ class SmartBoilerController:
         dash_thread.start()
         logger.info("Dashboard started on :8099")
 
-        # Run InfluxDB bootstrap if needed (one-time, blocks until complete)
         if self._bootstrapper.should_run():
             logger.info("InfluxDB bootstrap starting — importing historical data…")
             summary = self._bootstrapper.run(hdo_learner=self.hdo_learner)
-            # Persist refreshed models immediately after seeding
             self.store.save_pickle("thermal_model", self.thermal_model)
             self.store.save_pickle("hdo_learner", self.hdo_learner)
             logger.info("InfluxDB bootstrap done: %s", summary)
 
-        # HA-based HDO bootstrap (fallback: no InfluxDB or fresh install)
         self._bootstrap_hdo_from_ha()
-
-        # Run initial forecast immediately
         self.run_forecast_workflow()
 
         last_forecast_run = datetime.now().astimezone()
@@ -717,7 +674,6 @@ class SmartBoilerController:
             except Exception as e:
                 logger.error("Unhandled control error: %s", e)
 
-            # Re-run forecast every hour
             if datetime.now().astimezone() - last_forecast_run >= timedelta(seconds=FORECAST_LOOP_INTERVAL_S):
                 try:
                     self.run_forecast_workflow()
@@ -753,7 +709,6 @@ if __name__ == "__main__":
     options = _load_options()
     _setup_logging(options.get("logging_level", "INFO"))
 
-    # Validate required options
     if not options.get("boiler_switch_entity_id"):
         logger.error("boiler_switch_entity_id is required in options.json")
         sys.exit(1)
