@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch, PropertyMock
 
 from smartboiler.controller import SmartBoilerController
+from smartboiler.legionella_protector import LegionellaProtector
 
 
 # ---------------------------------------------------------------------------
@@ -48,6 +49,32 @@ def ctrl():
     # Thermal model mock
     c.thermal_model = MagicMock()
     c.thermal_model.estimate_water_tmp.return_value = None  # unfitted by default
+
+    # TemperatureEstimator mock — simulates three-level logic for _get_boiler_tmp tests
+    c.temp_estimator = MagicMock()
+
+    def _simulated_get_boiler_tmp(last_known=None):
+        if c.boiler_direct_tmp_entity_id:
+            val = c.ha.get_state_value(c.boiler_direct_tmp_entity_id)
+            if val is not None:
+                return float(val)
+        if c.boiler_case_tmp_entity_id:
+            case_tmp = c.ha.get_state_value(c.boiler_case_tmp_entity_id)
+            if case_tmp is not None:
+                amb = (
+                    c.ha.get_state_value(c.boiler_area_tmp_entity_id)
+                    if c.boiler_area_tmp_entity_id else None
+                ) or c.area_tmp
+                est = c.thermal_model.estimate_water_tmp(float(case_tmp), amb)
+                if est is not None:
+                    return est
+        return last_known
+
+    c.temp_estimator.get_boiler_tmp.side_effect = _simulated_get_boiler_tmp
+    c.temp_estimator.get_ambient_tmp.return_value = c.area_tmp
+
+    # Real LegionellaProtector backed by mock ha/store
+    c.legionella = LegionellaProtector(c.store, c.ha, "switch.boiler")
 
     # Mutable state
     import threading

@@ -301,15 +301,18 @@ class SmartBoilerController:
 
     # ── Control workflow (every 60s) ──────────────────────────────────────
 
+    def _get_boiler_tmp(self) -> float:
+        """Return best available boiler temperature (all estimation levels)."""
+        tmp = self.temp_estimator.get_boiler_tmp(self._last_boiler_tmp)
+        if tmp is not None:
+            self._last_boiler_tmp = tmp
+            self.store.set_last_boiler_tmp(tmp)
+        return self._last_boiler_tmp or self.boiler_min_tmp
+
     def run_control_workflow(self) -> None:
         """Execute heating plan; perform legionella check; observe HDO."""
         try:
-            boiler_tmp = self.temp_estimator.get_boiler_tmp(self._last_boiler_tmp)
-            if boiler_tmp is not None:
-                self._last_boiler_tmp = boiler_tmp
-                self.store.set_last_boiler_tmp(boiler_tmp)
-            else:
-                boiler_tmp = self._last_boiler_tmp or self.boiler_min_tmp
+            boiler_tmp = self._get_boiler_tmp()
 
             # Read raw relay state once — drives both HDO learning and thermal model.
             relay_state_obj = self.ha.get_state(self.boiler_switch_entity_id)

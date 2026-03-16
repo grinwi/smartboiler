@@ -10,8 +10,8 @@ import pandas as pd
 from typing import Optional
 
 
-from smartboiler.event_checker import EventChecker
-from smartboiler.data_handler import DataHandler
+from smartboiler.legacy.event_checker import EventChecker
+from smartboiler.legacy.data_handler import DataHandler
 from smartboiler.fotovoltaics import Fotovoltaics
 
 
