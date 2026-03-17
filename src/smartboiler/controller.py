@@ -73,8 +73,10 @@ class SmartBoilerController:
         self.boiler_power_entity_id = options.get("boiler_power_entity_id") or None
         self.boiler_water_flow_entity_id = options.get("boiler_water_flow_entity_id") or None
         self.boiler_water_temp_entity_id = options.get("boiler_water_temp_entity_id") or None
-        self.boiler_case_tmp_entity_id = options.get("boiler_case_tmp_entity_id") or None
-        self.boiler_area_tmp_entity_id = options.get("boiler_area_tmp_entity_id") or None
+        self.boiler_case_tmp_entity_id   = options.get("boiler_case_tmp_entity_id") or None
+        self.boiler_inlet_tmp_entity_id  = options.get("boiler_inlet_tmp_entity_id") or None
+        self.boiler_outlet_tmp_entity_id = options.get("boiler_outlet_tmp_entity_id") or None
+        self.boiler_area_tmp_entity_id   = options.get("boiler_area_tmp_entity_id") or None
         self.boiler_direct_tmp_entity_id = options.get("boiler_direct_tmp_entity_id") or None
         self.pv_surplus_entity_id = options.get("pv_surplus_entity_id") or None
         self.person_entity_ids: List[str] = options.get("person_entity_ids") or []
@@ -91,6 +93,12 @@ class SmartBoilerController:
 
         self.thermal_window_days = float(options.get("thermal_model_window_days", 7.0))
         self.thermal_mass_ratio  = float(options.get("thermal_mass_ratio", 0.3))
+
+        self.operation_mode         = options.get("operation_mode", "standard")
+        self.cold_water_temp        = float(options.get("cold_water_temp", 10.0))
+        self.thermal_coupling       = float(options.get("thermal_coupling_ratio", 0.45))
+        self.boiler_standby_w       = float(options.get("boiler_standby_watts", 50.0))
+        self.draw_detection_thr_c   = float(options.get("draw_detection_threshold_c", 2.0))
 
         self.has_spot_price = bool(options.get("has_spot_price", False))
         self.spot_price_region = options.get("spot_price_region", "CZ")
@@ -184,7 +192,34 @@ class SmartBoilerController:
             switch_entity_id=self.boiler_switch_entity_id,
         )
 
-        # ── InfluxDB bootstrap (one-time cold-start import) ───────────────
+        # ── Simple Mode: flowless consumption estimator ───────────────────
+        self.flow_estimator = None
+        if self.operation_mode == "simple":
+            from smartboiler.consumption_estimator import FlowlessConsumptionEstimator
+            self.flow_estimator = FlowlessConsumptionEstimator(
+                vol_L            = self.boiler_volume_l,
+                relay_w          = self.boiler_watt,
+                T_cold           = self.cold_water_temp,
+                coupling         = self.thermal_coupling,
+                T_amb_default    = self.area_tmp,
+                standby_w        = self.boiler_standby_w,
+                draw_threshold_c = self.draw_detection_thr_c,
+            )
+            saved_fe = self.store.load_pickle("flow_estimator")
+            if saved_fe is not None:
+                self.flow_estimator = saved_fe
+                # Always keep physical params in sync with config
+                self.flow_estimator.vol_L         = self.boiler_volume_l
+                self.flow_estimator.relay_w       = self.boiler_watt
+                self.flow_estimator.T_cold        = self.cold_water_temp
+                self.flow_estimator.coupling      = self.thermal_coupling
+                self.flow_estimator.T_amb_default = self.area_tmp
+                self.flow_estimator.standby_w     = self.boiler_standby_w
+                logger.info("FlowlessConsumptionEstimator restored. %s", self.flow_estimator.diagnostics())
+            else:
+                logger.info("FlowlessConsumptionEstimator initialised (no saved state).")
+
+        # ── InfluxDB bootstrap (periodic retrain, runs in background) ────────
         from smartboiler.influx_bootstrap import InfluxBootstrapper
         self._bootstrapper = InfluxBootstrapper(
             options=options,
@@ -193,7 +228,12 @@ class SmartBoilerController:
             boiler_set_tmp=self.boiler_set_tmp,
             boiler_min_tmp=self.boiler_min_tmp,
             boiler_watt=self.boiler_watt,
+            boiler_volume=self.boiler_volume_l,
             area_tmp=self.area_tmp,
+            cold_water_tmp=self.cold_water_temp,
+            operation_mode=self.operation_mode,
+            coupling=self.thermal_coupling,
+            standby_w=self.boiler_standby_w,
         )
 
         # ── Mutable state ─────────────────────────────────────────────────
@@ -226,6 +266,15 @@ class SmartBoilerController:
             # 2. Update predictor
             self.predictor.update(df_history)
             self.store.save_pickle("predictor", self.predictor)
+
+            # 2b. Simple Mode: finalize yesterday's daily estimate on day rollover
+            if self.flow_estimator is not None:
+                k_water = self.thermal_model.k_water if self.thermal_model.is_fitted else None
+                amb = self.temp_estimator.get_ambient_tmp()
+                est_vol = self.flow_estimator.maybe_finalize(k_water=k_water, T_amb=amb)
+                if est_vol is not None:
+                    self._push_simple_mode_estimate_to_history(est_vol)
+                    self.store.save_pickle("flow_estimator", self.flow_estimator)
 
             # 3. Fetch spot prices
             if self.spot_fetcher:
@@ -351,6 +400,23 @@ class SmartBoilerController:
                     if not relay_on:
                         self.thermal_model.observe_case_tmp(case_tmp, amb, timestamp=now_ts)
 
+            # ── Simple Mode: tick the flowless estimator ──────────────────
+            if self.flow_estimator is not None:
+                case_tmp_for_est = None
+                if self.boiler_case_tmp_entity_id:
+                    case_tmp_for_est = self.ha.get_state_value(self.boiler_case_tmp_entity_id)
+                inlet_tmp_for_est = None
+                if self.boiler_inlet_tmp_entity_id:
+                    inlet_tmp_for_est = self.ha.get_state_value(self.boiler_inlet_tmp_entity_id)
+                amb_for_est = self.temp_estimator.get_ambient_tmp()
+                self.flow_estimator.tick(
+                    relay_on  = relay_on,
+                    T_case    = float(case_tmp_for_est) if case_tmp_for_est is not None else None,
+                    T_amb     = amb_for_est,
+                    dt_s      = float(CONTROL_LOOP_INTERVAL_S),
+                    T_in      = float(inlet_tmp_for_est) if inlet_tmp_for_est is not None else None,
+                )
+
             # Freeze protection (always takes priority)
             if boiler_tmp < 5.0:
                 logger.warning("Freeze protection: turning boiler ON (tmp=%.1f)", boiler_tmp)
@@ -466,12 +532,20 @@ class SmartBoilerController:
             for s in self.ha.get_all_states()
         ]
 
+        simple_mode_diag = (
+            self.flow_estimator.diagnostics()
+            if self.flow_estimator is not None
+            else None
+        )
+
         return {
             "boiler_temp": round(boiler_tmp, 1) if boiler_tmp is not None else None,
             "relay_on": relay_on,
             "boiler_status": boiler_status,
             "set_tmp": self.boiler_set_tmp,
             "min_tmp": self.boiler_min_tmp,
+            "operation_mode": self.operation_mode,
+            "simple_mode": simple_mode_diag,
             "heating_until": None,
             "last_legionella": last_leg.strftime("%Y-%m-%d") if last_leg else None,
             "predictor_has_data": bool(self.predictor.has_enough_data(self.min_training_days)),
@@ -485,6 +559,7 @@ class SmartBoilerController:
             "sys_info": [
                 ["Boiler volume", f"{int(self.boiler_volume_l)} L"],
                 ["Boiler power", f"{int(self.boiler_watt)} W"],
+                ["Operation mode", self.operation_mode],
                 ["Conservatism", self.prediction_conservatism],
                 ["HDO observations", str(self.hdo_learner.observation_count())],
                 ["History rows", str(len(self.store.load_consumption_history()))],
@@ -613,6 +688,41 @@ class SmartBoilerController:
             "global_fallback": round(self.predictor._global_fallback, 4),
         }
 
+    # ── Simple Mode helpers ───────────────────────────────────────────────
+
+    def _push_simple_mode_estimate_to_history(self, est_vol_L: float) -> None:
+        """
+        Convert a daily volume estimate (Simple Mode) into synthetic hourly rows
+        and append to consumption history so the predictor can learn from them.
+        The energy is spread uniformly over 24 hours (best approximation without
+        time-of-use data).
+        """
+        import pandas as pd
+
+        T_set = (
+            self.flow_estimator.T_set_calibrated
+            if self.flow_estimator and self.flow_estimator.T_set_calibrated
+            else self.boiler_set_tmp
+        )
+        T_cold    = self.cold_water_temp
+        dT_useful = max(T_set - T_cold, 2.0)
+        est_kwh   = est_vol_L * 1.0 * 4186.0 * dT_useful / 3.6e6
+        hourly_kwh = est_kwh / 24.0
+
+        from datetime import timedelta
+        yesterday = datetime.now().astimezone() - timedelta(days=1)
+        midnight  = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
+        idx = pd.date_range(midnight, periods=24, freq="1h", tz=midnight.tzinfo)
+        df_synthetic = pd.DataFrame(
+            {"consumed_kwh": [hourly_kwh] * 24, "relay_on": [0.0] * 24, "power_w": [0.0] * 24},
+            index=idx,
+        )
+        self.store.append_consumption(df_synthetic)
+        logger.info(
+            "Simple Mode: pushed %.1fL (%.3f kWh, %.5f kWh/h) to consumption history",
+            est_vol_L, est_kwh, hourly_kwh,
+        )
+
     # ── HDO bootstrap from HA history ─────────────────────────────────────
 
     def _bootstrap_hdo_from_ha(self) -> None:
@@ -659,11 +769,17 @@ class SmartBoilerController:
         logger.info("Dashboard started on :8099")
 
         if self._bootstrapper.should_run():
-            logger.info("InfluxDB bootstrap starting — importing historical data…")
-            summary = self._bootstrapper.run(hdo_learner=self.hdo_learner)
-            self.store.save_pickle("thermal_model", self.thermal_model)
-            self.store.save_pickle("hdo_learner", self.hdo_learner)
-            logger.info("InfluxDB bootstrap done: %s", summary)
+            import threading
+            def _run_bootstrap():
+                logger.info("InfluxDB bootstrap starting in background…")
+                try:
+                    summary = self._bootstrapper.run(hdo_learner=self.hdo_learner)
+                    self.store.save_pickle("thermal_model", self.thermal_model)
+                    self.store.save_pickle("hdo_learner", self.hdo_learner)
+                    logger.info("InfluxDB bootstrap done: %s", summary)
+                except Exception as exc:
+                    logger.error("InfluxDB bootstrap failed: %s", exc)
+            threading.Thread(target=_run_bootstrap, daemon=True, name="influx-bootstrap").start()
 
         self._bootstrap_hdo_from_ha()
         self.run_forecast_workflow()
@@ -683,6 +799,20 @@ class SmartBoilerController:
                     last_forecast_run = datetime.now().astimezone()
                 except Exception as e:
                     logger.error("Unhandled forecast error: %s", e)
+
+                # Periodic InfluxDB retrain check (every predictor_retrain_weeks)
+                if self._bootstrapper.should_run():
+                    import threading
+                    def _retrain():
+                        logger.info("InfluxDB periodic retrain starting in background…")
+                        try:
+                            summary = self._bootstrapper.run(hdo_learner=self.hdo_learner)
+                            self.store.save_pickle("thermal_model", self.thermal_model)
+                            self.store.save_pickle("hdo_learner", self.hdo_learner)
+                            logger.info("InfluxDB retrain done: %s", summary)
+                        except Exception as exc:
+                            logger.error("InfluxDB retrain failed: %s", exc)
+                    threading.Thread(target=_retrain, daemon=True, name="influx-retrain").start()
 
             time.sleep(CONTROL_LOOP_INTERVAL_S)
 

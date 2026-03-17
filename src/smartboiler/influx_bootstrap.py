@@ -27,7 +27,11 @@ import logging
 from datetime import datetime, timedelta
 
 from smartboiler._influx_helpers import fmt_ts  # noqa: F401 — re-exported for tests
-from smartboiler.influx_consumption_importer import fetch_consumption_chunk, seed_hdo_learner
+from smartboiler.influx_consumption_importer import (
+    fetch_consumption_chunk,
+    fetch_consumption_chunk_simple_mode,
+    seed_hdo_learner,
+)
 from smartboiler.influx_thermal_seeder import seed_thermal_model
 
 import pandas as pd
@@ -39,7 +43,10 @@ _CHUNK_DAYS = 30  # query window size to avoid loading everything into RAM at on
 
 class InfluxBootstrapper:
     """
-    One-time import of historical InfluxDB data into the local cache.
+    Periodic import of historical InfluxDB data into the local cache.
+
+    Runs on first startup and then every `predictor_retrain_weeks` weeks,
+    so the predictor stays up-to-date without manual intervention.
 
     Typical call from the controller's __init__:
         bootstrapper = InfluxBootstrapper(options, store, thermal_model, ...)
@@ -55,16 +62,26 @@ class InfluxBootstrapper:
         boiler_set_tmp: float = 60.0,
         boiler_min_tmp: float = 37.0,
         boiler_watt: float = 2000.0,
+        boiler_volume: float = 120.0,
         area_tmp: float = 20.0,
         cold_water_tmp: float = 10.0,
+        operation_mode: str = "standard",
+        coupling: float = 0.45,
+        standby_w: float = 50.0,
     ):
         self.store = store
         self.thermal_model = thermal_model
         self.boiler_set_tmp = boiler_set_tmp
         self.boiler_min_tmp = boiler_min_tmp
         self.boiler_watt = boiler_watt
+        self.boiler_volume = boiler_volume
         self.area_tmp = area_tmp
         self.cold_water_tmp = cold_water_tmp
+        self.operation_mode = operation_mode
+        self.coupling = coupling
+        self.standby_w = standby_w
+
+        self._options = options
 
         # ── InfluxDB connection params ─────────────────────────────────────
         self.host     = options.get("influxdb_host", "") or ""
@@ -74,11 +91,12 @@ class InfluxBootstrapper:
         self.password = options.get("influxdb_password", "") or ""
 
         # ── Entity IDs as stored in InfluxDB ─────────────────────────────
-        self.relay_entity     = options.get("influxdb_relay_entity_id", "") or ""
-        self.flow_entity      = options.get("influxdb_flow_entity_id", "") or ""
-        self.water_tmp_entity = options.get("influxdb_water_temp_entity_id", "") or ""
-        self.case_tmp_entity  = options.get("influxdb_case_tmp_entity_id", "") or ""
-        self.power_entity     = options.get("influxdb_power_entity_id", "") or ""
+        self.relay_entity      = options.get("influxdb_relay_entity_id", "") or ""
+        self.flow_entity       = options.get("influxdb_flow_entity_id", "") or ""
+        self.water_tmp_entity  = options.get("influxdb_water_temp_entity_id", "") or ""
+        self.case_tmp_entity   = options.get("influxdb_case_tmp_entity_id", "") or ""
+        self.inlet_tmp_entity  = options.get("influxdb_inlet_tmp_entity_id", "") or ""
+        self.power_entity      = options.get("influxdb_power_entity_id", "") or ""
 
         # ── Measurement names (HA InfluxDB integration defaults) ──────────
         self.meas_temp  = options.get("influxdb_measurement_temp",  "°C")
@@ -101,6 +119,9 @@ class InfluxBootstrapper:
         else:
             self.start_date = datetime.now() - timedelta(days=365 * years_back)
 
+        # ── Periodic retrain interval ──────────────────────────────────────
+        self._retrain_weeks = int(options.get("predictor_retrain_weeks", 4))
+
         self._client = None  # lazy-initialised DataFrameClient
 
     # ── Public API ────────────────────────────────────────────────────────
@@ -111,21 +132,44 @@ class InfluxBootstrapper:
 
     def should_run(self) -> bool:
         """
-        Returns True if a bootstrap pass is needed.
-        Skips if the flag 'influx_bootstrap_done' is set in state.json,
-        or if the consumption history already has >= 30 days of data.
+        Returns True if a bootstrap/retrain pass is needed.
+
+        Runs on first startup (no timestamp stored) and then every
+        `predictor_retrain_weeks` weeks so the predictor stays current.
+        The old boolean `influx_bootstrap_done` flag is migrated automatically:
+        if it is True and no timestamp exists the interval clock starts from now.
         """
         if not self.is_configured():
             return False
-        if self.store.get("influx_bootstrap_done"):
+
+        last_str = self.store.get("influx_last_bootstrap")
+
+        # Migrate legacy one-shot flag → timestamp-based
+        if last_str is None and self.store.get("influx_bootstrap_done"):
+            now_str = datetime.now().isoformat()
+            self.store.set("influx_last_bootstrap", now_str)
+            logger.info(
+                "InfluxDB bootstrap: migrated legacy flag; next retrain in %d weeks",
+                self._retrain_weeks,
+            )
             return False
-        df = self.store.load_consumption_history()
-        min_rows = 30 * 24
-        if len(df) >= min_rows:
-            logger.info("InfluxDB bootstrap skipped: already have %d hourly rows", len(df))
-            self.store.set("influx_bootstrap_done", True)
-            return False
-        return True
+
+        if last_str is None:
+            return True  # first run
+
+        try:
+            last_dt = datetime.fromisoformat(last_str)
+        except (ValueError, TypeError):
+            return True
+
+        interval = timedelta(weeks=self._retrain_weeks)
+        due = datetime.now() - last_dt > interval
+        if due:
+            logger.info(
+                "InfluxDB bootstrap: retrain due (last run %s, interval %d weeks)",
+                last_str[:10], self._retrain_weeks,
+            )
+        return due
 
     def run(self, hdo_learner=None) -> dict:
         """
@@ -154,26 +198,46 @@ class InfluxBootstrapper:
         )
 
         # ── 1. Consumption history ─────────────────────────────────────────
+        use_simple = self.operation_mode == "simple" and self.case_tmp_entity
         chunk_start = self.start_date
         frames = []
         while chunk_start < end:
             chunk_end = min(chunk_start + timedelta(days=_CHUNK_DAYS), end)
             try:
-                df_chunk = fetch_consumption_chunk(
-                    client=self._client,
-                    relay_entity=self.relay_entity,
-                    flow_entity=self.flow_entity,
-                    water_tmp_entity=self.water_tmp_entity,
-                    power_entity=self.power_entity,
-                    cold_water_tmp=self.cold_water_tmp,
-                    boiler_watt=self.boiler_watt,
-                    meas_state=self.meas_state,
-                    meas_flow=self.meas_flow,
-                    meas_temp=self.meas_temp,
-                    meas_power=self.meas_power,
-                    start=chunk_start,
-                    end=chunk_end,
-                )
+                if use_simple:
+                    df_chunk = fetch_consumption_chunk_simple_mode(
+                        client=self._client,
+                        relay_entity=self.relay_entity,
+                        case_tmp_entity=self.case_tmp_entity,
+                        inlet_tmp_entity=self.inlet_tmp_entity,
+                        power_entity=self.power_entity,
+                        coupling=self.coupling,
+                        T_set=self.boiler_set_tmp,
+                        cold_water_tmp=self.cold_water_tmp,
+                        standby_w=self.standby_w,
+                        boiler_volume=self.boiler_volume,
+                        meas_state=self.meas_state,
+                        meas_temp=self.meas_temp,
+                        meas_power=self.meas_power,
+                        start=chunk_start,
+                        end=chunk_end,
+                    )
+                else:
+                    df_chunk = fetch_consumption_chunk(
+                        client=self._client,
+                        relay_entity=self.relay_entity,
+                        flow_entity=self.flow_entity,
+                        water_tmp_entity=self.water_tmp_entity,
+                        power_entity=self.power_entity,
+                        cold_water_tmp=self.cold_water_tmp,
+                        boiler_watt=self.boiler_watt,
+                        meas_state=self.meas_state,
+                        meas_flow=self.meas_flow,
+                        meas_temp=self.meas_temp,
+                        meas_power=self.meas_power,
+                        start=chunk_start,
+                        end=chunk_end,
+                    )
                 if not df_chunk.empty:
                     frames.append(df_chunk)
             except Exception as e:
@@ -228,7 +292,7 @@ class InfluxBootstrapper:
             except Exception as e:
                 logger.warning("InfluxDB bootstrap: HDO seeding failed: %s", e)
 
-        self.store.set("influx_bootstrap_done", True)
+        self.store.set("influx_last_bootstrap", datetime.now().isoformat())
         logger.info("InfluxDB bootstrap complete: %s", summary)
         return summary
 
