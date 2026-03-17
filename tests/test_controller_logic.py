@@ -45,6 +45,17 @@ def ctrl():
     c.prediction_conservatism = "medium"
     c.min_training_days = 30
     c.pv_surplus_entity_id = None
+    c.boiler_inlet_tmp_entity_id = None
+    c.boiler_outlet_tmp_entity_id = None
+    c.operation_mode = "standard"
+    c.cold_water_temp = 10.0
+    c.thermal_coupling = 0.45
+    c.boiler_standby_w = 50.0
+    c.draw_detection_thr_c = 2.0
+    c.person_entity_ids = []
+    c.vacation_mode = "min_temp"
+    c.vacation_min_temp = 30.0
+    c.flow_estimator = None
 
     # Thermal model mock
     c.thermal_model = MagicMock()
