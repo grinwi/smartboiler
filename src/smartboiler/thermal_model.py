@@ -244,6 +244,36 @@ class ThermalModel:
         T_water = T_amb + ratio * (T_case - T_amb)
         return float(max(T_amb, min(calib.T_set, T_water)))
 
+    @staticmethod
+    def infer_T_set_from_case(
+        T_case: float,
+        T_amb: float,
+        coupling: float = 0.45,
+    ) -> Optional[float]:
+        """
+        Estimate T_water from a case-sensor reading (Simple Mode utility).
+
+        Uses the linear coupling model:
+            T_case ≈ T_amb + coupling × (T_water − T_amb)
+            → T_water = T_amb + (T_case − T_amb) / coupling
+
+        Args:
+            T_case:   Case temperature sensor reading [°C].
+            T_amb:    Ambient temperature [°C].
+            coupling: Case-to-water coupling ratio (0.3–0.6).
+
+        Returns:
+            Estimated T_water [°C], or None if inputs are invalid.
+        """
+        if not (_is_valid_tmp(T_case) and _is_valid_tmp(T_amb)):
+            return None
+        if coupling <= 0:
+            return None
+        T_water = float(T_amb) + (float(T_case) - float(T_amb)) / coupling
+        if T_water < float(T_amb) + 1.0 or T_water > _T_MAX_PLAUSIBLE:
+            return None
+        return T_water
+
     # ── Diagnostics ───────────────────────────────────────────────────────
 
     @property

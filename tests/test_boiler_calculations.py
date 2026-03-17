@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pandas as pd
 
-from smartboiler.boiler import Boiler
+from smartboiler.legacy.boiler import Boiler
 
 
 # ---------------------------------------------------------------------------
