@@ -673,7 +673,8 @@ function makePicker(containerId, cfgKey, filterDomains, placeholder, onChange) {
 function makeInfluxPicker(containerId, cfgKey, influxEntities) {
   const wrap = document.getElementById(containerId);
   if (!wrap) return;
-  const ent = influxEntities.map(id => ({entity_id: id, name: id, domain: ''}));
+  // entities is now [{measurement, entity_id, display}]
+  const ent = influxEntities.map(e => ({entity_id: e.entity_id, name: e.display, domain: e.measurement}));
   wrap.innerHTML = `
     <input class="picker-input" placeholder="Search InfluxDB entity..." autocomplete="off" data-val="">
     <button class="picker-clear" title="Clear">✕</button>

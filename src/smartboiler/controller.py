@@ -767,7 +767,6 @@ class SmartBoilerController:
         logger.info("Dashboard started on :8099")
 
         if self._bootstrapper.should_run():
-            import threading
             def _run_bootstrap():
                 logger.info("InfluxDB bootstrap starting in background…")
                 try:
@@ -800,7 +799,6 @@ class SmartBoilerController:
 
                 # Periodic InfluxDB retrain check (every predictor_retrain_weeks)
                 if self._bootstrapper.should_run():
-                    import threading
                     def _retrain():
                         logger.info("InfluxDB periodic retrain starting in background…")
                         try:
