@@ -52,7 +52,7 @@ def index() -> str:
     if _rate_limited():
         abort(429)
     if not is_setup_complete():
-        return redirect("/setup")
+        return redirect("setup")
     return render_template("dashboard.html")
 
 
