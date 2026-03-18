@@ -70,7 +70,7 @@ def _get_extra(endpoint: str, params: Dict) -> Dict:
 
 _request_counts: Dict[str, int] = {}
 _request_lock = threading.Lock()
-RATE_LIMIT = 120  # max requests per IP per sliding window
+RATE_LIMIT = 120  # max requests per IP per sliding window 
 
 
 def _check_rate_limit(ip: str, limit: int = RATE_LIMIT) -> bool:
