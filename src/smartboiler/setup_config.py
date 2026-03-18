@@ -1,0 +1,246 @@
+"""
+Persistent setup configuration for SmartBoiler.
+
+Stored in /data/smartboiler_setup.json — written by the web UI wizard,
+read by the controller. Replaces the brittle HA config.yaml schema for
+all entity/integration options.
+"""
+
+import json
+import logging
+import os
+import re
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+_DATA_DIR = os.environ.get("DATA_PATH", "/data/")
+_SETUP_PATH = os.path.join(_DATA_DIR, "smartboiler_setup.json")
+
+DEFAULTS: dict = {
+    # ── Mode ──────────────────────────────────────────────────────────────
+    "operation_mode": "standard",
+
+    # ── Required entities ─────────────────────────────────────────────────
+    "boiler_switch_entity_id": "",
+
+    # ── Optional entities ─────────────────────────────────────────────────
+    "boiler_power_entity_id": "",
+    "boiler_direct_tmp_entity_id": "",
+    "boiler_case_tmp_entity_id": "",
+    "boiler_inlet_tmp_entity_id": "",
+    "boiler_outlet_tmp_entity_id": "",
+    "boiler_area_tmp_entity_id": "",
+    "boiler_water_flow_entity_id": "",
+    "boiler_water_temp_entity_id": "",
+    "pv_surplus_entity_id": "",
+    "person_entity_ids": "",
+    "calendar_entity_id": "",
+
+    # ── Boiler physics ────────────────────────────────────────────────────
+    "boiler_volume": 120,
+    "boiler_set_tmp": 60,
+    "boiler_min_operation_tmp": 37,
+    "boiler_watt_power": 2000,
+    "average_boiler_surroundings_temp": 20,
+
+    # ── Simple mode physics ───────────────────────────────────────────────
+    "cold_water_temp": 10,
+    "thermal_coupling_ratio": 0.45,
+    "boiler_standby_watts": 50,
+    "draw_detection_threshold_c": 2.0,
+    "thermal_model_window_days": 7,
+    "thermal_mass_ratio": 0.3,
+
+    # ── Spot price ────────────────────────────────────────────────────────
+    "has_spot_price": False,
+    "spot_price_region": "CZ",
+
+    # ── HDO ───────────────────────────────────────────────────────────────
+    "hdo_explicit_schedule": "",
+
+    # ── Prediction ────────────────────────────────────────────────────────
+    "prediction_conservatism": "medium",
+    "min_training_days": 30,
+    "predictor_retrain_weeks": 4,
+
+    # ── InfluxDB bootstrap (optional) ─────────────────────────────────────
+    "influxdb_host": "",
+    "influxdb_port": 8086,
+    "influxdb_db": "homeassistant",
+    "influxdb_username": "",
+    "influxdb_password": "",
+    "influxdb_relay_entity_id": "",
+    "influxdb_flow_entity_id": "",
+    "influxdb_water_temp_entity_id": "",
+    "influxdb_case_tmp_entity_id": "",
+    "influxdb_inlet_tmp_entity_id": "",
+    "influxdb_power_entity_id": "",
+    "influxdb_measurement_temp": "°C",
+    "influxdb_measurement_flow": "L/min",
+    "influxdb_measurement_power": "W",
+    "influxdb_measurement_state": "state",
+    "influxdb_history_years": 2,
+    "influxdb_start_date": "",
+
+    # ── Calendar ──────────────────────────────────────────────────────────
+    "vacation_mode": "min_temp",
+    "vacation_min_temp": 30,
+
+    # ── System ────────────────────────────────────────────────────────────
+    "logging_level": "INFO",
+}
+
+_HDO_PATTERN = re.compile(r"^\d{1,2}:\d{2}-\d{1,2}:\d{2}$")
+
+
+def validate_config(config: dict) -> list[str]:
+    """Return a list of human-readable validation error strings.
+
+    An empty list means the config is valid.
+    """
+    errors: list[str] = []
+
+    # ── Required ────────────────────────────────────────────────────────
+    if not str(config.get("boiler_switch_entity_id", "")).strip():
+        errors.append("boiler_switch_entity_id is required")
+
+    # ── Enums ───────────────────────────────────────────────────────────
+    if config.get("operation_mode") not in ("simple", "standard"):
+        errors.append("operation_mode must be 'simple' or 'standard'")
+
+    if config.get("spot_price_region") not in ("CZ", "SK", "AT", "DE", "PL", "HU"):
+        errors.append("spot_price_region must be one of: CZ, SK, AT, DE, PL, HU")
+
+    if config.get("prediction_conservatism") not in ("low", "medium", "high"):
+        errors.append("prediction_conservatism must be 'low', 'medium', or 'high'")
+
+    if config.get("vacation_mode") not in ("min_temp", "off"):
+        errors.append("vacation_mode must be 'min_temp' or 'off'")
+
+    if config.get("logging_level") not in ("DEBUG", "INFO", "WARNING", "ERROR"):
+        errors.append("logging_level must be one of: DEBUG, INFO, WARNING, ERROR")
+
+    # ── Numeric ranges ──────────────────────────────────────────────────
+    _check_range(errors, config, "boiler_volume", 10, 1000, "litres")
+    _check_range(errors, config, "boiler_set_tmp", 30, 95, "°C")
+    _check_range(errors, config, "boiler_min_operation_tmp", 20, 90, "°C")
+    _check_range(errors, config, "boiler_watt_power", 100, 20000, "W")
+    _check_range(errors, config, "average_boiler_surroundings_temp", -10, 50, "°C")
+    _check_range(errors, config, "cold_water_temp", 0, 30, "°C")
+    _check_range(errors, config, "thermal_coupling_ratio", 0.0, 1.0)
+    _check_range(errors, config, "boiler_standby_watts", 0, 500, "W")
+    _check_range(errors, config, "draw_detection_threshold_c", 0.0, 20.0, "°C")
+    _check_range(errors, config, "thermal_model_window_days", 1, 365, "days")
+    _check_range(errors, config, "thermal_mass_ratio", 0.0, 1.0)
+    _check_range(errors, config, "influxdb_port", 1, 65535)
+    _check_range(errors, config, "influxdb_history_years", 1, 20, "years")
+    _check_range(errors, config, "min_training_days", 1, 365, "days")
+    _check_range(errors, config, "predictor_retrain_weeks", 1, 52, "weeks")
+    _check_range(errors, config, "vacation_min_temp", 10, 60, "°C")
+
+    # ── Cross-field ─────────────────────────────────────────────────────
+    try:
+        if int(config.get("boiler_min_operation_tmp", 0)) >= int(config.get("boiler_set_tmp", 0)):
+            errors.append("boiler_min_operation_tmp must be less than boiler_set_tmp")
+    except (ValueError, TypeError):
+        pass  # already caught by range checks above
+
+    # ── HDO format ──────────────────────────────────────────────────────
+    hdo = str(config.get("hdo_explicit_schedule", "")).strip()
+    if hdo and not _HDO_PATTERN.match(hdo):
+        errors.append("hdo_explicit_schedule must be empty or in format HH:MM-HH:MM (e.g. 22:00-06:00)")
+
+    return errors
+
+
+def _check_range(
+    errors: list[str],
+    config: dict,
+    key: str,
+    lo: float,
+    hi: float,
+    unit: str = "",
+) -> None:
+    try:
+        val = float(config[key])
+        if not (lo <= val <= hi):
+            unit_str = f" {unit}" if unit else ""
+            errors.append(f"{key} must be {lo}–{hi}{unit_str} (got {val})")
+    except (KeyError, TypeError, ValueError):
+        unit_str = f" {unit}" if unit else ""
+        errors.append(f"{key} must be a number between {lo} and {hi}{unit_str}")
+
+
+def load_setup_config() -> dict:
+    """Load /data/smartboiler_setup.json merged with defaults.
+
+    Also accepts a legacy /data/options.json written by HA from config.yaml,
+    so existing installs keep working without re-running the wizard.
+    """
+    config = dict(DEFAULTS)
+
+    # 1. Legacy HA options.json (lower priority)
+    legacy = os.path.join(_DATA_DIR, "options.json")
+    if os.path.exists(legacy):
+        try:
+            with open(legacy) as f:
+                config.update(json.load(f))
+        except Exception as e:
+            logger.warning("Could not read legacy options.json: %s", e)
+
+    # 2. Web UI setup config (higher priority — overrides legacy)
+    if os.path.exists(_SETUP_PATH):
+        try:
+            with open(_SETUP_PATH) as f:
+                config.update(json.load(f))
+        except Exception as e:
+            logger.warning("Could not read smartboiler_setup.json: %s", e)
+
+    return config
+
+
+def save_setup_config(data: dict) -> None:
+    """Validate and persist config to /data/smartboiler_setup.json.
+
+    Raises ValueError with a newline-joined list of errors if validation fails.
+    """
+    merged = dict(DEFAULTS)
+    merged.update({k: v for k, v in data.items() if k in DEFAULTS})
+
+    # Type coercions — applied before validation so range checks get numbers
+    for int_key in ("boiler_volume", "boiler_set_tmp", "boiler_min_operation_tmp",
+                    "boiler_watt_power", "average_boiler_surroundings_temp",
+                    "cold_water_temp", "boiler_standby_watts",
+                    "min_training_days", "predictor_retrain_weeks",
+                    "thermal_model_window_days", "influxdb_port",
+                    "influxdb_history_years", "vacation_min_temp"):
+        try:
+            merged[int_key] = int(merged[int_key])
+        except (ValueError, TypeError):
+            merged[int_key] = DEFAULTS[int_key]
+
+    for float_key in ("thermal_coupling_ratio", "draw_detection_threshold_c",
+                      "thermal_mass_ratio"):
+        try:
+            merged[float_key] = float(merged[float_key])
+        except (ValueError, TypeError):
+            merged[float_key] = DEFAULTS[float_key]
+
+    merged["has_spot_price"] = bool(merged.get("has_spot_price", False))
+
+    errors = validate_config(merged)
+    if errors:
+        raise ValueError("\n".join(errors))
+
+    os.makedirs(_DATA_DIR, exist_ok=True)
+    with open(_SETUP_PATH, "w") as f:
+        json.dump(merged, f, indent=2)
+    logger.info("Setup config saved to %s", _SETUP_PATH)
+
+
+def is_setup_complete(config: Optional[dict] = None) -> bool:
+    """Return True if the minimum required field (boiler switch) is configured."""
+    if config is None:
+        config = load_setup_config()
+    return bool(config.get("boiler_switch_entity_id", "").strip())

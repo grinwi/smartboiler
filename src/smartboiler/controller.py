@@ -10,14 +10,12 @@
 #   temperature_estimator.py — multi-level water temp estimation
 #   legionella_protector.py  — periodic legionella heating cycle
 
-import json
 import logging
 import os
 import sys
 import threading
 import time
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -819,16 +817,6 @@ class SmartBoilerController:
 
 # ── Entry point ───────────────────────────────────────────────────────────
 
-def _load_options() -> Dict:
-    options_path = os.getenv("OPTIONS_PATH", "/data/options.json")
-    p = Path(options_path)
-    if p.exists():
-        with p.open() as f:
-            return json.load(f)
-    logger.warning("options.json not found at %s; using defaults", options_path)
-    return {}
-
-
 def _setup_logging(level_str: str) -> None:
     level = getattr(logging, level_str.upper(), logging.INFO)
     logging.basicConfig(
@@ -838,13 +826,47 @@ def _setup_logging(level_str: str) -> None:
     )
 
 
-if __name__ == "__main__":
-    options = _load_options()
-    _setup_logging(options.get("logging_level", "INFO"))
+def _wait_for_setup() -> Dict:
+    """Start the web server and block until setup wizard completes.
 
-    if not options.get("boiler_switch_entity_id"):
-        logger.error("boiler_switch_entity_id is required in options.json")
-        sys.exit(1)
+    Returns the completed config dict.
+    """
+    import threading
+    from smartboiler.web_server import run_dashboard
+
+    logger.info(
+        "Setup not complete — starting web server on :8099. "
+        "Open the SmartBoiler add-on UI to complete setup."
+    )
+
+    t = threading.Thread(target=run_dashboard, daemon=True)
+    t.start()
+
+    from smartboiler.setup_config import load_setup_config, is_setup_complete
+    while True:
+        time.sleep(5)
+        cfg = load_setup_config()
+        if is_setup_complete(cfg):
+            logger.info("Setup complete — starting controller.")
+            return cfg
+
+
+if __name__ == "__main__":
+    from smartboiler.setup_config import load_setup_config, is_setup_complete
+
+    # Basic logging before we know the configured level
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+        stream=sys.stdout,
+    )
+
+    options = load_setup_config()
+
+    if not is_setup_complete(options):
+        options = _wait_for_setup()
+
+    _setup_logging(options.get("logging_level", "INFO"))
 
     controller = SmartBoilerController(options)
     controller.start()

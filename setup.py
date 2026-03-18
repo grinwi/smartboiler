@@ -53,5 +53,5 @@ setup(
             "smartboiler=smartboiler.command_line:main",
         ],
     },
-    package_data={"smartboiler": ["templates/index.html", "static/style.css"]},
+    package_data={"smartboiler": ["templates/*.html", "static/style.css"]},
 )

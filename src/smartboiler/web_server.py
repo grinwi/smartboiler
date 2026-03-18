@@ -19,7 +19,7 @@ from flask import Flask
 
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder="templates")
 
 # ── State providers (injected by controller before starting) ──────────────
 
