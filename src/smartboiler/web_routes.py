@@ -9,7 +9,7 @@
 import logging
 from datetime import datetime
 
-from flask import Response, abort, jsonify, render_template_string, request
+from flask import Response, abort, jsonify, redirect, render_template, request
 
 # Imported from web_server after app and helpers are fully defined (avoids circular import)
 from smartboiler.web_server import (  # noqa: E402
@@ -19,7 +19,7 @@ from smartboiler.web_server import (  # noqa: E402
     _get_extra,
     _calendar_manager,
 )
-from smartboiler.web_templates import DASHBOARD_HTML
+from smartboiler.setup_config import load_setup_config, save_setup_config, is_setup_complete
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,107 @@ def add_security_headers(response: Response) -> Response:
 def index() -> str:
     if _rate_limited():
         abort(429)
-    return render_template_string(DASHBOARD_HTML)
+    if not is_setup_complete():
+        return redirect("/setup")
+    return render_template("dashboard.html")
+
+
+@app.route("/setup")
+def setup_wizard() -> str:
+    return render_template("setup.html", settings_mode=False)
+
+
+@app.route("/settings")
+def settings_page() -> str:
+    return render_template("setup.html", settings_mode=True)
+
+
+# ── Setup / config API ─────────────────────────────────────────────────────
+
+
+@app.route("/api/ha/entities")
+def api_ha_entities_full() -> Response:
+    """Return all HA entity IDs grouped by domain — used by the setup wizard."""
+    if _rate_limited():
+        abort(429)
+    try:
+        from smartboiler.ha_client import HAClient
+        client = HAClient()
+        states = client.get_all_states()
+        entities = []
+        for s in states:
+            eid = s.get("entity_id", "")
+            if not eid:
+                continue
+            domain = eid.split(".")[0]
+            friendly = (
+                s.get("attributes", {}).get("friendly_name") or eid
+            )
+            entities.append({"entity_id": eid, "name": friendly, "domain": domain})
+        entities.sort(key=lambda e: e["entity_id"])
+        return jsonify(entities)
+    except Exception as e:
+        logger.error("api_ha_entities_full error: %s", e)
+        return jsonify([])
+
+
+@app.route("/api/config", methods=["GET"])
+def api_get_config() -> Response:
+    """Return current setup configuration."""
+    if _rate_limited():
+        abort(429)
+    return jsonify(load_setup_config())
+
+
+@app.route("/api/config", methods=["POST"])
+def api_save_config() -> Response:
+    """Save setup configuration and signal the controller to (re)start."""
+    if _rate_limited():
+        abort(429)
+    try:
+        data = request.get_json(force=True) or {}
+        save_setup_config(data)
+        return jsonify({"ok": True})
+    except ValueError as e:
+        # Validation errors from save_setup_config — return as 400
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        logger.error("api_save_config error: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/test/influxdb", methods=["POST"])
+def api_test_influxdb() -> Response:
+    """Test InfluxDB connection and return available entity names."""
+    if _rate_limited():
+        abort(429)
+    try:
+        body = request.get_json(force=True) or {}
+        host = str(body.get("host", "")).strip()
+        port = int(body.get("port", 8086))
+        db = str(body.get("db", "homeassistant")).strip()
+        username = str(body.get("username", "")).strip() or None
+        password = str(body.get("password", "")).strip() or None
+
+        if not host:
+            return jsonify({"ok": False, "error": "Host is required"}), 400
+
+        from influxdb import InfluxDBClient  # type: ignore
+        client = InfluxDBClient(
+            host=host, port=port, database=db,
+            username=username, password=password,
+            timeout=8,
+        )
+        # Ping to check connectivity
+        client.ping()
+        # Get measurement names (entity ids in HA InfluxDB integration)
+        measurements = [
+            m["name"] for m in client.get_list_measurements()
+        ]
+        return jsonify({"ok": True, "entities": sorted(measurements)})
+    except Exception as e:
+        logger.warning("InfluxDB test failed: %s", e)
+        return jsonify({"ok": False, "error": str(e)})
 
 
 @app.route("/api/status")

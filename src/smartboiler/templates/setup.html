@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="sb-settings-mode" content="{{ 'true' if settings_mode else 'false' }}">
+  <title>SmartBoiler {{ "Settings" if settings_mode else "Setup" }}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --blue:#2b6cb0;--blue-l:#ebf8ff;--green:#276749;--green-l:#c6f6d5;
+      --orange:#c05621;--orange-l:#feebc8;--red:#9b2c2c;--red-l:#fed7d7;
+      --gray:#718096;--bg:#f0f4f8;--card:#fff;--border:#e2e8f0;
+    }
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+         background:var(--bg);color:#2d3748;min-height:100vh}
+    header{background:var(--blue);color:#fff;padding:.75rem 1.5rem;display:flex;align-items:center;gap:.75rem}
+    header h1{font-size:1.2rem;font-weight:700}
+    header .subtitle{font-size:.85rem;opacity:.8;margin-left:.5rem}
+
+    /* Progress bar */
+    .progress-wrap{background:#1a4a8a;padding:.6rem 1.5rem;display:flex;align-items:center;gap:.5rem}
+    .step-indicator{display:flex;align-items:center;gap:.3rem;font-size:.8rem;color:rgba(255,255,255,.6);cursor:pointer}
+    .step-indicator.active{color:#fff;font-weight:600}
+    .step-indicator.done{color:#90cdf4}
+    .step-indicator.done .step-num{background:#48bb78}
+    .step-num{width:22px;height:22px;border-radius:50%;background:rgba(255,255,255,.2);
+              display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700}
+    .step-indicator.active .step-num{background:var(--blue-l);color:var(--blue)}
+    .step-sep{flex:1;height:1px;background:rgba(255,255,255,.2);min-width:10px}
+
+    /* Content */
+    .wizard{max-width:760px;margin:2rem auto;padding:0 1rem}
+    .card{background:var(--card);border-radius:14px;padding:1.75rem;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-bottom:1.5rem}
+    .card h2{font-size:1.15rem;font-weight:700;margin-bottom:.25rem}
+    .card .desc{font-size:.88rem;color:var(--gray);margin-bottom:1.5rem}
+
+    /* Mode cards */
+    .mode-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+    .mode-card{border:2px solid var(--border);border-radius:10px;padding:1.2rem;cursor:pointer;transition:all .15s}
+    .mode-card:hover{border-color:var(--blue);background:var(--blue-l)}
+    .mode-card.selected{border-color:var(--blue);background:var(--blue-l)}
+    .mode-card h3{font-size:1rem;font-weight:700;margin-bottom:.4rem}
+    .mode-card p{font-size:.84rem;color:var(--gray);line-height:1.5}
+    .mode-card .tag{display:inline-block;margin-top:.6rem;font-size:.75rem;padding:.15rem .5rem;
+                    border-radius:5px;background:#e2e8f0;color:#4a5568;font-weight:600}
+    .mode-card.selected .tag{background:#2b6cb0;color:#fff}
+
+    /* Form fields */
+    .field{margin-bottom:1.2rem}
+    .field label{display:block;font-size:.82rem;font-weight:600;color:#4a5568;margin-bottom:.35rem}
+    .field .hint{font-size:.78rem;color:var(--gray);margin-top:.25rem}
+    .field.optional label::after{content:" (optional)";font-weight:400;color:var(--gray)}
+    .field input[type=text],.field input[type=number],.field select{
+      width:100%;padding:.5rem .75rem;border:1.5px solid var(--border);
+      border-radius:8px;font-size:.9rem;transition:border .15s}
+    .field input:focus,.field select:focus{outline:none;border-color:var(--blue)}
+    .field input.invalid,.field select.invalid{border-color:#fc8181}
+    .field .err{font-size:.78rem;color:var(--red);margin-top:.2rem;display:none}
+    .field .err.show{display:block}
+
+    /* Two-column grid for physics */
+    .field-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 1.25rem}
+    @media(max-width:520px){.field-grid,.mode-grid{grid-template-columns:1fr}}
+
+    /* Entity picker */
+    .picker-wrap{position:relative}
+    .picker-input{width:100%;padding:.5rem .75rem;border:1.5px solid var(--border);
+                  border-radius:8px;font-size:.9rem;transition:border .15s}
+    .picker-input:focus{outline:none;border-color:var(--blue)}
+    .picker-input.invalid{border-color:#fc8181}
+    .picker-clear{position:absolute;right:.5rem;top:50%;transform:translateY(-50%);
+                  background:none;border:none;cursor:pointer;color:#a0aec0;font-size:1.1rem;
+                  display:none;padding:.1rem .3rem}
+    .picker-clear.show{display:block}
+    .picker-dropdown{position:absolute;z-index:200;width:100%;background:#fff;
+                     border:1.5px solid var(--blue);border-radius:8px;
+                     box-shadow:0 4px 16px rgba(0,0,0,.12);max-height:220px;
+                     overflow-y:auto;display:none;top:calc(100% + 4px)}
+    .picker-dropdown.open{display:block}
+    .picker-item{padding:.5rem .75rem;cursor:pointer;font-size:.88rem;
+                 border-bottom:1px solid #f7fafc;display:flex;flex-direction:column;gap:.1rem}
+    .picker-item:last-child{border-bottom:none}
+    .picker-item:hover{background:var(--blue-l)}
+    .picker-item .pid{font-family:monospace;font-size:.8rem;color:var(--gray)}
+    .picker-item .pname{font-weight:500}
+    .picker-none{padding:.75rem;font-size:.85rem;color:var(--gray);text-align:center}
+
+    /* Multi-entity picker */
+    .multi-tags{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.4rem}
+    .tag-chip{display:flex;align-items:center;gap:.3rem;background:#ebf8ff;
+              border:1px solid #bee3f8;border-radius:6px;padding:.2rem .5rem;font-size:.8rem}
+    .tag-chip button{background:none;border:none;cursor:pointer;color:#fc8181;font-size:.9rem;line-height:1}
+
+    /* Section separator */
+    .section-sep{border:none;border-top:1px solid var(--border);margin:1.25rem 0}
+
+    /* Toggle switch */
+    .toggle-row{display:flex;align-items:center;justify-content:space-between;padding:.5rem 0}
+    .toggle-row span{font-size:.9rem;font-weight:500}
+    .toggle-row .hint{font-size:.78rem;color:var(--gray);display:block}
+    .switch{position:relative;display:inline-block;width:42px;height:24px;flex-shrink:0}
+    .switch input{opacity:0;width:0;height:0}
+    .slider{position:absolute;cursor:pointer;inset:0;background:#cbd5e0;border-radius:24px;transition:.2s}
+    .slider:before{content:"";position:absolute;height:18px;width:18px;left:3px;bottom:3px;
+                   background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+    input:checked+.slider{background:var(--blue)}
+    input:checked+.slider:before{transform:translateX(18px)}
+
+    /* Buttons */
+    .btn-row{display:flex;justify-content:space-between;align-items:center;margin-top:1.5rem}
+    .btn{padding:.55rem 1.4rem;border-radius:9px;font-size:.9rem;font-weight:600;cursor:pointer;border:none;transition:all .15s}
+    .btn-primary{background:var(--blue);color:#fff}
+    .btn-primary:hover{background:#2c5282}
+    .btn-primary:disabled{background:#a0aec0;cursor:not-allowed}
+    .btn-secondary{background:#fff;border:1.5px solid var(--border);color:#4a5568}
+    .btn-secondary:hover{border-color:var(--blue);color:var(--blue)}
+    .btn-skip{background:none;border:none;color:var(--gray);font-size:.85rem;cursor:pointer;text-decoration:underline}
+
+    /* Loading spinner */
+    .spinner{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.4);
+             border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;margin-right:.4rem}
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    /* Status badge */
+    .status-badge{display:inline-flex;align-items:center;gap:.35rem;padding:.25rem .7rem;
+                  border-radius:20px;font-size:.8rem;font-weight:600}
+    .status-badge.ok{background:var(--green-l);color:var(--green)}
+    .status-badge.err{background:var(--red-l);color:var(--red)}
+    .status-badge.loading{background:#ebf8ff;color:var(--blue)}
+
+    /* InfluxDB test result */
+    .influx-entities{margin-top:1rem;display:none}
+    .influx-entities.show{display:block}
+
+    /* Step panes */
+    .step-pane{display:none}.step-pane.active{display:block}
+
+    /* Success screen */
+    .success-icon{font-size:3rem;text-align:center;margin-bottom:1rem}
+    .success-text{text-align:center;font-size:1rem;color:#4a5568;line-height:1.6}
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>SmartBoiler</h1>
+  <span class="subtitle" id="header-subtitle">Setup Wizard</span>
+</header>
+
+<div class="progress-wrap" id="progress-bar">
+  <div class="step-indicator active" data-step="1" onclick="jumpStep(1)">
+    <div class="step-num">1</div><span>Mode</span>
+  </div>
+  <div class="step-sep"></div>
+  <div class="step-indicator" data-step="2" onclick="jumpStep(2)">
+    <div class="step-num">2</div><span>Switch &amp; Power</span>
+  </div>
+  <div class="step-sep"></div>
+  <div class="step-indicator" data-step="3" onclick="jumpStep(3)">
+    <div class="step-num">3</div><span>Temperature</span>
+  </div>
+  <div class="step-sep"></div>
+  <div class="step-indicator" data-step="4" onclick="jumpStep(4)">
+    <div class="step-num">4</div><span>Optional</span>
+  </div>
+  <div class="step-sep"></div>
+  <div class="step-indicator" data-step="5" onclick="jumpStep(5)">
+    <div class="step-num">5</div><span>Physics</span>
+  </div>
+  <div class="step-sep"></div>
+  <div class="step-indicator" data-step="6" onclick="jumpStep(6)">
+    <div class="step-num">6</div><span>Integrations</span>
+  </div>
+</div>
+
+<div class="wizard">
+
+<!-- ── STEP 1: Mode ──────────────────────────────────────────────────── -->
+<div class="step-pane active" id="step-1">
+  <div class="card">
+    <h2>Choose operation mode</h2>
+    <p class="desc">Select the mode that matches your hardware. You can change this later in Settings.</p>
+    <div class="mode-grid">
+      <div class="mode-card selected" id="mode-standard" onclick="selectMode('standard')">
+        <h3>Standard</h3>
+        <p>Direct temperature probe (NTC) or flow sensor available. Best accuracy.</p>
+        <span class="tag">Recommended</span>
+      </div>
+      <div class="mode-card" id="mode-simple" onclick="selectMode('simple')">
+        <h3>Simple</h3>
+        <p>Shelly 1PM + up to 3 temperature probes. No flow sensor needed.</p>
+        <span class="tag">Shelly only</span>
+      </div>
+    </div>
+  </div>
+  <div class="btn-row">
+    <span></span>
+    <button class="btn btn-primary" onclick="goStep(2)">Next →</button>
+  </div>
+</div>
+
+<!-- ── STEP 2: Switch & Power ────────────────────────────────────────── -->
+<div class="step-pane" id="step-2">
+  <div class="card">
+    <h2>Boiler switch &amp; power meter</h2>
+    <p class="desc">Select the switch entity that controls the boiler relay. The power meter entity enables HDO detection and temperature estimation.</p>
+
+    <div class="field" id="field-switch">
+      <label>Boiler switch</label>
+      <div class="picker-wrap" id="picker-boiler_switch_entity_id"></div>
+      <div class="hint">The switch or input_boolean controlling the boiler relay (e.g. switch.boiler)</div>
+      <div class="err" id="err-switch">Please select a switch entity.</div>
+    </div>
+
+    <div class="field optional" id="field-power">
+      <label>Boiler power meter</label>
+      <div class="picker-wrap" id="picker-boiler_power_entity_id"></div>
+      <div class="hint">Sensor reporting boiler wattage (e.g. sensor.boiler_power). Recommended — enables HDO learning and level-2 temperature estimation.</div>
+    </div>
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-secondary" onclick="goStep(1)">← Back</button>
+    <button class="btn btn-primary" onclick="validateAndGoStep(2, 3)">Next →</button>
+  </div>
+</div>
+
+<!-- ── STEP 3: Temperature sensors ──────────────────────────────────── -->
+<div class="step-pane" id="step-3">
+  <div class="card">
+    <h2 id="s3-title">Temperature sensors</h2>
+    <p class="desc" id="s3-desc">Select temperature sensors. The add-on uses the best available source.</p>
+
+    <!-- Standard mode sensors -->
+    <div id="s3-standard">
+      <div class="field optional">
+        <label>Direct NTC probe (best)</label>
+        <div class="picker-wrap" id="picker-boiler_direct_tmp_entity_id"></div>
+        <div class="hint">Temperature probe inside the thermostat pocket — most accurate. Skipping uses power feedback estimation instead.</div>
+      </div>
+      <div class="field optional">
+        <label>Case temperature</label>
+        <div class="picker-wrap" id="picker-boiler_case_tmp_entity_id"></div>
+        <div class="hint">External sensor on the boiler case. Used as fallback for water temp estimation.</div>
+      </div>
+      <div class="field optional">
+        <label>Water flow sensor</label>
+        <div class="picker-wrap" id="picker-boiler_water_flow_entity_id"></div>
+        <div class="hint">Flow sensor in L/min. Enables direct consumption measurement.</div>
+      </div>
+      <div class="field optional">
+        <label>Water temperature sensor</label>
+        <div class="picker-wrap" id="picker-boiler_water_temp_entity_id"></div>
+        <div class="hint">Temperature of outgoing hot water. Used together with the flow sensor.</div>
+      </div>
+    </div>
+
+    <!-- Simple mode sensors -->
+    <div id="s3-simple" style="display:none">
+      <div class="field" id="field-case">
+        <label>Boiler case temperature</label>
+        <div class="picker-wrap" id="picker-boiler_case_tmp_entity_id_simple"></div>
+        <div class="hint">Required for Simple mode — used to estimate water temperature via the thermal coupling model.</div>
+        <div class="err" id="err-case">Please select a case temperature sensor for Simple mode.</div>
+      </div>
+      <div class="field optional">
+        <label>Cold-water inlet temperature</label>
+        <div class="picker-wrap" id="picker-boiler_inlet_tmp_entity_id"></div>
+        <div class="hint">Sensor on the cold-water inlet pipe. Improves energy balance accuracy.</div>
+      </div>
+      <div class="field optional">
+        <label>Hot-water outlet temperature</label>
+        <div class="picker-wrap" id="picker-boiler_outlet_tmp_entity_id"></div>
+        <div class="hint">Sensor on the hot-water outlet pipe. Display only.</div>
+      </div>
+    </div>
+
+    <hr class="section-sep">
+    <div class="field optional">
+      <label>Boiler room / ambient temperature</label>
+      <div class="picker-wrap" id="picker-boiler_area_tmp_entity_id"></div>
+      <div class="hint">Temperature sensor in the boiler room. If set, the thermal model uses live readings instead of the static average ambient value.</div>
+    </div>
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-secondary" onclick="goStep(2)">← Back</button>
+    <button class="btn btn-primary" onclick="validateAndGoStep(3, 4)">Next →</button>
+  </div>
+</div>
+
+<!-- ── STEP 4: Optional entities ─────────────────────────────────────── -->
+<div class="step-pane" id="step-4">
+  <div class="card">
+    <h2>Optional entities</h2>
+    <p class="desc">These improve scheduling but are not required. You can skip this step and configure later.</p>
+
+    <div class="field optional">
+      <label>PV surplus power</label>
+      <div class="picker-wrap" id="picker-pv_surplus_entity_id"></div>
+      <div class="hint">Sensor reporting available PV surplus in watts (positive = surplus). When surplus is detected, heating is prioritised free of charge.</div>
+    </div>
+
+    <div class="field optional">
+      <label>Person / device tracker entities</label>
+      <div id="multi-persons">
+        <div class="picker-wrap" id="picker-person-add"></div>
+        <div class="multi-tags" id="person-tags"></div>
+      </div>
+      <div class="hint">Select person or device_tracker entities for presence-aware scheduling. Click multiple to add.</div>
+    </div>
+
+    <div class="field optional">
+      <label>Calendar entity</label>
+      <div class="picker-wrap" id="picker-calendar_entity_id"></div>
+      <div class="hint">HA calendar entity for vacation and boost events (e.g. calendar.boiler). Leave empty to disable.</div>
+    </div>
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-secondary" onclick="goStep(3)">← Back</button>
+    <div style="display:flex;gap:.75rem;align-items:center">
+      <button class="btn-skip" onclick="goStep(5)">Skip</button>
+      <button class="btn btn-primary" onclick="goStep(5)">Next →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── STEP 5: Physics ────────────────────────────────────────────────── -->
+<div class="step-pane" id="step-5">
+  <div class="card">
+    <h2>Boiler parameters</h2>
+    <p class="desc">Physical parameters of your boiler. Check the label on the tank or your installation documents.</p>
+    <div class="field-grid">
+      <div class="field">
+        <label>Tank volume (litres)</label>
+        <input type="number" id="boiler_volume" value="120" min="10" max="1000">
+        <div class="hint">Typical: 80–200 L</div>
+      </div>
+      <div class="field">
+        <label>Heating element power (W)</label>
+        <input type="number" id="boiler_watt_power" value="2000" min="100" max="10000">
+        <div class="hint">Typical: 1500–3000 W</div>
+      </div>
+      <div class="field">
+        <label>Target temperature (°C)</label>
+        <input type="number" id="boiler_set_tmp" value="60" min="35" max="95">
+        <div class="hint">Recommended: 55–65 °C (legionella)</div>
+      </div>
+      <div class="field">
+        <label>Minimum operating temperature (°C)</label>
+        <input type="number" id="boiler_min_operation_tmp" value="37" min="10" max="70">
+        <div class="hint">Add-on won't let temp drop below this</div>
+      </div>
+      <div class="field">
+        <label>Average ambient temperature (°C)</label>
+        <input type="number" id="average_boiler_surroundings_temp" value="20" min="-20" max="40">
+        <div class="hint">Room temperature around the boiler</div>
+      </div>
+    </div>
+
+    <div id="simple-physics" style="display:none">
+      <hr class="section-sep">
+      <p style="font-size:.85rem;font-weight:600;color:#4a5568;margin-bottom:1rem">Simple Mode — thermal model parameters</p>
+      <div class="field-grid">
+        <div class="field">
+          <label>Cold water inlet temperature (°C)</label>
+          <input type="number" id="cold_water_temp" value="10" min="-10" max="30">
+          <div class="hint">Typical: 8–14 °C in Central Europe</div>
+        </div>
+        <div class="field">
+          <label>Thermal coupling ratio</label>
+          <input type="number" id="thermal_coupling_ratio" value="0.45" min="0.1" max="1.0" step="0.05">
+          <div class="hint">0.30 (heavy insulation) – 0.60 (bare metal)</div>
+        </div>
+        <div class="field">
+          <label>Standby heat loss (W)</label>
+          <input type="number" id="boiler_standby_watts" value="50" min="1" max="500">
+          <div class="hint">Typical: 40–80 W for insulated tank</div>
+        </div>
+        <div class="field">
+          <label>Draw detection threshold (°C/tick)</label>
+          <input type="number" id="draw_detection_threshold_c" value="2.0" min="0.1" max="10" step="0.1">
+          <div class="hint">Min case temp drop per 60 s to count as a draw</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-secondary" onclick="goStep(4)">← Back</button>
+    <button class="btn btn-primary" onclick="goStep(6)">Next →</button>
+  </div>
+</div>
+
+<!-- ── STEP 6: Integrations ───────────────────────────────────────────── -->
+<div class="step-pane" id="step-6">
+  <div class="card">
+    <h2>Optional integrations</h2>
+    <p class="desc">Configure spot prices, HDO ripple control, and InfluxDB cold-start bootstrap. All optional — you can skip and configure later in Settings.</p>
+
+    <!-- Spot price -->
+    <div class="toggle-row">
+      <div>
+        <span>Spot price scheduling</span>
+        <span class="hint">Schedules heating during cheapest hours using energy-charts.info day-ahead prices.</span>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="has_spot_price" onchange="toggleSpot()">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div id="spot-region" style="display:none;margin-top:.75rem">
+      <div class="field">
+        <label>Country / price region</label>
+        <select id="spot_price_region">
+          <option value="CZ">Czech Republic (CZ)</option>
+          <option value="SK">Slovakia (SK)</option>
+          <option value="AT">Austria (AT)</option>
+          <option value="DE">Germany (DE)</option>
+          <option value="PL">Poland (PL)</option>
+          <option value="HU">Hungary (HU)</option>
+          <option value="FR">France (FR)</option>
+          <option value="IT">Italy (IT)</option>
+          <option value="ES">Spain (ES)</option>
+        </select>
+      </div>
+    </div>
+
+    <hr class="section-sep">
+
+    <!-- HDO -->
+    <div class="field optional">
+      <label>HDO explicit schedule</label>
+      <input type="text" id="hdo_explicit_schedule" placeholder="e.g. 22:00-06:00,13:00-15:00">
+      <div class="hint">Hours when the grid operator blocks the relay (HDO / ripple control). Leave empty to auto-detect from relay "unavailable" state.</div>
+    </div>
+
+    <hr class="section-sep">
+
+    <!-- Prediction -->
+    <div class="field">
+      <label>Prediction conservatism</label>
+      <select id="prediction_conservatism">
+        <option value="low">Low — p50 (optimistic, may run out of hot water)</option>
+        <option value="medium" selected>Medium — p75 (recommended)</option>
+        <option value="high">High — p90 (conservative, more heating)</option>
+      </select>
+    </div>
+
+    <hr class="section-sep">
+
+    <!-- InfluxDB -->
+    <div class="toggle-row">
+      <div>
+        <span>InfluxDB cold-start bootstrap</span>
+        <span class="hint">Import historical data from an existing InfluxDB to warm up the predictor immediately.</span>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="use_influxdb" onchange="toggleInflux()">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div id="influx-section" style="display:none;margin-top:1rem">
+      <div class="field-grid">
+        <div class="field">
+          <label>Host</label>
+          <input type="text" id="influxdb_host" placeholder="192.168.1.x or hostname">
+        </div>
+        <div class="field">
+          <label>Port</label>
+          <input type="number" id="influxdb_port" value="8086">
+        </div>
+        <div class="field">
+          <label>Database</label>
+          <input type="text" id="influxdb_db" value="homeassistant">
+        </div>
+        <div class="field optional">
+          <label>Username</label>
+          <input type="text" id="influxdb_username" placeholder="Leave empty if no auth">
+        </div>
+        <div class="field optional">
+          <label>Password</label>
+          <input type="text" id="influxdb_password" placeholder="Leave empty if no auth">
+        </div>
+        <div class="field">
+          <label>History to import (years)</label>
+          <input type="number" id="influxdb_history_years" value="2" min="1" max="10">
+        </div>
+      </div>
+      <button class="btn btn-secondary" onclick="testInflux()" id="btn-influx-test">
+        Test connection &amp; load entities
+      </button>
+      <span id="influx-status" style="margin-left:.75rem"></span>
+
+      <div class="influx-entities" id="influx-entities">
+        <hr class="section-sep">
+        <p style="font-size:.85rem;font-weight:600;color:#4a5568;margin-bottom:.75rem">Map InfluxDB entities to roles:</p>
+        <div class="field optional"><label>Boiler relay entity</label>
+          <div class="picker-wrap" id="picker-influxdb_relay_entity_id"></div></div>
+        <div class="field optional"><label>Flow sensor entity</label>
+          <div class="picker-wrap" id="picker-influxdb_flow_entity_id"></div></div>
+        <div class="field optional"><label>Water temperature entity</label>
+          <div class="picker-wrap" id="picker-influxdb_water_temp_entity_id"></div></div>
+        <div class="field optional"><label>Case temperature entity</label>
+          <div class="picker-wrap" id="picker-influxdb_case_tmp_entity_id"></div></div>
+        <div class="field optional"><label>Inlet temperature entity</label>
+          <div class="picker-wrap" id="picker-influxdb_inlet_tmp_entity_id"></div></div>
+        <div class="field optional"><label>Power entity</label>
+          <div class="picker-wrap" id="picker-influxdb_power_entity_id"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-secondary" onclick="goStep(5)">← Back</button>
+    <div style="display:flex;gap:.75rem;align-items:center">
+      <button class="btn-skip" onclick="saveConfig()">Skip &amp; Save</button>
+      <button class="btn btn-primary" id="btn-save" onclick="saveConfig()">
+        Save &amp; Start
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── SUCCESS ────────────────────────────────────────────────────────── -->
+<div class="step-pane" id="step-success">
+  <div class="card" style="text-align:center;padding:2.5rem">
+    <div class="success-icon">🎉</div>
+    <h2 style="margin-bottom:.75rem">Setup complete!</h2>
+    <p class="success-text">SmartBoiler is starting up. The controller will begin collecting data and learning your usage patterns.<br><br>
+    The predictor needs at least <strong id="min-days">30</strong> days of data before ML-based scheduling activates.</p>
+    <br>
+    <a href="/" class="btn btn-primary" style="display:inline-block;text-decoration:none">Go to dashboard →</a>
+  </div>
+</div>
+
+</div><!-- /wizard -->
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────
+const CFG = {
+  operation_mode: 'standard',
+  boiler_switch_entity_id: '',
+  boiler_power_entity_id: '',
+  boiler_direct_tmp_entity_id: '',
+  boiler_case_tmp_entity_id: '',
+  boiler_inlet_tmp_entity_id: '',
+  boiler_outlet_tmp_entity_id: '',
+  boiler_area_tmp_entity_id: '',
+  boiler_water_flow_entity_id: '',
+  boiler_water_temp_entity_id: '',
+  pv_surplus_entity_id: '',
+  person_entity_ids: '',
+  calendar_entity_id: '',
+  boiler_volume: 120, boiler_set_tmp: 60,
+  boiler_min_operation_tmp: 37, boiler_watt_power: 2000,
+  average_boiler_surroundings_temp: 20,
+  cold_water_temp: 10, thermal_coupling_ratio: 0.45,
+  boiler_standby_watts: 50, draw_detection_threshold_c: 2.0,
+  thermal_model_window_days: 7, thermal_mass_ratio: 0.3,
+  has_spot_price: false, spot_price_region: 'CZ',
+  hdo_explicit_schedule: '',
+  prediction_conservatism: 'medium', min_training_days: 30,
+  influxdb_host: '', influxdb_port: 8086,
+  influxdb_db: 'homeassistant', influxdb_username: '', influxdb_password: '',
+  influxdb_relay_entity_id: '', influxdb_flow_entity_id: '',
+  influxdb_water_temp_entity_id: '', influxdb_case_tmp_entity_id: '',
+  influxdb_inlet_tmp_entity_id: '', influxdb_power_entity_id: '',
+  influxdb_measurement_temp: '°C', influxdb_measurement_flow: 'L/min',
+  influxdb_measurement_power: 'W', influxdb_measurement_state: 'state',
+  influxdb_history_years: 2, influxdb_start_date: '',
+  vacation_mode: 'min_temp', vacation_min_temp: 30,
+  logging_level: 'INFO',
+};
+let currentStep = 1;
+let haEntities = [];  // {entity_id, name, domain}
+let personList = [];  // multi-select entity ids
+
+// ── Entity loading ─────────────────────────────────────────────────────────
+async function loadEntities() {
+  try {
+    const data = await fetch('api/ha/entities').then(r => r.json());
+    haEntities = data;
+    initAllPickers();
+  } catch(e) {
+    console.warn('Could not load HA entities:', e);
+    haEntities = [];
+    initAllPickers();
+  }
+}
+
+// ── Searchable picker ─────────────────────────────────────────────────────
+function makePicker(containerId, cfgKey, filterDomains, placeholder, onChange) {
+  const wrap = document.getElementById(containerId);
+  if (!wrap) return;
+  const initVal = CFG[cfgKey] || '';
+
+  const ent = haEntities.filter(e => !filterDomains || filterDomains.includes(e.domain));
+  // Find friendly name for initial value
+  const initName = ent.find(e => e.entity_id === initVal)?.name || initVal;
+
+  wrap.innerHTML = `
+    <input class="picker-input" placeholder="${placeholder || 'Search or type entity ID...'}"
+           value="${initName || ''}" autocomplete="off" data-val="${initVal}">
+    <button class="picker-clear ${initVal ? 'show' : ''}" title="Clear">✕</button>
+    <div class="picker-dropdown"></div>`;
+
+  const input = wrap.querySelector('.picker-input');
+  const clearBtn = wrap.querySelector('.picker-clear');
+  const dropdown = wrap.querySelector('.picker-dropdown');
+
+  function renderList(q) {
+    const qq = q.toLowerCase();
+    const filtered = ent.filter(e =>
+      e.entity_id.includes(qq) || e.name.toLowerCase().includes(qq)
+    ).slice(0, 60);
+    if (!filtered.length) {
+      dropdown.innerHTML = `<div class="picker-none">No matching entities</div>`;
+    } else {
+      dropdown.innerHTML = filtered.map(e =>
+        `<div class="picker-item" data-id="${e.entity_id}">
+           <span class="pname">${e.name}</span>
+           <span class="pid">${e.entity_id}</span>
+         </div>`).join('');
+    }
+    dropdown.classList.add('open');
+  }
+
+  input.addEventListener('focus', () => renderList(input.value));
+  input.addEventListener('input', () => renderList(input.value));
+
+  dropdown.addEventListener('mousedown', e => {
+    const item = e.target.closest('.picker-item');
+    if (!item) return;
+    e.preventDefault();
+    const id = item.dataset.id;
+    const name = ent.find(x => x.entity_id === id)?.name || id;
+    input.value = name;
+    input.dataset.val = id;
+    clearBtn.classList.add('show');
+    dropdown.classList.remove('open');
+    if (cfgKey) CFG[cfgKey] = id;
+    if (onChange) onChange(id);
+  });
+
+  clearBtn.addEventListener('click', () => {
+    input.value = '';
+    input.dataset.val = '';
+    clearBtn.classList.remove('show');
+    if (cfgKey) CFG[cfgKey] = '';
+    if (onChange) onChange('');
+  });
+
+  document.addEventListener('click', e => {
+    if (!wrap.contains(e.target)) dropdown.classList.remove('open');
+  });
+
+  // Also allow typing a raw entity_id directly
+  input.addEventListener('blur', () => {
+    const typed = input.value.trim();
+    const found = ent.find(e => e.entity_id === typed || e.name === typed);
+    if (found) {
+      input.dataset.val = found.entity_id;
+      if (cfgKey) CFG[cfgKey] = found.entity_id;
+    } else if (typed.includes('.')) {
+      // Raw entity_id typed
+      input.dataset.val = typed;
+      if (cfgKey) CFG[cfgKey] = typed;
+      clearBtn.classList.toggle('show', !!typed);
+    }
+    setTimeout(() => dropdown.classList.remove('open'), 150);
+  });
+}
+
+function makeInfluxPicker(containerId, cfgKey, influxEntities) {
+  const wrap = document.getElementById(containerId);
+  if (!wrap) return;
+  const ent = influxEntities.map(id => ({entity_id: id, name: id, domain: ''}));
+  wrap.innerHTML = `
+    <input class="picker-input" placeholder="Search InfluxDB entity..." autocomplete="off" data-val="">
+    <button class="picker-clear" title="Clear">✕</button>
+    <div class="picker-dropdown"></div>`;
+
+  const input = wrap.querySelector('.picker-input');
+  const clearBtn = wrap.querySelector('.picker-clear');
+  const dropdown = wrap.querySelector('.picker-dropdown');
+
+  function renderList(q) {
+    const qq = q.toLowerCase();
+    const filtered = ent.filter(e => e.entity_id.includes(qq)).slice(0, 80);
+    dropdown.innerHTML = filtered.length
+      ? filtered.map(e => `<div class="picker-item" data-id="${e.entity_id}"><span class="pname">${e.entity_id}</span></div>`).join('')
+      : `<div class="picker-none">No match</div>`;
+    dropdown.classList.add('open');
+  }
+
+  input.addEventListener('focus', () => renderList(input.value));
+  input.addEventListener('input', () => renderList(input.value));
+  dropdown.addEventListener('mousedown', e => {
+    const item = e.target.closest('.picker-item');
+    if (!item) return;
+    e.preventDefault();
+    input.value = item.dataset.id;
+    input.dataset.val = item.dataset.id;
+    clearBtn.classList.add('show');
+    dropdown.classList.remove('open');
+    CFG[cfgKey] = item.dataset.id;
+  });
+  clearBtn.addEventListener('click', () => {
+    input.value = ''; input.dataset.val = '';
+    clearBtn.classList.remove('show');
+    CFG[cfgKey] = '';
+  });
+  document.addEventListener('click', e => {
+    if (!wrap.contains(e.target)) dropdown.classList.remove('open');
+  });
+}
+
+// ── Multi-person picker ───────────────────────────────────────────────────
+function initPersonPicker() {
+  const wrap = document.getElementById('picker-person-add');
+  if (!wrap) return;
+  const ent = haEntities.filter(e => ['person','device_tracker'].includes(e.domain));
+
+  wrap.innerHTML = `
+    <input class="picker-input" placeholder="Add person or device_tracker..." autocomplete="off">
+    <div class="picker-dropdown"></div>`;
+
+  const input = wrap.querySelector('.picker-input');
+  const dropdown = wrap.querySelector('.picker-dropdown');
+
+  function renderList(q) {
+    const qq = q.toLowerCase();
+    const filtered = ent.filter(e =>
+      !personList.includes(e.entity_id) &&
+      (e.entity_id.includes(qq) || e.name.toLowerCase().includes(qq))
+    ).slice(0, 40);
+    dropdown.innerHTML = filtered.length
+      ? filtered.map(e => `<div class="picker-item" data-id="${e.entity_id}">
+           <span class="pname">${e.name}</span><span class="pid">${e.entity_id}</span>
+         </div>`).join('')
+      : `<div class="picker-none">No more entities</div>`;
+    dropdown.classList.add('open');
+  }
+
+  input.addEventListener('focus', () => renderList(input.value));
+  input.addEventListener('input', () => renderList(input.value));
+
+  dropdown.addEventListener('mousedown', e => {
+    const item = e.target.closest('.picker-item');
+    if (!item) return;
+    e.preventDefault();
+    addPerson(item.dataset.id);
+    input.value = '';
+    dropdown.classList.remove('open');
+  });
+
+  document.addEventListener('click', e => {
+    if (!wrap.contains(e.target)) dropdown.classList.remove('open');
+  });
+}
+
+function addPerson(id) {
+  if (!personList.includes(id)) {
+    personList.push(id);
+    renderPersonTags();
+    CFG.person_entity_ids = personList.join(',');
+  }
+}
+
+function removePerson(id) {
+  personList = personList.filter(x => x !== id);
+  renderPersonTags();
+  CFG.person_entity_ids = personList.join(',');
+}
+
+function renderPersonTags() {
+  const tags = document.getElementById('person-tags');
+  tags.innerHTML = personList.map(id => {
+    const name = haEntities.find(e => e.entity_id === id)?.name || id;
+    return `<div class="tag-chip">${name}<button onclick="removePerson('${id}')">×</button></div>`;
+  }).join('');
+}
+
+// ── Init all pickers ──────────────────────────────────────────────────────
+function initAllPickers() {
+  const switchDomains = ['switch', 'input_boolean', 'automation'];
+  const sensorDomains = ['sensor', 'input_number'];
+  const all = null; // null = no filter
+
+  makePicker('picker-boiler_switch_entity_id', 'boiler_switch_entity_id', switchDomains, 'Search switch entities...');
+  makePicker('picker-boiler_power_entity_id', 'boiler_power_entity_id', sensorDomains, 'Search sensor entities...');
+  makePicker('picker-boiler_direct_tmp_entity_id', 'boiler_direct_tmp_entity_id', sensorDomains, 'Search temperature sensors...');
+  makePicker('picker-boiler_case_tmp_entity_id', 'boiler_case_tmp_entity_id', sensorDomains, 'Search temperature sensors...');
+  makePicker('picker-boiler_case_tmp_entity_id_simple', 'boiler_case_tmp_entity_id', sensorDomains, 'Search temperature sensors...');
+  makePicker('picker-boiler_inlet_tmp_entity_id', 'boiler_inlet_tmp_entity_id', sensorDomains, 'Search temperature sensors...');
+  makePicker('picker-boiler_outlet_tmp_entity_id', 'boiler_outlet_tmp_entity_id', sensorDomains, 'Search temperature sensors...');
+  makePicker('picker-boiler_area_tmp_entity_id', 'boiler_area_tmp_entity_id', sensorDomains, 'Search temperature sensors...');
+  makePicker('picker-boiler_water_flow_entity_id', 'boiler_water_flow_entity_id', sensorDomains, 'Search sensor entities...');
+  makePicker('picker-boiler_water_temp_entity_id', 'boiler_water_temp_entity_id', sensorDomains, 'Search temperature sensors...');
+  makePicker('picker-pv_surplus_entity_id', 'pv_surplus_entity_id', sensorDomains, 'Search sensor entities...');
+  makePicker('picker-calendar_entity_id', 'calendar_entity_id', ['calendar'], 'Search calendar entities...');
+
+  initPersonPicker();
+}
+
+// ── Mode ─────────────────────────────────────────────────────────────────
+function selectMode(mode) {
+  CFG.operation_mode = mode;
+  document.getElementById('mode-standard').classList.toggle('selected', mode === 'standard');
+  document.getElementById('mode-simple').classList.toggle('selected', mode === 'simple');
+}
+
+function updateModeUI() {
+  const simple = CFG.operation_mode === 'simple';
+  document.getElementById('s3-standard').style.display = simple ? 'none' : '';
+  document.getElementById('s3-simple').style.display = simple ? '' : 'none';
+  document.getElementById('simple-physics').style.display = simple ? '' : 'none';
+  document.getElementById('s3-title').textContent = simple
+    ? 'Temperature sensors (Simple mode)' : 'Temperature sensors (Standard mode)';
+}
+
+// ── Navigation ────────────────────────────────────────────────────────────
+function goStep(n) {
+  collectCurrentStepValues();
+  showStep(n);
+}
+
+function jumpStep(n) {
+  if (n <= currentStep) goStep(n);
+}
+
+function showStep(n) {
+  document.querySelectorAll('.step-pane').forEach(p => p.classList.remove('active'));
+  document.getElementById('step-' + n)?.classList.add('active');
+  document.querySelectorAll('.step-indicator').forEach(el => {
+    const s = parseInt(el.dataset.step);
+    el.classList.remove('active', 'done');
+    if (s === n) el.classList.add('active');
+    else if (s < n) el.classList.add('done');
+  });
+  currentStep = n;
+  if (n === 3) updateModeUI();
+  if (n === 5) document.getElementById('simple-physics').style.display =
+    CFG.operation_mode === 'simple' ? '' : 'none';
+  window.scrollTo(0, 0);
+}
+
+function validateAndGoStep(from, to) {
+  if (from === 2) {
+    const switchVal = CFG.boiler_switch_entity_id;
+    if (!switchVal) {
+      document.getElementById('err-switch').classList.add('show');
+      document.getElementById('picker-boiler_switch_entity_id').querySelector('.picker-input').classList.add('invalid');
+      return;
+    }
+    document.getElementById('err-switch').classList.remove('show');
+  }
+  if (from === 3 && CFG.operation_mode === 'simple') {
+    if (!CFG.boiler_case_tmp_entity_id) {
+      document.getElementById('err-case').classList.add('show');
+      return;
+    }
+    document.getElementById('err-case').classList.remove('show');
+  }
+  goStep(to);
+}
+
+// ── Collect form values into CFG ──────────────────────────────────────────
+function collectCurrentStepValues() {
+  // Numeric fields from step 5
+  const nums = ['boiler_volume','boiler_set_tmp','boiler_min_operation_tmp',
+                'boiler_watt_power','average_boiler_surroundings_temp',
+                'cold_water_temp','boiler_standby_watts',
+                'thermal_coupling_ratio','draw_detection_threshold_c'];
+  nums.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) CFG[id] = parseFloat(el.value) || CFG[id];
+  });
+
+  // Select fields
+  ['spot_price_region','prediction_conservatism'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) CFG[id] = el.value;
+  });
+
+  // Text fields
+  ['hdo_explicit_schedule','influxdb_host','influxdb_db',
+   'influxdb_username','influxdb_password'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) CFG[id] = el.value.trim();
+  });
+  const port = document.getElementById('influxdb_port');
+  if (port) CFG.influxdb_port = parseInt(port.value) || 8086;
+  const yrs = document.getElementById('influxdb_history_years');
+  if (yrs) CFG.influxdb_history_years = parseInt(yrs.value) || 2;
+}
+
+// ── Spot / Influx toggles ─────────────────────────────────────────────────
+function toggleSpot() {
+  const on = document.getElementById('has_spot_price').checked;
+  CFG.has_spot_price = on;
+  document.getElementById('spot-region').style.display = on ? '' : 'none';
+}
+
+function toggleInflux() {
+  const on = document.getElementById('use_influxdb').checked;
+  document.getElementById('influx-section').style.display = on ? '' : 'none';
+}
+
+// ── InfluxDB test ─────────────────────────────────────────────────────────
+async function testInflux() {
+  collectCurrentStepValues();
+  const btn = document.getElementById('btn-influx-test');
+  const status = document.getElementById('influx-status');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Testing...';
+  status.innerHTML = '';
+
+  try {
+    const resp = await fetch('api/test/influxdb', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        host: CFG.influxdb_host,
+        port: CFG.influxdb_port,
+        db: CFG.influxdb_db,
+        username: CFG.influxdb_username,
+        password: CFG.influxdb_password,
+      })
+    }).then(r => r.json());
+
+    if (resp.ok) {
+      status.innerHTML = '<span class="status-badge ok">✓ Connected</span>';
+      // Populate influx entity pickers
+      const entities = resp.entities || [];
+      ['influxdb_relay_entity_id','influxdb_flow_entity_id',
+       'influxdb_water_temp_entity_id','influxdb_case_tmp_entity_id',
+       'influxdb_inlet_tmp_entity_id','influxdb_power_entity_id'].forEach(key => {
+        makeInfluxPicker('picker-' + key, key, entities);
+      });
+      document.getElementById('influx-entities').classList.add('show');
+    } else {
+      status.innerHTML = `<span class="status-badge err">✗ ${resp.error || 'Connection failed'}</span>`;
+    }
+  } catch(e) {
+    status.innerHTML = '<span class="status-badge err">✗ Request failed</span>';
+  }
+  btn.disabled = false;
+  btn.textContent = 'Test connection & load entities';
+}
+
+// ── Save config ───────────────────────────────────────────────────────────
+async function saveConfig() {
+  collectCurrentStepValues();
+  CFG.has_spot_price = document.getElementById('has_spot_price').checked;
+  if (!document.getElementById('use_influxdb').checked) CFG.influxdb_host = '';
+
+  const btn = document.getElementById('btn-save');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Saving...';
+
+  try {
+    const resp = await fetch('api/config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(CFG),
+    }).then(r => r.json());
+
+    if (resp.ok) {
+      document.getElementById('min-days').textContent = CFG.min_training_days || 30;
+      document.getElementById('progress-bar').style.display = 'none';
+      document.querySelectorAll('.step-pane').forEach(p => p.classList.remove('active'));
+      document.getElementById('step-success').classList.add('active');
+    } else {
+      alert('Save failed: ' + (resp.error || 'Unknown error'));
+    }
+  } catch(e) {
+    alert('Save request failed. Please try again.');
+  }
+  btn.disabled = false;
+  btn.textContent = 'Save & Start';
+}
+
+// ── Load existing config (for settings page) ──────────────────────────────
+async function loadExistingConfig() {
+  try {
+    const data = await fetch('api/config').then(r => r.json());
+    Object.assign(CFG, data);
+    // Re-init mode UI
+    selectMode(CFG.operation_mode);
+    // Restore person list
+    if (CFG.person_entity_ids) {
+      personList = CFG.person_entity_ids.split(',').map(s => s.trim()).filter(Boolean);
+    }
+    // Restore numeric fields
+    ['boiler_volume','boiler_set_tmp','boiler_min_operation_tmp',
+     'boiler_watt_power','average_boiler_surroundings_temp',
+     'cold_water_temp','boiler_standby_watts','thermal_coupling_ratio',
+     'draw_detection_threshold_c','influxdb_port','influxdb_history_years'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = CFG[id];
+    });
+    ['spot_price_region','prediction_conservatism'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = CFG[id];
+    });
+    ['hdo_explicit_schedule','influxdb_host','influxdb_db',
+     'influxdb_username','influxdb_password'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = CFG[id] || '';
+    });
+    if (CFG.has_spot_price) {
+      document.getElementById('has_spot_price').checked = true;
+      document.getElementById('spot-region').style.display = '';
+    }
+    if (CFG.influxdb_host) {
+      document.getElementById('use_influxdb').checked = true;
+      document.getElementById('influx-section').style.display = '';
+    }
+  } catch(e) { console.warn('Could not load existing config', e); }
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+const IS_SETTINGS = document.querySelector('meta[name="sb-settings-mode"]').content === 'true';
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadEntities();
+  if (IS_SETTINGS) {
+    await loadExistingConfig();
+    // Re-init pickers with current values after config loaded
+    initAllPickers();
+    renderPersonTags();
+    document.getElementById('header-subtitle').textContent = 'Settings';
+  }
+});
+</script>
+</body>
+</html>
