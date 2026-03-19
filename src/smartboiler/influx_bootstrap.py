@@ -41,6 +41,24 @@ logger = logging.getLogger(__name__)
 _CHUNK_DAYS = 30  # query window size to avoid loading everything into RAM at once
 
 
+def _resolve_entity(
+    options: dict,
+    operation_mode: str,
+    legacy_key: str,
+    standard_key: str = "",
+    simple_key: str = "",
+) -> str:
+    if operation_mode == "simple" and simple_key:
+        value = options.get(simple_key, "") or ""
+        if value:
+            return value
+    if operation_mode == "standard" and standard_key:
+        value = options.get(standard_key, "") or ""
+        if value:
+            return value
+    return options.get(legacy_key, "") or ""
+
+
 class InfluxBootstrapper:
     """
     Periodic import of historical InfluxDB data into the local cache.
@@ -91,12 +109,37 @@ class InfluxBootstrapper:
         self.password = options.get("influxdb_password", "") or ""
 
         # ── Entity IDs as stored in InfluxDB ─────────────────────────────
-        self.relay_entity      = options.get("influxdb_relay_entity_id", "") or ""
-        self.flow_entity       = options.get("influxdb_flow_entity_id", "") or ""
-        self.water_tmp_entity  = options.get("influxdb_water_temp_entity_id", "") or ""
-        self.case_tmp_entity   = options.get("influxdb_case_tmp_entity_id", "") or ""
-        self.inlet_tmp_entity  = options.get("influxdb_inlet_tmp_entity_id", "") or ""
-        self.power_entity      = options.get("influxdb_power_entity_id", "") or ""
+        self.relay_entity      = _resolve_entity(
+            options, self.operation_mode, "influxdb_relay_entity_id",
+            standard_key="influxdb_standard_relay_entity_id",
+            simple_key="influxdb_simple_relay_entity_id",
+        )
+        self.flow_entity       = _resolve_entity(
+            options, self.operation_mode, "influxdb_flow_entity_id",
+            standard_key="influxdb_standard_flow_entity_id",
+        )
+        self.water_tmp_entity  = _resolve_entity(
+            options, self.operation_mode, "influxdb_water_temp_entity_id",
+            standard_key="influxdb_standard_water_temp_entity_id",
+        )
+        self.case_tmp_entity   = _resolve_entity(
+            options, self.operation_mode, "influxdb_case_tmp_entity_id",
+            standard_key="influxdb_standard_case_tmp_entity_id",
+            simple_key="influxdb_simple_case_tmp_entity_id",
+        )
+        self.inlet_tmp_entity  = _resolve_entity(
+            options, self.operation_mode, "influxdb_inlet_tmp_entity_id",
+            simple_key="influxdb_simple_inlet_tmp_entity_id",
+        )
+        self.outlet_tmp_entity = _resolve_entity(
+            options, self.operation_mode, "influxdb_water_temp_entity_id",
+            simple_key="influxdb_simple_outlet_tmp_entity_id",
+        )
+        self.power_entity      = _resolve_entity(
+            options, self.operation_mode, "influxdb_power_entity_id",
+            standard_key="influxdb_standard_power_entity_id",
+            simple_key="influxdb_simple_power_entity_id",
+        )
 
         # ── Measurement names (HA InfluxDB integration defaults) ──────────
         self.meas_temp  = options.get("influxdb_measurement_temp",  "°C")
@@ -198,7 +241,9 @@ class InfluxBootstrapper:
         )
 
         # ── 1. Consumption history ─────────────────────────────────────────
-        use_simple = self.operation_mode == "simple" and self.case_tmp_entity
+        use_simple = self.operation_mode == "simple" and (
+            self.case_tmp_entity or self.outlet_tmp_entity
+        )
         chunk_start = self.start_date
         frames = []
         while chunk_start < end:
@@ -210,6 +255,7 @@ class InfluxBootstrapper:
                         relay_entity=self.relay_entity,
                         case_tmp_entity=self.case_tmp_entity,
                         inlet_tmp_entity=self.inlet_tmp_entity,
+                        outlet_tmp_entity=self.outlet_tmp_entity,
                         power_entity=self.power_entity,
                         coupling=self.coupling,
                         T_set=self.boiler_set_tmp,

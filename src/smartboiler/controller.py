@@ -61,10 +61,16 @@ class SmartBoilerController:
         from smartboiler.temperature_estimator import TemperatureEstimator
         from smartboiler.legionella_protector import LegionellaProtector
         from smartboiler.web_server import (
-            set_state_provider, set_extra_provider, set_calendar_manager, run_dashboard,
+            set_state_provider,
+            set_extra_provider,
+            set_calendar_manager,
+            set_influx_bootstrap_handlers,
+            run_dashboard,
         )
 
         self._run_dashboard = run_dashboard
+        self._set_influx_bootstrap_handlers = set_influx_bootstrap_handlers
+        self._options = dict(options)
 
         # ── Config ────────────────────────────────────────────────────────
         self.boiler_switch_entity_id = options["boiler_switch_entity_id"]
@@ -217,23 +223,6 @@ class SmartBoilerController:
             else:
                 logger.info("FlowlessConsumptionEstimator initialised (no saved state).")
 
-        # ── InfluxDB bootstrap (periodic retrain, runs in background) ────────
-        from smartboiler.influx_bootstrap import InfluxBootstrapper
-        self._bootstrapper = InfluxBootstrapper(
-            options=options,
-            store=self.store,
-            thermal_model=self.thermal_model if self.boiler_case_tmp_entity_id else None,
-            boiler_set_tmp=self.boiler_set_tmp,
-            boiler_min_tmp=self.boiler_min_tmp,
-            boiler_watt=self.boiler_watt,
-            boiler_volume=self.boiler_volume_l,
-            area_tmp=self.area_tmp,
-            cold_water_tmp=self.cold_water_temp,
-            operation_mode=self.operation_mode,
-            coupling=self.thermal_coupling,
-            standby_w=self.boiler_standby_w,
-        )
-
         # ── Mutable state ─────────────────────────────────────────────────
         self._heating_plan: List[bool] = [False] * 24
         self._plan_slots: List = []
@@ -243,12 +232,27 @@ class SmartBoilerController:
         self._plan_generated_at: Optional[datetime] = None
         self._last_calib_ts: float = 0.0
         self._lock = threading.Lock()
+        self._influx_bootstrap_lock = threading.Lock()
+        self._influx_bootstrap_status: Dict[str, Any] = {
+            "available": True,
+            "configured": False,
+            "running": False,
+            "source": "",
+            "last_started_at": "",
+            "last_finished_at": "",
+            "last_error": "",
+            "last_summary": {},
+        }
 
         # ── Web dashboard ─────────────────────────────────────────────────
         set_state_provider(self._get_dashboard_state)
         set_extra_provider(self._get_extra_data)
         if self.calendar:
             set_calendar_manager(self.calendar)
+        self._set_influx_bootstrap_handlers(
+            self.start_influx_bootstrap,
+            self.get_influx_bootstrap_status,
+        )
 
     # ── Forecast workflow (hourly) ────────────────────────────────────────
 
@@ -753,6 +757,132 @@ class SmartBoilerController:
         self.store.save_pickle("hdo_learner", self.hdo_learner)
         logger.info("HDO learner seeded from HA history: %d state transitions ingested.", count)
 
+    # ── InfluxDB bootstrap helpers ───────────────────────────────────────
+
+    def _build_influx_bootstrapper(self, options_override: Optional[Dict] = None):
+        from smartboiler.influx_bootstrap import InfluxBootstrapper
+
+        options = dict(self._options)
+        if options_override:
+            options.update(options_override)
+
+        self.thermal_model.window_days = float(
+            options.get("thermal_model_window_days", self.thermal_window_days)
+        )
+        self.thermal_model.mass_ratio = float(
+            options.get("thermal_mass_ratio", self.thermal_mass_ratio)
+        )
+
+        return InfluxBootstrapper(
+            options=options,
+            store=self.store,
+            thermal_model=self.thermal_model,
+            boiler_set_tmp=float(options.get("boiler_set_tmp", self.boiler_set_tmp)),
+            boiler_min_tmp=float(options.get("boiler_min_operation_tmp", self.boiler_min_tmp)),
+            boiler_watt=float(options.get("boiler_watt_power", self.boiler_watt)),
+            boiler_volume=float(options.get("boiler_volume", self.boiler_volume_l)),
+            area_tmp=float(options.get("average_boiler_surroundings_temp", self.area_tmp)),
+            cold_water_tmp=float(options.get("cold_water_temp", self.cold_water_temp)),
+            operation_mode=options.get("operation_mode", self.operation_mode),
+            coupling=float(options.get("thermal_coupling_ratio", self.thermal_coupling)),
+            standby_w=float(options.get("boiler_standby_watts", self.boiler_standby_w)),
+        )
+
+    def get_influx_bootstrap_status(self) -> Dict[str, Any]:
+        with self._influx_bootstrap_lock:
+            status = dict(self._influx_bootstrap_status)
+        status["configured"] = self._build_influx_bootstrapper().is_configured()
+        return status
+
+    def start_influx_bootstrap(
+        self,
+        options_override: Optional[Dict] = None,
+        source: str = "manual",
+    ) -> Dict[str, Any]:
+        options = dict(self._options)
+        if options_override:
+            options.update(options_override)
+            self._options = dict(options)
+
+        bootstrapper = self._build_influx_bootstrapper(options)
+        configured = bootstrapper.is_configured()
+        if not configured:
+            status = self.get_influx_bootstrap_status()
+            status["configured"] = False
+            return {
+                "ok": False,
+                "started": False,
+                "available": True,
+                "error": "InfluxDB bootstrap is not configured for the active mode.",
+                "status": status,
+            }
+
+        with self._influx_bootstrap_lock:
+            if self._influx_bootstrap_status["running"]:
+                status = dict(self._influx_bootstrap_status)
+                status["configured"] = configured
+                return {
+                    "ok": False,
+                    "started": False,
+                    "available": True,
+                    "error": "InfluxDB bootstrap is already running.",
+                    "status": status,
+                }
+
+            started_at = datetime.now().isoformat()
+            self._influx_bootstrap_status.update({
+                "available": True,
+                "configured": configured,
+                "running": True,
+                "source": source,
+                "last_started_at": started_at,
+                "last_finished_at": "",
+                "last_error": "",
+                "last_summary": {},
+            })
+
+        def _run_bootstrap() -> None:
+            logger.info("InfluxDB bootstrap (%s) starting in background…", source)
+            try:
+                summary = bootstrapper.run(hdo_learner=self.hdo_learner)
+                self.store.save_pickle("thermal_model", self.thermal_model)
+                self.store.save_pickle("hdo_learner", self.hdo_learner)
+                logger.info("InfluxDB bootstrap (%s) done: %s", source, summary)
+                with self._influx_bootstrap_lock:
+                    self._influx_bootstrap_status.update({
+                        "available": True,
+                        "configured": True,
+                        "running": False,
+                        "source": source,
+                        "last_finished_at": datetime.now().isoformat(),
+                        "last_error": "",
+                        "last_summary": summary,
+                    })
+            except Exception as exc:
+                logger.error("InfluxDB bootstrap (%s) failed: %s", source, exc)
+                with self._influx_bootstrap_lock:
+                    self._influx_bootstrap_status.update({
+                        "available": True,
+                        "configured": configured,
+                        "running": False,
+                        "source": source,
+                        "last_finished_at": datetime.now().isoformat(),
+                        "last_error": str(exc),
+                    })
+
+        thread = threading.Thread(
+            target=_run_bootstrap,
+            daemon=True,
+            name=f"influx-bootstrap-{source}",
+        )
+        thread.start()
+        return {
+            "ok": True,
+            "started": True,
+            "available": True,
+            "status": self.get_influx_bootstrap_status(),
+        }
+
     # ── Main loop ─────────────────────────────────────────────────────────
 
     def start(self) -> None:
@@ -766,17 +896,8 @@ class SmartBoilerController:
         dash_thread.start()
         logger.info("Dashboard started on :8099")
 
-        if self._bootstrapper.should_run():
-            def _run_bootstrap():
-                logger.info("InfluxDB bootstrap starting in background…")
-                try:
-                    summary = self._bootstrapper.run(hdo_learner=self.hdo_learner)
-                    self.store.save_pickle("thermal_model", self.thermal_model)
-                    self.store.save_pickle("hdo_learner", self.hdo_learner)
-                    logger.info("InfluxDB bootstrap done: %s", summary)
-                except Exception as exc:
-                    logger.error("InfluxDB bootstrap failed: %s", exc)
-            threading.Thread(target=_run_bootstrap, daemon=True, name="influx-bootstrap").start()
+        if self._build_influx_bootstrapper().should_run():
+            self.start_influx_bootstrap(source="startup")
 
         self._bootstrap_hdo_from_ha()
         self.run_forecast_workflow()
@@ -798,17 +919,8 @@ class SmartBoilerController:
                     logger.error("Unhandled forecast error: %s", e)
 
                 # Periodic InfluxDB retrain check (every predictor_retrain_weeks)
-                if self._bootstrapper.should_run():
-                    def _retrain():
-                        logger.info("InfluxDB periodic retrain starting in background…")
-                        try:
-                            summary = self._bootstrapper.run(hdo_learner=self.hdo_learner)
-                            self.store.save_pickle("thermal_model", self.thermal_model)
-                            self.store.save_pickle("hdo_learner", self.hdo_learner)
-                            logger.info("InfluxDB retrain done: %s", summary)
-                        except Exception as exc:
-                            logger.error("InfluxDB retrain failed: %s", exc)
-                    threading.Thread(target=_retrain, daemon=True, name="influx-retrain").start()
+                if self._build_influx_bootstrapper().should_run():
+                    self.start_influx_bootstrap(source="retrain")
 
             time.sleep(CONTROL_LOOP_INTERVAL_S)
 

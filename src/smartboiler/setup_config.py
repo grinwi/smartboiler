@@ -76,6 +76,16 @@ DEFAULTS: dict = {
     "influxdb_case_tmp_entity_id": "",
     "influxdb_inlet_tmp_entity_id": "",
     "influxdb_power_entity_id": "",
+    "influxdb_standard_relay_entity_id": "",
+    "influxdb_standard_flow_entity_id": "",
+    "influxdb_standard_water_temp_entity_id": "",
+    "influxdb_standard_case_tmp_entity_id": "",
+    "influxdb_standard_power_entity_id": "",
+    "influxdb_simple_relay_entity_id": "",
+    "influxdb_simple_case_tmp_entity_id": "",
+    "influxdb_simple_inlet_tmp_entity_id": "",
+    "influxdb_simple_outlet_tmp_entity_id": "",
+    "influxdb_simple_power_entity_id": "",
     "influxdb_measurement_temp": "°C",
     "influxdb_measurement_flow": "L/min",
     "influxdb_measurement_power": "W",
@@ -93,6 +103,66 @@ DEFAULTS: dict = {
 
 _HDO_PATTERN = re.compile(r"^\d{1,2}:\d{2}-\d{1,2}:\d{2}$")
 
+_MODE_SPECIFIC_INFLUX_FALLBACKS = {
+    "influxdb_standard_relay_entity_id": ("influxdb_relay_entity_id",),
+    "influxdb_standard_flow_entity_id": ("influxdb_flow_entity_id",),
+    "influxdb_standard_water_temp_entity_id": ("influxdb_water_temp_entity_id",),
+    "influxdb_standard_case_tmp_entity_id": ("influxdb_case_tmp_entity_id",),
+    "influxdb_standard_power_entity_id": ("influxdb_power_entity_id",),
+    "influxdb_simple_relay_entity_id": ("influxdb_relay_entity_id",),
+    "influxdb_simple_case_tmp_entity_id": ("influxdb_case_tmp_entity_id",),
+    "influxdb_simple_inlet_tmp_entity_id": ("influxdb_inlet_tmp_entity_id",),
+    "influxdb_simple_outlet_tmp_entity_id": ("influxdb_water_temp_entity_id",),
+    "influxdb_simple_power_entity_id": ("influxdb_power_entity_id",),
+}
+
+_ACTIVE_MODE_INFLUX_MIRRORS = {
+    "standard": {
+        "influxdb_relay_entity_id": "influxdb_standard_relay_entity_id",
+        "influxdb_flow_entity_id": "influxdb_standard_flow_entity_id",
+        "influxdb_water_temp_entity_id": "influxdb_standard_water_temp_entity_id",
+        "influxdb_case_tmp_entity_id": "influxdb_standard_case_tmp_entity_id",
+        "influxdb_inlet_tmp_entity_id": None,
+        "influxdb_power_entity_id": "influxdb_standard_power_entity_id",
+    },
+    "simple": {
+        "influxdb_relay_entity_id": "influxdb_simple_relay_entity_id",
+        "influxdb_flow_entity_id": None,
+        "influxdb_water_temp_entity_id": "influxdb_simple_outlet_tmp_entity_id",
+        "influxdb_case_tmp_entity_id": "influxdb_simple_case_tmp_entity_id",
+        "influxdb_inlet_tmp_entity_id": "influxdb_simple_inlet_tmp_entity_id",
+        "influxdb_power_entity_id": "influxdb_simple_power_entity_id",
+    },
+}
+
+
+def _populate_mode_specific_influx_fields(config: dict) -> None:
+    for new_key, legacy_keys in _MODE_SPECIFIC_INFLUX_FALLBACKS.items():
+        if str(config.get(new_key, "")).strip():
+            continue
+        for legacy_key in legacy_keys:
+            legacy_val = str(config.get(legacy_key, "")).strip()
+            if legacy_val:
+                config[new_key] = legacy_val
+                break
+
+
+def _sync_legacy_influx_fields(config: dict) -> None:
+    mirrors = _ACTIVE_MODE_INFLUX_MIRRORS.get(
+        config.get("operation_mode", "standard"),
+        _ACTIVE_MODE_INFLUX_MIRRORS["standard"],
+    )
+    for legacy_key, source_key in mirrors.items():
+        if not source_key:
+            config[legacy_key] = ""
+            continue
+        config[legacy_key] = str(config.get(source_key, "")).strip()
+
+
+def _normalize_influx_fields(config: dict) -> None:
+    _populate_mode_specific_influx_fields(config)
+    _sync_legacy_influx_fields(config)
+
 
 def validate_config(config: dict) -> list[str]:
     """Return a list of human-readable validation error strings.
@@ -109,8 +179,8 @@ def validate_config(config: dict) -> list[str]:
     if config.get("operation_mode") not in ("simple", "standard"):
         errors.append("operation_mode must be 'simple' or 'standard'")
 
-    if config.get("spot_price_region") not in ("CZ", "SK", "AT", "DE", "PL", "HU"):
-        errors.append("spot_price_region must be one of: CZ, SK, AT, DE, PL, HU")
+    if config.get("spot_price_region") not in ("CZ", "SK", "AT", "DE", "PL", "HU", "FR", "IT", "ES"):
+        errors.append("spot_price_region must be one of: CZ, SK, AT, DE, PL, HU, FR, IT, ES")
 
     if config.get("prediction_conservatism") not in ("low", "medium", "high"):
         errors.append("prediction_conservatism must be 'low', 'medium', or 'high'")
@@ -197,6 +267,7 @@ def load_setup_config() -> dict:
         except Exception as e:
             logger.warning("Could not read smartboiler_setup.json: %s", e)
 
+    _normalize_influx_fields(config)
     return config
 
 
@@ -228,6 +299,7 @@ def save_setup_config(data: dict) -> None:
             merged[float_key] = DEFAULTS[float_key]
 
     merged["has_spot_price"] = bool(merged.get("has_spot_price", False))
+    _normalize_influx_fields(merged)
 
     errors = validate_config(merged)
     if errors:

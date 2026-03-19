@@ -103,6 +103,7 @@ def fetch_consumption_chunk_simple_mode(
     relay_entity: str,
     case_tmp_entity: str,
     inlet_tmp_entity: str,
+    outlet_tmp_entity: str,
     power_entity: str,
     coupling: float,
     T_set: float,
@@ -116,8 +117,9 @@ def fetch_consumption_chunk_simple_mode(
     end: datetime,
 ) -> pd.DataFrame:
     """
-    Simple-mode bootstrap: pull T_case + T_in + power from InfluxDB and
-    compute energy-balance estimates (litres consumed per day → synthetic hourly kWh rows).
+    Simple-mode bootstrap: pull T_case + T_in + T_out + power from InfluxDB
+    and compute energy-balance estimates (litres consumed per day → synthetic
+    hourly kWh rows).
 
     Uses the same formula validated in analysis/raw_data_analysis.ipynb:
         T_water = T_amb + (T_case - T_amb) / coupling
@@ -165,6 +167,13 @@ def fetch_consumption_chunk_simple_mode(
             field="value", agg="mean", t0=t0, t1=t1, fill="null", dtype="float",
         ).ffill(limit=_TEMP_MAX_FFILL_MIN)
 
+    outlet_series = pd.Series(dtype=float)
+    if outlet_tmp_entity:
+        outlet_series = query_series(
+            client, meas=meas_temp, entity=outlet_tmp_entity,
+            field="value", agg="mean", t0=t0, t1=t1, fill="null", dtype="float",
+        ).ffill(limit=_TEMP_MAX_FFILL_MIN)
+
     # ── Build 1-min aligned frame ─────────────────────────────────────────
     idx = relay_series.index
     df1 = pd.DataFrame({
@@ -172,6 +181,7 @@ def fetch_consumption_chunk_simple_mode(
         "power_w":  power_series.reindex(idx).fillna(0.0),
         "T_case":   case_series.reindex(idx) if not case_series.empty else float("nan"),
         "T_in":     inlet_series.reindex(idx) if not inlet_series.empty else float("nan"),
+        "T_out":    outlet_series.reindex(idx) if not outlet_series.empty else float("nan"),
     })
     df1.index = pd.to_datetime(df1.index)
 
@@ -185,16 +195,21 @@ def fetch_consumption_chunk_simple_mode(
         power_kwh=("power_w", lambda x: x.sum() / 60_000.0),  # W·min → kWh
         T_case_med=("T_case", "median"),
         T_in_med=("T_in", "median"),
+        T_out_med=("T_out", "median"),
     ).dropna(subset=["power_kwh"])
 
     daily["kWh_net"] = (daily["power_kwh"] - standby_w * 24.0 / 1000.0).clip(lower=0.0)
 
     T_case_med = daily["T_case_med"].fillna(float("nan"))
     T_in_med   = daily["T_in_med"].fillna(cold_water_tmp)
+    T_out_med  = daily["T_out_med"].fillna(float("nan"))
 
-    # Effective T_water from case coupling, clipped to plausible range
-    T_water = (T_in_med + (T_case_med - T_in_med) / coupling).clip(lower=30.0, upper=95.0)
-    T_water = T_water.where(T_case_med.notna(), other=float(T_set))
+    # Prefer a valid outlet-pipe reading when available; otherwise infer tank
+    # water temperature from the case sensor and inlet/coupling model.
+    T_from_case = (T_in_med + (T_case_med - T_in_med) / coupling).clip(lower=30.0, upper=95.0)
+    valid_outlet = T_out_med.notna() & ((T_out_med - T_in_med).fillna(0.0) >= 5.0)
+    T_water = T_from_case.where(~valid_outlet, other=T_out_med.clip(lower=30.0, upper=95.0))
+    T_water = T_water.where(T_case_med.notna() | valid_outlet, other=float(T_set))
 
     dT = (T_water - T_in_med).clip(lower=5.0)
     daily["est_L"] = (daily["kWh_net"] / (Cp * dT)).clip(lower=0.0)

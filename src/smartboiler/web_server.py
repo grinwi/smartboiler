@@ -26,6 +26,8 @@ app = Flask(__name__, template_folder="templates")
 _state_provider: Optional[Callable[[], Dict]] = None
 _extra_provider: Optional[Callable[[str, Dict], Dict]] = None
 _calendar_manager: Optional[Any] = None
+_influx_bootstrap_trigger: Optional[Callable[[Dict], Dict]] = None
+_influx_bootstrap_status_provider: Optional[Callable[[], Dict]] = None
 
 
 def set_state_provider(provider: Callable[[], Dict]) -> None:
@@ -46,6 +48,16 @@ def set_calendar_manager(cm: Any) -> None:
     _calendar_manager = cm
 
 
+def set_influx_bootstrap_handlers(
+    trigger: Optional[Callable[[Dict], Dict]],
+    status_provider: Optional[Callable[[], Dict]],
+) -> None:
+    """Inject manual InfluxDB bootstrap handlers for the settings UI."""
+    global _influx_bootstrap_trigger, _influx_bootstrap_status_provider
+    _influx_bootstrap_trigger = trigger
+    _influx_bootstrap_status_provider = status_provider
+
+
 def _get_state() -> Dict:
     if _state_provider is None:
         return {}
@@ -64,6 +76,52 @@ def _get_extra(endpoint: str, params: Dict) -> Dict:
     except Exception as e:
         logger.error("Extra provider error (%s): %s", endpoint, e)
         return {}
+
+
+def _start_influx_bootstrap(options: Dict) -> Dict:
+    if _influx_bootstrap_trigger is None:
+        return {
+            "ok": False,
+            "started": False,
+            "available": False,
+            "error": "InfluxDB bootstrap action is not available.",
+        }
+    try:
+        result = _influx_bootstrap_trigger(options) or {}
+        result.setdefault("available", True)
+        return result
+    except Exception as e:
+        logger.error("Influx bootstrap trigger error: %s", e)
+        return {
+            "ok": False,
+            "started": False,
+            "available": False,
+            "error": str(e),
+        }
+
+
+def _get_influx_bootstrap_status() -> Dict:
+    if _influx_bootstrap_status_provider is None:
+        return {
+            "available": False,
+            "running": False,
+            "configured": False,
+            "error": "InfluxDB bootstrap action is not available.",
+        }
+    try:
+        status = _influx_bootstrap_status_provider() or {}
+        status.setdefault("available", True)
+        status.setdefault("running", False)
+        status.setdefault("configured", False)
+        return status
+    except Exception as e:
+        logger.error("Influx bootstrap status error: %s", e)
+        return {
+            "available": False,
+            "running": False,
+            "configured": False,
+            "error": str(e),
+        }
 
 
 # ── Rate limiting (simple token bucket, no external dependencies) ─────────
