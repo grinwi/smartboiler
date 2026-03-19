@@ -26,8 +26,14 @@ _HDO_MIN_GAP_MIN = 20          # shorter outages are treated as noise
 def _build_minute_index(start: datetime, end: datetime) -> pd.DatetimeIndex:
     # Always produce a tz-naive index (UTC wall-clock) to match the tz-naive
     # output of query_series (which strips tz via .tz_localize(None)).
-    start_ts = pd.Timestamp(start).tz_convert("UTC").tz_localize(None)
-    end_ts   = pd.Timestamp(end).tz_convert("UTC").tz_localize(None)
+    def _naive_utc(dt) -> pd.Timestamp:
+        ts = pd.Timestamp(dt)
+        if ts.tzinfo is not None:
+            return ts.tz_convert("UTC").tz_localize(None)
+        return ts  # already tz-naive — treated as UTC
+
+    start_ts = _naive_utc(start)
+    end_ts   = _naive_utc(end)
     start_min = start_ts.floor("1min") + pd.Timedelta(minutes=1)
     end_min   = end_ts.floor("1min")
     if end_min < start_min:
@@ -348,7 +354,9 @@ def seed_hdo_learner(
     from smartboiler.hdo_learner import MIN_WEEKS_TO_TRUST, MIN_CONFIDENCE_TO_BLOCK
 
     _MIN_GAP = 5    # minutes — shorter = measurement noise
-    _MAX_GAP = 300  # minutes — longer = power outage / ISP issue, not HDO
+    _MAX_GAP = 600  # minutes — Czech HDO overnight blocks run up to ~8 h (480 min);
+                    # gaps > 10 h are true power / ISP outages and filtered by the
+                    # ISO-week consistency check anyway (random outages < 70% of weeks)
 
     known_arr = known.reindex(full_idx).fillna(False).astype(bool).values
     n_ts = len(full_idx)
