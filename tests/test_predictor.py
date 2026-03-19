@@ -384,7 +384,7 @@ class TestPredictionSimulation:
         now = datetime.now().replace(minute=0, second=0, microsecond=0)
         # Make Monday = weekday 0 by aligning to this week's Monday
         monday = now - timedelta(days=now.weekday())
-        idx = pd.date_range(start=monday - timedelta(weeks=4), periods=4 * 4, freq="1w")
+        idx = pd.date_range(start=monday - timedelta(weeks=4), periods=4 * 4, freq="1W")
         vals = [0.5] * len(idx)
         df = pd.DataFrame({"consumed_kwh": vals}, index=idx)
         p.update(df)

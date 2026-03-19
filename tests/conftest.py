@@ -37,9 +37,6 @@ _STUBS = [
     "statsmodels.tsa",
     "statsmodels.tsa.statespace",
     "statsmodels.tsa.statespace.sarimax",
-    # New controller uses Flask; stub it so tests don't need Flask installed
-    "flask",
-    "flask.limiter",
 ]
 
 for _mod in _STUBS:

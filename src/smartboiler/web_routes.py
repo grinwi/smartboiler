@@ -144,11 +144,34 @@ def api_test_influxdb() -> Response:
         )
         # Ping to check connectivity
         client.ping()
-        # Get measurement names (entity ids in HA InfluxDB integration)
-        measurements = [
-            m["name"] for m in client.get_list_measurements()
-        ]
-        return jsonify({"ok": True, "entities": sorted(measurements)})
+
+        # The HA InfluxDB integration schema:
+        #   measurement = unit_of_measurement  (e.g. "°C", "W", "state")
+        #   tag entity_id = HA entity id       (e.g. "sensor.boiler_temp")
+        #   field value   = numeric value
+        #
+        # Build a list of "measurement::entity_id" strings so the user
+        # can pick the right combination in the setup wizard.
+        entities = []
+        for m in client.get_list_measurements():
+            mname = m["name"]
+            try:
+                rows = client.query(
+                    f'SHOW TAG VALUES FROM "{mname}" WITH KEY = "entity_id"'
+                )
+                for row in rows.get_points():
+                    eid = row.get("value", "")
+                    if eid:
+                        entities.append({
+                            "measurement": mname,
+                            "entity_id": eid,
+                            "display": f"{mname} :: {eid}",
+                        })
+            except Exception:
+                pass  # skip measurements with no entity_id tag
+
+        entities.sort(key=lambda e: e["display"])
+        return jsonify({"ok": True, "entities": entities})
     except Exception as e:
         logger.warning("InfluxDB test failed: %s", e)
         return jsonify({"ok": False, "error": str(e)})
