@@ -95,7 +95,12 @@ class InfluxBootstrapper:
         self.boiler_volume = boiler_volume
         self.area_tmp = area_tmp
         self.cold_water_tmp = cold_water_tmp
-        self.operation_mode = operation_mode
+        cfg_operation_mode = options.get("operation_mode", "") or ""
+        self.operation_mode = (
+            cfg_operation_mode
+            if cfg_operation_mode in ("simple", "standard")
+            else operation_mode
+        )
         self.coupling = coupling
         self.standby_w = standby_w
 
