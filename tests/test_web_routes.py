@@ -1,8 +1,9 @@
 """
-Tests for web route fixes:
+Tests for web routes:
   1. Ingress-compatible redirects (relative, not absolute)
   2. /api/test/influxdb returns {measurement, entity_id, display} objects
-  3. controller.start() has no inner `import threading` that shadows the module-level one
+  3. /api/bootstrap/influxdb exposes status and start endpoints
+  4. controller.start() has no inner `import threading` that shadows the module-level one
 """
 
 import os
@@ -170,7 +171,95 @@ class TestInfluxDBEndpoint:
         assert "error" in data
 
 
-# ── 3. Controller has no shadowing `import threading` inside start() ──────────
+class TestInfluxBootstrapAction:
+    def test_status_unavailable_without_handler(self, client):
+        from smartboiler.web_server import set_influx_bootstrap_handlers
+
+        set_influx_bootstrap_handlers(None, None)
+        resp = client.get("/api/bootstrap/influxdb")
+        assert resp.status_code == 503
+        data = resp.get_json()
+        assert data["available"] is False
+
+    def test_status_returns_provider_payload(self, client):
+        from smartboiler.web_server import set_influx_bootstrap_handlers
+
+        try:
+            set_influx_bootstrap_handlers(
+                lambda _cfg: {"ok": True, "started": True},
+                lambda: {"available": True, "configured": True, "running": False},
+            )
+            resp = client.get("/api/bootstrap/influxdb")
+            assert resp.status_code == 200
+            data = resp.get_json()
+            assert data["available"] is True
+            assert data["configured"] is True
+            assert data["running"] is False
+        finally:
+            set_influx_bootstrap_handlers(None, None)
+
+    def test_post_saves_config_and_starts_bootstrap(self, client):
+        from smartboiler.web_server import set_influx_bootstrap_handlers
+
+        payload = {
+            "boiler_switch_entity_id": "switch.boiler",
+            "operation_mode": "standard",
+            "influxdb_host": "influx.local",
+            "influxdb_db": "homeassistant",
+            "influxdb_standard_relay_entity_id": "switch.boiler",
+            "influxdb_standard_power_entity_id": "sensor.boiler_power",
+        }
+        seen = {}
+
+        def _start(cfg):
+            seen.update(cfg)
+            return {
+                "ok": True,
+                "started": True,
+                "available": True,
+                "status": {"available": True, "configured": True, "running": True},
+            }
+
+        try:
+            set_influx_bootstrap_handlers(
+                _start,
+                lambda: {"available": True, "configured": True, "running": False},
+            )
+            with patch("smartboiler.web_routes.save_setup_config") as mock_save, patch(
+                "smartboiler.web_routes.load_setup_config",
+                return_value=payload,
+            ):
+                resp = client.post("/api/bootstrap/influxdb", json={"config": payload})
+            assert resp.status_code == 202
+            mock_save.assert_called_once_with(payload)
+            assert seen["influxdb_standard_relay_entity_id"] == "switch.boiler"
+            assert seen["operation_mode"] == "standard"
+        finally:
+            set_influx_bootstrap_handlers(None, None)
+
+    def test_post_returns_conflict_when_bootstrap_already_running(self, client):
+        from smartboiler.web_server import set_influx_bootstrap_handlers
+
+        try:
+            set_influx_bootstrap_handlers(
+                lambda _cfg: {
+                    "ok": False,
+                    "started": False,
+                    "available": True,
+                    "error": "already running",
+                    "status": {"available": True, "configured": True, "running": True},
+                },
+                lambda: {"available": True, "configured": True, "running": True},
+            )
+            with patch("smartboiler.web_routes.load_setup_config", return_value={"boiler_switch_entity_id": "switch.boiler"}):
+                resp = client.post("/api/bootstrap/influxdb", json={})
+            assert resp.status_code == 409
+            assert resp.get_json()["error"] == "already running"
+        finally:
+            set_influx_bootstrap_handlers(None, None)
+
+
+# ── 4. Controller has no shadowing `import threading` inside start() ──────────
 
 class TestControllerThreadingImport:
     def test_no_inner_import_threading_in_start(self):

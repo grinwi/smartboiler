@@ -61,7 +61,7 @@
 
     /* Two-column grid for physics */
     .field-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 1.25rem}
-    @media(max-width:520px){.field-grid,.mode-grid{grid-template-columns:1fr}}
+    @media(max-width:520px){.field-grid,.mode-grid,.influx-mode-grid{grid-template-columns:1fr}}
 
     /* Entity picker */
     .picker-wrap{position:relative}
@@ -132,6 +132,16 @@
     /* InfluxDB test result */
     .influx-entities{margin-top:1rem;display:none}
     .influx-entities.show{display:block}
+    .influx-actions{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;margin-top:1rem}
+    .influx-action-status{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+    .influx-mode-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+    .influx-mode-card{border:1.5px solid var(--border);border-radius:12px;padding:1rem;background:#f8fafc}
+    .influx-mode-card.active-mode{border-color:var(--blue);background:var(--blue-l)}
+    .influx-mode-head{display:flex;align-items:center;justify-content:space-between;gap:.75rem;margin-bottom:.35rem}
+    .influx-mode-head h3{font-size:.95rem;font-weight:700}
+    .mode-pill{display:none;align-items:center;padding:.15rem .5rem;border-radius:999px;
+               background:var(--blue);color:#fff;font-size:.72rem;font-weight:700}
+    .influx-mode-card.active-mode .mode-pill{display:inline-flex}
 
     /* Step panes */
     .step-pane{display:none}.step-pane.active{display:block}
@@ -448,65 +458,7 @@
     <hr class="section-sep">
 
     <!-- InfluxDB -->
-    <div class="toggle-row">
-      <div>
-        <span>InfluxDB cold-start bootstrap</span>
-        <span class="hint">Import historical data from an existing InfluxDB to warm up the predictor immediately.</span>
-      </div>
-      <label class="switch">
-        <input type="checkbox" id="use_influxdb" onchange="toggleInflux()">
-        <span class="slider"></span>
-      </label>
-    </div>
-    <div id="influx-section" style="display:none;margin-top:1rem">
-      <div class="field-grid">
-        <div class="field">
-          <label>Host</label>
-          <input type="text" id="influxdb_host" placeholder="192.168.1.x or hostname">
-        </div>
-        <div class="field">
-          <label>Port</label>
-          <input type="number" id="influxdb_port" value="8086">
-        </div>
-        <div class="field">
-          <label>Database</label>
-          <input type="text" id="influxdb_db" value="homeassistant">
-        </div>
-        <div class="field optional">
-          <label>Username</label>
-          <input type="text" id="influxdb_username" placeholder="Leave empty if no auth">
-        </div>
-        <div class="field optional">
-          <label>Password</label>
-          <input type="text" id="influxdb_password" placeholder="Leave empty if no auth">
-        </div>
-        <div class="field">
-          <label>History to import (years)</label>
-          <input type="number" id="influxdb_history_years" value="2" min="1" max="10">
-        </div>
-      </div>
-      <button class="btn btn-secondary" onclick="testInflux()" id="btn-influx-test">
-        Test connection &amp; load entities
-      </button>
-      <span id="influx-status" style="margin-left:.75rem"></span>
-
-      <div class="influx-entities" id="influx-entities">
-        <hr class="section-sep">
-        <p style="font-size:.85rem;font-weight:600;color:#4a5568;margin-bottom:.75rem">Map InfluxDB entities to roles:</p>
-        <div class="field optional"><label>Boiler relay entity</label>
-          <div class="picker-wrap" id="picker-influxdb_relay_entity_id"></div></div>
-        <div class="field optional"><label>Flow sensor entity</label>
-          <div class="picker-wrap" id="picker-influxdb_flow_entity_id"></div></div>
-        <div class="field optional"><label>Water temperature entity</label>
-          <div class="picker-wrap" id="picker-influxdb_water_temp_entity_id"></div></div>
-        <div class="field optional"><label>Case temperature entity</label>
-          <div class="picker-wrap" id="picker-influxdb_case_tmp_entity_id"></div></div>
-        <div class="field optional"><label>Inlet temperature entity</label>
-          <div class="picker-wrap" id="picker-influxdb_inlet_tmp_entity_id"></div></div>
-        <div class="field optional"><label>Power entity</label>
-          <div class="picker-wrap" id="picker-influxdb_power_entity_id"></div></div>
-      </div>
-    </div>
+    {% include "_influx_bootstrap.html" %}
   </div>
 
   <div class="btn-row">
@@ -536,43 +488,13 @@
 
 <script>
 // ── State ─────────────────────────────────────────────────────────────────
-const CFG = {
-  operation_mode: 'standard',
-  boiler_switch_entity_id: '',
-  boiler_power_entity_id: '',
-  boiler_direct_tmp_entity_id: '',
-  boiler_case_tmp_entity_id: '',
-  boiler_inlet_tmp_entity_id: '',
-  boiler_outlet_tmp_entity_id: '',
-  boiler_area_tmp_entity_id: '',
-  boiler_water_flow_entity_id: '',
-  boiler_water_temp_entity_id: '',
-  pv_surplus_entity_id: '',
-  person_entity_ids: '',
-  calendar_entity_id: '',
-  boiler_volume: 120, boiler_set_tmp: 60,
-  boiler_min_operation_tmp: 37, boiler_watt_power: 2000,
-  average_boiler_surroundings_temp: 20,
-  cold_water_temp: 10, thermal_coupling_ratio: 0.45,
-  boiler_standby_watts: 50, draw_detection_threshold_c: 2.0,
-  thermal_model_window_days: 7, thermal_mass_ratio: 0.3,
-  has_spot_price: false, spot_price_region: 'CZ',
-  hdo_explicit_schedule: '',
-  prediction_conservatism: 'medium', min_training_days: 30,
-  influxdb_host: '', influxdb_port: 8086,
-  influxdb_db: 'homeassistant', influxdb_username: '', influxdb_password: '',
-  influxdb_relay_entity_id: '', influxdb_flow_entity_id: '',
-  influxdb_water_temp_entity_id: '', influxdb_case_tmp_entity_id: '',
-  influxdb_inlet_tmp_entity_id: '', influxdb_power_entity_id: '',
-  influxdb_measurement_temp: '°C', influxdb_measurement_flow: 'L/min',
-  influxdb_measurement_power: 'W', influxdb_measurement_state: 'state',
-  influxdb_history_years: 2, influxdb_start_date: '',
-  vacation_mode: 'min_temp', vacation_min_temp: 30,
-  logging_level: 'INFO',
-};
+const CFG = {{ config_defaults|tojson }};
+const INFLUX_FIELD_KEYS = {{ influx_bootstrap_field_keys|tojson }};
 let currentStep = 1;
 let haEntities = [];  // {entity_id, name, domain}
 let personList = [];  // multi-select entity ids
+let influxEntities = [];  // [{measurement, entity_id, display}]
+let influxBootstrapPoll = null;
 
 // ── Entity loading ─────────────────────────────────────────────────────────
 async function loadEntities() {
@@ -673,11 +595,17 @@ function makePicker(containerId, cfgKey, filterDomains, placeholder, onChange) {
 function makeInfluxPicker(containerId, cfgKey, influxEntities) {
   const wrap = document.getElementById(containerId);
   if (!wrap) return;
-  // entities is now [{measurement, entity_id, display}]
-  const ent = influxEntities.map(e => ({entity_id: e.entity_id, name: e.display, domain: e.measurement}));
+  const initVal = CFG[cfgKey] || '';
+  const ent = influxEntities.map(e => ({
+    entity_id: e.entity_id,
+    name: e.display,
+    domain: e.measurement,
+  }));
+  const initName = ent.find(e => e.entity_id === initVal)?.name || initVal;
   wrap.innerHTML = `
-    <input class="picker-input" placeholder="Search InfluxDB entity..." autocomplete="off" data-val="">
-    <button class="picker-clear" title="Clear">✕</button>
+    <input class="picker-input" placeholder="Search InfluxDB entity..." autocomplete="off"
+           value="${initName || ''}" data-val="${initVal}">
+    <button class="picker-clear ${initVal ? 'show' : ''}" title="Clear">✕</button>
     <div class="picker-dropdown"></div>`;
 
   const input = wrap.querySelector('.picker-input');
@@ -686,9 +614,15 @@ function makeInfluxPicker(containerId, cfgKey, influxEntities) {
 
   function renderList(q) {
     const qq = q.toLowerCase();
-    const filtered = ent.filter(e => e.entity_id.includes(qq)).slice(0, 80);
+    const filtered = ent.filter(e =>
+      e.entity_id.includes(qq) || e.name.toLowerCase().includes(qq)
+    ).slice(0, 80);
     dropdown.innerHTML = filtered.length
-      ? filtered.map(e => `<div class="picker-item" data-id="${e.entity_id}"><span class="pname">${e.entity_id}</span></div>`).join('')
+      ? filtered.map(e => `
+          <div class="picker-item" data-id="${e.entity_id}">
+            <span class="pname">${e.name}</span>
+            <span class="pid">${e.entity_id}</span>
+          </div>`).join('')
       : `<div class="picker-none">No match</div>`;
     dropdown.classList.add('open');
   }
@@ -699,11 +633,13 @@ function makeInfluxPicker(containerId, cfgKey, influxEntities) {
     const item = e.target.closest('.picker-item');
     if (!item) return;
     e.preventDefault();
-    input.value = item.dataset.id;
-    input.dataset.val = item.dataset.id;
+    const id = item.dataset.id;
+    const name = ent.find(x => x.entity_id === id)?.name || id;
+    input.value = name;
+    input.dataset.val = id;
     clearBtn.classList.add('show');
     dropdown.classList.remove('open');
-    CFG[cfgKey] = item.dataset.id;
+    CFG[cfgKey] = id;
   });
   clearBtn.addEventListener('click', () => {
     input.value = ''; input.dataset.val = '';
@@ -712,6 +648,21 @@ function makeInfluxPicker(containerId, cfgKey, influxEntities) {
   });
   document.addEventListener('click', e => {
     if (!wrap.contains(e.target)) dropdown.classList.remove('open');
+  });
+
+  input.addEventListener('blur', () => {
+    const typed = input.value.trim();
+    const found = ent.find(e => e.entity_id === typed || e.name === typed);
+    if (found) {
+      input.dataset.val = found.entity_id;
+      CFG[cfgKey] = found.entity_id;
+      clearBtn.classList.add('show');
+    } else if (typed.includes('.')) {
+      input.dataset.val = typed;
+      CFG[cfgKey] = typed;
+      clearBtn.classList.toggle('show', !!typed);
+    }
+    setTimeout(() => dropdown.classList.remove('open'), 150);
   });
 }
 
@@ -808,6 +759,7 @@ function selectMode(mode) {
   CFG.operation_mode = mode;
   document.getElementById('mode-standard').classList.toggle('selected', mode === 'standard');
   document.getElementById('mode-simple').classList.toggle('selected', mode === 'simple');
+  updateInfluxModeUI();
 }
 
 function updateModeUI() {
@@ -817,6 +769,13 @@ function updateModeUI() {
   document.getElementById('simple-physics').style.display = simple ? '' : 'none';
   document.getElementById('s3-title').textContent = simple
     ? 'Temperature sensors (Simple mode)' : 'Temperature sensors (Standard mode)';
+  updateInfluxModeUI();
+}
+
+function updateInfluxModeUI() {
+  document.querySelectorAll('.influx-mode-card').forEach(card => {
+    card.classList.toggle('active-mode', card.dataset.influxMode === CFG.operation_mode);
+  });
 }
 
 // ── Navigation ────────────────────────────────────────────────────────────
@@ -905,6 +864,9 @@ function toggleSpot() {
 function toggleInflux() {
   const on = document.getElementById('use_influxdb').checked;
   document.getElementById('influx-section').style.display = on ? '' : 'none';
+  if (!on) {
+    document.getElementById('influx-entities').classList.remove('show');
+  }
 }
 
 // ── InfluxDB test ─────────────────────────────────────────────────────────
@@ -931,12 +893,9 @@ async function testInflux() {
 
     if (resp.ok) {
       status.innerHTML = '<span class="status-badge ok">✓ Connected</span>';
-      // Populate influx entity pickers
-      const entities = resp.entities || [];
-      ['influxdb_relay_entity_id','influxdb_flow_entity_id',
-       'influxdb_water_temp_entity_id','influxdb_case_tmp_entity_id',
-       'influxdb_inlet_tmp_entity_id','influxdb_power_entity_id'].forEach(key => {
-        makeInfluxPicker('picker-' + key, key, entities);
+      influxEntities = resp.entities || [];
+      INFLUX_FIELD_KEYS.forEach(key => {
+        makeInfluxPicker('picker-' + key, key, influxEntities);
       });
       document.getElementById('influx-entities').classList.add('show');
     } else {
@@ -947,6 +906,93 @@ async function testInflux() {
   }
   btn.disabled = false;
   btn.textContent = 'Test connection & load entities';
+}
+
+function renderInfluxBootstrapStatus(data) {
+  const btn = document.getElementById('btn-influx-bootstrap');
+  const status = document.getElementById('influx-bootstrap-status');
+  if (!btn || !status) return;
+
+  if (!data || !data.available) {
+    btn.disabled = true;
+    btn.textContent = 'Run bootstrap now';
+    status.innerHTML = '';
+    return;
+  }
+
+  if (data.running) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Bootstrapping...';
+    status.innerHTML = `<span class="status-badge loading">Bootstrap running (${data.source || 'manual'})</span>`;
+    return;
+  }
+
+  btn.disabled = !data.configured;
+  btn.textContent = 'Run bootstrap now';
+
+  if (data.last_error) {
+    status.innerHTML = `<span class="status-badge err">✗ ${data.last_error}</span>`;
+    return;
+  }
+
+  const summary = data.last_summary || {};
+  const imported = [
+    summary.consumption_hours || 0,
+    summary.calib_events || 0,
+    summary.hdo_observations || 0,
+  ].some(v => v > 0);
+
+  if (imported) {
+    status.innerHTML = `<span class="status-badge ok">✓ Imported ${summary.consumption_hours || 0}h / ${summary.calib_events || 0} calib / ${summary.hdo_observations || 0} HDO</span>`;
+    return;
+  }
+
+  status.innerHTML = data.configured ? '' : '<span class="status-badge err">Configure relay + Influx connection for the active mode first.</span>';
+}
+
+async function refreshInfluxBootstrapStatus() {
+  if (!IS_SETTINGS) return;
+
+  try {
+    const resp = await fetch('api/bootstrap/influxdb');
+    const data = await resp.json();
+    renderInfluxBootstrapStatus(data);
+
+    if (data.running) {
+      clearTimeout(influxBootstrapPoll);
+      influxBootstrapPoll = setTimeout(refreshInfluxBootstrapStatus, 2000);
+    }
+  } catch (e) {
+    renderInfluxBootstrapStatus({available: false});
+  }
+}
+
+async function startInfluxBootstrap() {
+  if (!document.getElementById('use_influxdb').checked) {
+    alert('Enable InfluxDB bootstrap first.');
+    return;
+  }
+
+  collectCurrentStepValues();
+  CFG.has_spot_price = document.getElementById('has_spot_price').checked;
+
+  try {
+    const resp = await fetch('api/bootstrap/influxdb', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({config: CFG}),
+    });
+    const data = await resp.json();
+    renderInfluxBootstrapStatus(data.status || data);
+    if (!resp.ok) {
+      alert('Bootstrap failed: ' + (data.error || 'Unknown error'));
+      return;
+    }
+    clearTimeout(influxBootstrapPoll);
+    influxBootstrapPoll = setTimeout(refreshInfluxBootstrapStatus, 1200);
+  } catch (e) {
+    alert('Could not start InfluxDB bootstrap.');
+  }
 }
 
 // ── Save config ───────────────────────────────────────────────────────────
@@ -1016,6 +1062,10 @@ async function loadExistingConfig() {
     if (CFG.influxdb_host) {
       document.getElementById('use_influxdb').checked = true;
       document.getElementById('influx-section').style.display = '';
+      INFLUX_FIELD_KEYS.forEach(key => {
+        makeInfluxPicker('picker-' + key, key, influxEntities);
+      });
+      document.getElementById('influx-entities').classList.add('show');
     }
   } catch(e) { console.warn('Could not load existing config', e); }
 }
@@ -1030,7 +1080,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     initAllPickers();
     renderPersonTags();
     document.getElementById('header-subtitle').textContent = 'Settings';
+    if (CFG.influxdb_host) {
+      await testInflux();
+    }
+    await refreshInfluxBootstrapStatus();
   }
+  updateInfluxModeUI();
 });
 </script>
 </body>

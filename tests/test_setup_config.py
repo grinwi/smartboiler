@@ -67,7 +67,7 @@ class TestValidateConfig:
         errs = validate_config(cfg)
         assert any("spot_price_region" in e for e in errs)
 
-    @pytest.mark.parametrize("region", ["CZ", "SK", "AT", "DE", "PL", "HU"])
+    @pytest.mark.parametrize("region", ["CZ", "SK", "AT", "DE", "PL", "HU", "FR", "IT", "ES"])
     def test_valid_spot_regions(self, region):
         cfg = _valid()
         cfg["spot_price_region"] = region
@@ -253,6 +253,52 @@ class TestSaveLoadConfig:
         loaded = load_setup_config()
         for key, default_val in DEFAULTS.items():
             assert key in loaded
+
+    def test_load_populates_mode_specific_influx_fields_from_flat_config(self, tmp_path):
+        import smartboiler.setup_config as sc
+        original_data_dir = sc._DATA_DIR
+        original_setup_path = sc._SETUP_PATH
+        sc._DATA_DIR = str(tmp_path)
+        sc._SETUP_PATH = str(tmp_path / "smartboiler_setup.json")
+        try:
+            (tmp_path / "smartboiler_setup.json").write_text(json.dumps({
+                "boiler_switch_entity_id": "switch.boiler",
+                "operation_mode": "simple",
+                "influxdb_host": "influx.local",
+                "influxdb_db": "homeassistant",
+                "influxdb_relay_entity_id": "switch.boiler",
+                "influxdb_power_entity_id": "sensor.boiler_power",
+                "influxdb_case_tmp_entity_id": "sensor.boiler_case",
+                "influxdb_inlet_tmp_entity_id": "sensor.inlet",
+                "influxdb_water_temp_entity_id": "sensor.outlet",
+            }))
+            loaded = sc.load_setup_config()
+            assert loaded["influxdb_simple_relay_entity_id"] == "switch.boiler"
+            assert loaded["influxdb_simple_power_entity_id"] == "sensor.boiler_power"
+            assert loaded["influxdb_simple_case_tmp_entity_id"] == "sensor.boiler_case"
+            assert loaded["influxdb_simple_inlet_tmp_entity_id"] == "sensor.inlet"
+            assert loaded["influxdb_simple_outlet_tmp_entity_id"] == "sensor.outlet"
+        finally:
+            sc._DATA_DIR = original_data_dir
+            sc._SETUP_PATH = original_setup_path
+
+    def test_save_syncs_active_mode_specific_influx_fields_back_to_flat_keys(self):
+        data = _valid()
+        data["operation_mode"] = "standard"
+        data["influxdb_host"] = "influx.local"
+        data["influxdb_db"] = "homeassistant"
+        data["influxdb_standard_relay_entity_id"] = "switch.boiler"
+        data["influxdb_standard_power_entity_id"] = "sensor.boiler_power"
+        data["influxdb_standard_flow_entity_id"] = "sensor.flow"
+        data["influxdb_standard_water_temp_entity_id"] = "sensor.outlet"
+        data["influxdb_standard_case_tmp_entity_id"] = "sensor.case"
+        save_setup_config(data)
+        loaded = load_setup_config()
+        assert loaded["influxdb_relay_entity_id"] == "switch.boiler"
+        assert loaded["influxdb_power_entity_id"] == "sensor.boiler_power"
+        assert loaded["influxdb_flow_entity_id"] == "sensor.flow"
+        assert loaded["influxdb_water_temp_entity_id"] == "sensor.outlet"
+        assert loaded["influxdb_case_tmp_entity_id"] == "sensor.case"
 
     def test_load_without_file_returns_defaults(self):
         # No file exists; should still return DEFAULTS

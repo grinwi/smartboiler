@@ -17,9 +17,12 @@ from smartboiler.web_server import (  # noqa: E402
     _rate_limited,
     _get_state,
     _get_extra,
+    _get_influx_bootstrap_status,
+    _start_influx_bootstrap,
     _calendar_manager,
 )
 from smartboiler.setup_config import load_setup_config, save_setup_config, is_setup_complete
+from smartboiler.web_setup import get_setup_template_context
 
 logger = logging.getLogger(__name__)
 
@@ -58,12 +61,12 @@ def index() -> str:
 
 @app.route("/setup")
 def setup_wizard() -> str:
-    return render_template("setup.html", settings_mode=False)
+    return render_template("setup.html", **get_setup_template_context(settings_mode=False))
 
 
 @app.route("/settings")
 def settings_page() -> str:
-    return render_template("setup.html", settings_mode=True)
+    return render_template("setup.html", **get_setup_template_context(settings_mode=True))
 
 
 # ── Setup / config API ─────────────────────────────────────────────────────
@@ -175,6 +178,41 @@ def api_test_influxdb() -> Response:
     except Exception as e:
         logger.warning("InfluxDB test failed: %s", e)
         return jsonify({"ok": False, "error": str(e)})
+
+
+@app.route("/api/bootstrap/influxdb", methods=["GET"])
+def api_get_influx_bootstrap_status() -> Response:
+    """Return current manual/automatic InfluxDB bootstrap status."""
+    if _rate_limited():
+        abort(429)
+    status = _get_influx_bootstrap_status()
+    if not status.get("available"):
+        return jsonify(status), 503
+    return jsonify(status)
+
+
+@app.route("/api/bootstrap/influxdb", methods=["POST"])
+def api_start_influx_bootstrap() -> Response:
+    """Persist config (if provided) and start an InfluxDB bootstrap run."""
+    if _rate_limited():
+        abort(429)
+    try:
+        body = request.get_json(force=True) or {}
+        config = body.get("config")
+        if isinstance(config, dict):
+            save_setup_config(config)
+        options = load_setup_config()
+        result = _start_influx_bootstrap(options)
+        if not result.get("available", True):
+            return jsonify(result), 503
+        if not result.get("started"):
+            return jsonify(result), 409
+        return jsonify(result), 202
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    except Exception as e:
+        logger.error("api_start_influx_bootstrap error: %s", e)
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/api/status")

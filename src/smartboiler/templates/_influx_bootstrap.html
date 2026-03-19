@@ -1,0 +1,78 @@
+<div class="toggle-row">
+  <div>
+    <span>InfluxDB cold-start bootstrap</span>
+    <span class="hint">Import historical data from an existing InfluxDB to warm up the predictor immediately.</span>
+  </div>
+  <label class="switch">
+    <input type="checkbox" id="use_influxdb" onchange="toggleInflux()">
+    <span class="slider"></span>
+  </label>
+</div>
+<div id="influx-section" style="display:none;margin-top:1rem">
+  <div class="field-grid">
+    <div class="field">
+      <label>Host</label>
+      <input type="text" id="influxdb_host" placeholder="192.168.1.x or hostname">
+    </div>
+    <div class="field">
+      <label>Port</label>
+      <input type="number" id="influxdb_port" value="8086">
+    </div>
+    <div class="field">
+      <label>Database</label>
+      <input type="text" id="influxdb_db" value="homeassistant">
+    </div>
+    <div class="field optional">
+      <label>Username</label>
+      <input type="text" id="influxdb_username" placeholder="Leave empty if no auth">
+    </div>
+    <div class="field optional">
+      <label>Password</label>
+      <input type="text" id="influxdb_password" placeholder="Leave empty if no auth">
+    </div>
+    <div class="field">
+      <label>History to import (years)</label>
+      <input type="number" id="influxdb_history_years" value="2" min="1" max="10">
+    </div>
+  </div>
+
+  <div class="influx-actions">
+    <button class="btn btn-secondary" onclick="testInflux()" id="btn-influx-test">
+      Test connection &amp; load entities
+    </button>
+    {% if settings_mode %}
+    <button class="btn btn-primary" onclick="startInfluxBootstrap()" id="btn-influx-bootstrap">
+      Run bootstrap now
+    </button>
+    {% endif %}
+    <div class="influx-action-status">
+      <span id="influx-status"></span>
+      {% if settings_mode %}
+      <span id="influx-bootstrap-status"></span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="influx-entities" id="influx-entities">
+    <hr class="section-sep">
+    <p style="font-size:.85rem;font-weight:600;color:#4a5568;margin-bottom:.75rem">Map InfluxDB entities to the active prediction mode:</p>
+    <div class="influx-mode-grid">
+      {% for section in influx_bootstrap_sections %}
+      <section class="influx-mode-card" id="influx-mode-{{ section.mode }}" data-influx-mode="{{ section.mode }}">
+        <div class="influx-mode-head">
+          <h3>{{ section.title }}</h3>
+          <span class="mode-pill">Active mode</span>
+        </div>
+        <p class="hint" style="margin-bottom:.9rem">{{ section.description }}</p>
+        {% for field in section.fields %}
+        <div class="field">
+          <label>{{ field.label }}</label>
+          <div class="picker-wrap" id="picker-{{ field.cfg_key }}"></div>
+          <div class="hint">{{ field.hint }}</div>
+        </div>
+        {% endfor %}
+      </section>
+      {% endfor %}
+    </div>
+  </div>
+</div>
