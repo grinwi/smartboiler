@@ -484,6 +484,16 @@ class SmartBoilerController:
                 )
                 should_heat = True
 
+            # Don't keep relay ON once the boiler reached its target temperature.
+            # The internal thermostat has already tripped (power≈0 W) — there is
+            # nothing left to heat.  Leaving the relay on wastes standby power.
+            if should_heat and boiler_tmp >= self.boiler_set_tmp:
+                logger.debug(
+                    "Boiler at/above set_tmp (%.1f >= %.1f): relay OFF",
+                    boiler_tmp, self.boiler_set_tmp,
+                )
+                should_heat = False
+
             if should_heat:
                 self.ha.turn_on(self.boiler_switch_entity_id)
                 logger.debug("Boiler ON (plan hour %d, tmp=%.1f)", current_hour_idx, boiler_tmp)
@@ -762,7 +772,8 @@ class SmartBoilerController:
         if not history:
             logger.info("HA HDO bootstrap: no relay history returned.")
             return
-        count = 0
+        # Parse all state transitions into (dt, is_unavailable) pairs
+        parsed: List[tuple] = []
         for entry in history:
             state_str = entry.get("state", "")
             last_changed = entry.get("last_changed") or entry.get("last_updated")
@@ -772,10 +783,39 @@ class SmartBoilerController:
                 dt = datetime.fromisoformat(last_changed.replace("Z", "+00:00")).astimezone()
             except Exception:
                 continue
-            self.hdo_learner.observe(dt, _is_hdo_unavailable_state(state_str))
-            count += 1
+            parsed.append((dt, _is_hdo_unavailable_state(state_str)))
+
+        # Fill every 5-minute slot within each "unavailable" period.
+        # HA history only records state *transitions*, so if HDO is active
+        # 13:05–13:35 only two observations would be written (the start and
+        # end transitions).  Slots in between would have zero observations and
+        # would never cross MIN_WEEKS_TO_TRUST.  We synthesise one observation
+        # per 5-minute slot for the full duration of each unavailable span.
+        from smartboiler.hdo_learner import SLOT_MINUTES
+        slot_seconds = SLOT_MINUTES * 60
+        count = 0
+        for i, (dt, is_unavail) in enumerate(parsed):
+            if is_unavail:
+                # Determine how long this unavailable period lasted
+                end_dt = parsed[i + 1][0] if i + 1 < len(parsed) else datetime.now().astimezone()
+                duration_s = (end_dt - dt).total_seconds()
+                # Emit one observation per 5-min slot for the entire span
+                cursor = 0.0
+                while cursor < max(duration_s, slot_seconds):
+                    slot_dt = dt + timedelta(seconds=cursor)
+                    self.hdo_learner.observe(slot_dt, True)
+                    count += 1
+                    cursor += slot_seconds
+            else:
+                # Available — record one observation at the transition point only
+                self.hdo_learner.observe(dt, False)
+                count += 1
+
         self.store.save_pickle("hdo_learner", self.hdo_learner)
-        logger.info("HDO learner seeded from HA history: %d state transitions ingested.", count)
+        logger.info(
+            "HDO learner seeded from HA history: %d observations from %d transitions.",
+            count, len(parsed),
+        )
 
     # ── InfluxDB bootstrap helpers ───────────────────────────────────────
 

@@ -24,8 +24,18 @@ _HDO_MIN_GAP_MIN = 20          # shorter outages are treated as noise
 
 
 def _build_minute_index(start: datetime, end: datetime) -> pd.DatetimeIndex:
-    start_min = pd.Timestamp(start).floor("1min") + pd.Timedelta(minutes=1)
-    end_min = pd.Timestamp(end).floor("1min")
+    # Always produce a tz-naive index (UTC wall-clock) to match the tz-naive
+    # output of query_series (which strips tz via .tz_localize(None)).
+    def _naive_utc(dt) -> pd.Timestamp:
+        ts = pd.Timestamp(dt)
+        if ts.tzinfo is not None:
+            return ts.tz_convert("UTC").tz_localize(None)
+        return ts  # already tz-naive — treated as UTC
+
+    start_ts = _naive_utc(start)
+    end_ts   = _naive_utc(end)
+    start_min = start_ts.floor("1min") + pd.Timedelta(minutes=1)
+    end_min   = end_ts.floor("1min")
     if end_min < start_min:
         return pd.DatetimeIndex([])
     return pd.date_range(start=start_min, end=end_min, freq="1min")
@@ -321,7 +331,6 @@ def seed_hdo_learner(
     explicit_unavailable = unavail_series.reindex(full_idx).fillna(False).astype(bool)
     known = relay_bool.reindex(full_idx).notna() | explicit_unavailable
 
-    aux_presence_seen = False
     for meas, entity in presence_sources or []:
         if not entity:
             continue
@@ -331,34 +340,90 @@ def seed_hdo_learner(
         )
         if aux_series.empty:
             continue
-        aux_presence_seen = True
         aux_known = aux_series.reindex(full_idx).ffill(limit=_HDO_PRESENCE_FFILL_MIN).notna()
         known = known | aux_known
 
-    inferred_unavailable = (
-        _infer_hdo_gaps(known)
-        if aux_presence_seen
-        else pd.Series(False, index=full_idx, dtype=bool)
+    # Per-ISO-week consistent gap analysis at 1-minute resolution.
+    # HDO physically cuts Shelly mains power → relay + all aux sensors lose data
+    # simultaneously, identical to a WiFi outage.  WiFi outages are random;
+    # HDO repeats at the same weekday×minute-of-day every week.
+    # Detection: find bounded absent intervals of _MIN_GAP.._MAX_GAP minutes;
+    # for each gap minute record which ISO week it fell in.
+    # Slots absent in ≥ MIN_CONFIDENCE_TO_BLOCK fraction of total weeks = HDO.
+    from collections import defaultdict
+    from smartboiler.hdo_learner import MIN_WEEKS_TO_TRUST, MIN_CONFIDENCE_TO_BLOCK
+
+    _MIN_GAP = 5    # minutes — shorter = measurement noise
+    _MAX_GAP = 600  # minutes — Czech HDO overnight blocks run up to ~8 h (480 min);
+                    # gaps > 10 h are true power / ISP outages and filtered by the
+                    # ISO-week consistency check anyway (random outages < 70% of weeks)
+
+    known_arr = known.reindex(full_idx).fillna(False).astype(bool).values
+    n_ts = len(full_idx)
+
+    # Collect distinct ISO weeks present in the full dataset
+    all_iso_weeks: set = set()
+    for ts in full_idx:
+        iso = ts.isocalendar()
+        all_iso_weeks.add((int(iso[0]), int(iso[1])))
+    n_total_weeks = len(all_iso_weeks)
+
+    # Single pass: find bounded absent gaps of _MIN_GAP.._MAX_GAP minutes and
+    # record which (weekday, minute_of_day) × ISO-week combinations fall inside.
+    absent_weeks: dict = defaultdict(set)  # (wd, min_of_day) -> {(yr, wk), ...}
+
+    gap_start = None
+    for i in range(n_ts):
+        if not bool(known_arr[i]):
+            if gap_start is None:
+                gap_start = i
+        else:
+            if gap_start is not None:
+                gap_len = i - gap_start
+                bounded_before = gap_start > 0 and bool(known_arr[gap_start - 1])
+                if bounded_before and _MIN_GAP <= gap_len <= _MAX_GAP:
+                    for j in range(gap_start, i):
+                        ts_j = full_idx[j]
+                        iso_j = ts_j.isocalendar()
+                        yw = (int(iso_j[0]), int(iso_j[1]))
+                        slot_key = (ts_j.weekday(), ts_j.hour * 60 + ts_j.minute)
+                        absent_weeks[slot_key].add(yw)
+                gap_start = None
+
+    # HDO slots: consistently absent in >= MIN_CONFIDENCE_TO_BLOCK fraction of weeks
+    hdo_slots = {
+        slot_key
+        for slot_key, wks in absent_weeks.items()
+        if n_total_weeks > 0 and len(wks) / n_total_weeks >= MIN_CONFIDENCE_TO_BLOCK
+    }
+
+    n_hdo_hours = len({(wd, min_d // 60) for wd, min_d in hdo_slots})
+    logger.info(
+        "InfluxDB bootstrap: %d consistent HDO minute-slots (~%d hours/week) "
+        "detected from %d weeks of history",
+        len(hdo_slots), n_hdo_hours, n_total_weeks,
     )
-    inferred_minutes = int(inferred_unavailable.sum())
-    if inferred_minutes:
-        logger.info(
-            "InfluxDB bootstrap: inferred %d HDO minutes from telemetry gaps",
-            inferred_minutes,
-        )
+
+    # Inject synthetic recent observations for HDO slots only (1-min resolution).
+    # Non-HDO slots get no observations → correctly not blocked by default.
+    now_naive = pd.Timestamp.utcnow().tz_localize(None)
+    n_inject = max(MIN_WEEKS_TO_TRUST + 1, getattr(hdo_learner, "history_weeks", 3))
 
     n = 0
-    for ts in full_idx:
-        if not bool(known.get(ts, False)) and not bool(inferred_unavailable.get(ts, False)):
-            continue
-        try:
-            dt = ts.to_pydatetime()
-            is_unavailable = bool(
-                explicit_unavailable.get(ts, False) or inferred_unavailable.get(ts, False)
+    for wd, min_of_day in hdo_slots:
+        hour   = min_of_day // 60
+        minute = min_of_day % 60
+        for weeks_ago in range(1, n_inject + 1):
+            ref = now_naive - pd.Timedelta(weeks=weeks_ago)
+            days_to_target = (wd - ref.weekday()) % 7
+            target_day = ref + pd.Timedelta(days=days_to_target)
+            dt = target_day.to_pydatetime().replace(
+                hour=hour, minute=minute, second=0, microsecond=0
             )
-            hdo_learner.observe(dt, relay_unavailable=is_unavailable)
-            n += 1
-        except Exception:
-            continue
+            try:
+                hdo_learner.observe(dt, relay_unavailable=True)
+                n += 1
+            except Exception:
+                continue
 
     return n
