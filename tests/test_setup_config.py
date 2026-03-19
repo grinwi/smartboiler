@@ -130,6 +130,12 @@ class TestValidateConfig:
         ("min_training_days", 366),
         ("predictor_retrain_weeks", 0),
         ("predictor_retrain_weeks", 53),
+        ("hdo_history_weeks", 1),
+        ("hdo_history_weeks", 13),
+        ("hdo_decay_weeks", 0),
+        ("hdo_decay_weeks", 13),
+        ("hdo_retrain_weeks", 0),
+        ("hdo_retrain_weeks", 13),
         ("vacation_min_temp", 9),
         ("vacation_min_temp", 61),
     ])

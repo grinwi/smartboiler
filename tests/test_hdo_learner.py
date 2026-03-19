@@ -206,6 +206,26 @@ class TestObserve:
         assert len(l._observations.get((0, slot1), [])) == 1
         assert len(l._observations.get((0, slot2), [])) == 1
 
+    def test_old_slots_are_pruned_globally_on_query(self):
+        l = HDOLearner(history_weeks=3)
+        old_dt = datetime.now() - timedelta(weeks=5)
+        slot_idx = (old_dt.hour * 60 + old_dt.minute) // SLOT_MINUTES
+        iso = old_dt.isocalendar()
+        l._observations[(old_dt.weekday(), slot_idx)] = [
+            (old_dt.timestamp(), True, (int(iso[0]), int(iso[1])))
+        ]
+
+        assert l.observation_count() == 0
+
+    def test_recent_window_overrides_stale_schedule(self):
+        l = HDOLearner(history_weeks=3, decay_weeks=2)
+        for weeks_ago in (5, 4):
+            l.observe(_make_dt(0, 22, weeks_ago=weeks_ago), relay_unavailable=True)
+        for weeks_ago in (1, 0):
+            l.observe(_make_dt(0, 22, weeks_ago=weeks_ago), relay_unavailable=False)
+
+        assert not l.is_blocked(0, 22)
+
 
 # ---------------------------------------------------------------------------
 # Trust policy: MIN_WEEKS_TO_TRUST

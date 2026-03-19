@@ -19,6 +19,48 @@ logger = logging.getLogger(__name__)
 # Maximum gap (in 1-minute buckets) to forward-fill after a sensor outage.
 _RELAY_MAX_FFILL_MIN = 60   # relay offline > 1 h → assume unknown (→ False)
 _TEMP_MAX_FFILL_MIN  = 120  # temperature offline > 2 h → NaN
+_HDO_PRESENCE_FFILL_MIN = 15   # tolerate sparse auxiliary telemetry
+_HDO_MIN_GAP_MIN = 20          # shorter outages are treated as noise
+
+
+def _build_minute_index(start: datetime, end: datetime) -> pd.DatetimeIndex:
+    start_min = pd.Timestamp(start).floor("1min") + pd.Timedelta(minutes=1)
+    end_min = pd.Timestamp(end).floor("1min")
+    if end_min < start_min:
+        return pd.DatetimeIndex([])
+    return pd.date_range(start=start_min, end=end_min, freq="1min")
+
+
+def _infer_hdo_gaps(known: pd.Series, min_gap_minutes: int = _HDO_MIN_GAP_MIN) -> pd.Series:
+    """Infer HDO from bounded telemetry gaps in a complete 1-minute availability mask."""
+    inferred = pd.Series(False, index=known.index, dtype=bool)
+    if known.empty:
+        return inferred
+
+    known_mask = known.fillna(False).astype(bool)
+    missing_mask = ~known_mask
+    gap_start = None
+
+    for pos, is_missing in enumerate(missing_mask.tolist()):
+        if is_missing:
+            if gap_start is None:
+                gap_start = pos
+            continue
+
+        if gap_start is None:
+            continue
+
+        gap_len = pos - gap_start
+        if (
+            gap_start > 0
+            and bool(known_mask.iloc[gap_start - 1])
+            and bool(known_mask.iloc[pos])
+            and gap_len >= min_gap_minutes
+        ):
+            inferred.iloc[gap_start:pos] = True
+        gap_start = None
+
+    return inferred
 
 
 def fetch_consumption_chunk(
@@ -248,39 +290,72 @@ def seed_hdo_learner(
     hdo_learner,
     start: datetime,
     end: datetime,
+    presence_sources=None,
 ) -> int:
     """
     Feed the HDO learner from InfluxDB relay state history.
 
-    Scans minute-resolution relay states looking for "unavailable" (HDO blocking).
+    Scans minute-resolution relay states looking for explicit "unavailable"
+    samples and can also infer HDO from longer telemetry gaps across auxiliary
+    Shelly entities (power/temperature/flow) when those entities disappear
+    together with the relay.
+
     Returns the number of observations recorded.
     """
     t0 = fmt_ts(start)
     t1 = fmt_ts(end)
+    full_idx = _build_minute_index(start, end)
+    if full_idx.empty:
+        return 0
 
     unavail_series = query_series(
         client, meas=meas_state, entity=relay_entity,
         field="value", agg="last", t0=t0, t1=t1, fill="null", dtype="unavailable",
     )
-    if unavail_series.empty:
-        return 0
 
     relay_bool = query_series(
         client, meas=meas_state, entity=relay_entity,
         field="value", agg="last", t0=t0, t1=t1, fill="null", dtype="bool",
     )
 
-    idx = unavail_series.index.union(
-        relay_bool.index if not relay_bool.empty else unavail_series.index
+    explicit_unavailable = unavail_series.reindex(full_idx).fillna(False).astype(bool)
+    known = relay_bool.reindex(full_idx).notna() | explicit_unavailable
+
+    aux_presence_seen = False
+    for meas, entity in presence_sources or []:
+        if not entity:
+            continue
+        aux_series = query_series(
+            client, meas=meas, entity=entity,
+            field="value", agg="mean", t0=t0, t1=t1, fill="null", dtype="float",
+        )
+        if aux_series.empty:
+            continue
+        aux_presence_seen = True
+        aux_known = aux_series.reindex(full_idx).ffill(limit=_HDO_PRESENCE_FFILL_MIN).notna()
+        known = known | aux_known
+
+    inferred_unavailable = (
+        _infer_hdo_gaps(known)
+        if aux_presence_seen
+        else pd.Series(False, index=full_idx, dtype=bool)
     )
-    unavail = unavail_series.reindex(idx)
-    known = relay_bool.reindex(idx).notna() | unavail.notna()
+    inferred_minutes = int(inferred_unavailable.sum())
+    if inferred_minutes:
+        logger.info(
+            "InfluxDB bootstrap: inferred %d HDO minutes from telemetry gaps",
+            inferred_minutes,
+        )
 
     n = 0
-    for ts in idx[known]:
+    for ts in full_idx:
+        if not bool(known.get(ts, False)) and not bool(inferred_unavailable.get(ts, False)):
+            continue
         try:
             dt = ts.to_pydatetime()
-            is_unavailable = bool(unavail.get(ts, False) or False)
+            is_unavailable = bool(
+                explicit_unavailable.get(ts, False) or inferred_unavailable.get(ts, False)
+            )
             hdo_learner.observe(dt, relay_unavailable=is_unavailable)
             n += 1
         except Exception:
