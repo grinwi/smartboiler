@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 SLOT_MINUTES = 5                # resolution: 5 minutes
 SLOTS_PER_DAY = 24 * 60 // SLOT_MINUTES   # 288 slots per day
-HISTORY_WEEKS = 8               # forget observations older than this
+HISTORY_WEEKS = 3               # rolling observation window
 MIN_WEEKS_TO_TRUST = 2          # need observations from ≥2 distinct calendar weeks
 MIN_CONFIDENCE_TO_BLOCK = 0.7   # ≥70% of weighted observations must be "unavailable"
 
@@ -54,13 +54,15 @@ class HDOLearner:
     propagate within a few weeks.
     """
 
-    def __init__(self, decay_weeks: int = 4):
+    def __init__(self, decay_weeks: int = 2, history_weeks: int = HISTORY_WEEKS):
         """
         Args:
             decay_weeks: Exponential decay half-life (weeks) for weighting
                          recent vs old observations.
+            history_weeks: Rolling retention window for observations.
         """
         self.decay_weeks = decay_weeks
+        self.history_weeks = history_weeks
         # (weekday, slot_idx) → [(unix_ts, is_unavailable, (iso_year, iso_week)), ...]
         self._observations: Dict[
             Tuple[int, int],
@@ -115,6 +117,23 @@ class HDOLearner:
         slot_idx = (dt.hour * 60 + dt.minute) // SLOT_MINUTES
         return (dt.weekday(), slot_idx)
 
+    def _cutoff_ts(self, now_ts: Optional[float] = None) -> float:
+        base = _now_ts() if now_ts is None else now_ts
+        return base - self.history_weeks * 7 * 24 * 3600
+
+    def _prune_all(self, now_ts: Optional[float] = None) -> None:
+        cutoff_ts = self._cutoff_ts(now_ts)
+        pruned: Dict[Tuple[int, int], List[Tuple[float, bool, Tuple[int, int]]]] = {}
+        for key, obs in self._observations.items():
+            kept = [(t, b, yw) for t, b, yw in obs if t > cutoff_ts]
+            if kept:
+                pruned[key] = kept
+        self._observations = pruned
+
+    def clear_observations(self) -> None:
+        """Drop learned observations while keeping the explicit schedule."""
+        self._observations = {}
+
     def observe(self, dt: datetime, relay_unavailable: bool) -> None:
         """Record one observation.
 
@@ -130,11 +149,7 @@ class HDOLearner:
         iso = dt.isocalendar()
         year_week: Tuple[int, int] = (int(iso[0]), int(iso[1]))
         self._observations.setdefault(key, []).append((ts, relay_unavailable, year_week))
-        # Prune observations older than HISTORY_WEEKS
-        cutoff_ts = _now_ts() - HISTORY_WEEKS * 7 * 24 * 3600
-        self._observations[key] = [
-            (t, b, yw) for t, b, yw in self._observations[key] if t > cutoff_ts
-        ]
+        self._prune_all()
 
     # ── Blocking queries ──────────────────────────────────────────────────────
 
@@ -161,6 +176,7 @@ class HDOLearner:
 
     def is_blocked_at(self, dt: datetime) -> bool:
         """Return True if HDO is likely blocking at this exact datetime."""
+        self._prune_all()
         key = self._slot_of(dt)
         return self._is_slot_blocked(*key)
 
@@ -169,11 +185,13 @@ class HDOLearner:
 
         Backward-compatible interface used by the scheduler and dashboard.
         """
+        self._prune_all()
         start_slot = (hour * 60) // SLOT_MINUTES   # = hour * 12
         return any(self._is_slot_blocked(weekday, s) for s in range(start_slot, start_slot + 12))
 
     def get_blocked_hours_next_24h(self, from_dt: Optional[datetime] = None) -> List[bool]:
         """Return 24 booleans — one per upcoming hour — indicating HDO blocking."""
+        self._prune_all()
         if from_dt is None:
             from_dt = datetime.now().astimezone()
         result = []
@@ -186,6 +204,7 @@ class HDOLearner:
 
     def get_weekly_schedule(self) -> Dict[str, List[int]]:
         """Return inferred+explicit HDO schedule as {day_name → [blocked hours]}."""
+        self._prune_all()
         day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         schedule: Dict[str, List[int]] = {day: [] for day in day_names}
         for wd in range(7):
@@ -196,4 +215,5 @@ class HDOLearner:
 
     def observation_count(self) -> int:
         """Total number of stored observations across all slots."""
+        self._prune_all()
         return sum(len(v) for v in self._observations.values())

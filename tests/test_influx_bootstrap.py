@@ -1,5 +1,10 @@
 """Tests for mode-specific InfluxDB bootstrap configuration."""
 
+from datetime import datetime, timedelta
+from unittest.mock import MagicMock, patch
+
+import pandas as pd
+
 from smartboiler.influx_bootstrap import InfluxBootstrapper
 
 
@@ -81,3 +86,48 @@ def test_flat_influx_fields_remain_a_fallback():
     assert bootstrapper.case_tmp_entity == "sensor.case"
     assert bootstrapper.inlet_tmp_entity == "sensor.inlet"
     assert bootstrapper.outlet_tmp_entity == "sensor.outlet"
+
+
+def test_hdo_retrain_uses_recent_history_window():
+    store = _DummyStore()
+    learner = MagicMock()
+    bootstrapper = InfluxBootstrapper(
+        options={
+            "operation_mode": "standard",
+            "influxdb_host": "influx.local",
+            "influxdb_db": "homeassistant",
+            "influxdb_standard_relay_entity_id": "switch.boiler",
+            "influxdb_standard_power_entity_id": "sensor.power",
+            "influxdb_history_years": 2,
+            "hdo_history_weeks": 3,
+        },
+        store=store,
+        thermal_model=None,
+    )
+
+    with patch.object(bootstrapper, "_connect"), \
+         patch("smartboiler.influx_bootstrap.fetch_consumption_chunk", return_value=pd.DataFrame()), \
+         patch("smartboiler.influx_bootstrap.seed_hdo_learner", return_value=7) as seed_hdo:
+        bootstrapper._client = object()
+        summary = bootstrapper.run(hdo_learner=learner)
+
+    hdo_start = seed_hdo.call_args.kwargs["start"]
+    assert datetime.now() - hdo_start < timedelta(weeks=3, days=1)
+    assert summary["hdo_history_weeks"] == 3
+
+
+def test_hdo_retrain_interval_shortens_shared_bootstrap_interval():
+    bootstrapper = InfluxBootstrapper(
+        options={
+            "operation_mode": "standard",
+            "influxdb_host": "influx.local",
+            "influxdb_db": "homeassistant",
+            "influxdb_standard_relay_entity_id": "switch.boiler",
+            "predictor_retrain_weeks": 6,
+            "hdo_retrain_weeks": 3,
+        },
+        store=_DummyStore(),
+        thermal_model=None,
+    )
+
+    assert bootstrapper._retrain_weeks == 3

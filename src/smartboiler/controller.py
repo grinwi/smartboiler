@@ -28,6 +28,11 @@ MIN_TRAINING_DAYS_DEFAULT = 30
 
 # Thermostat-trip debounce: don't record a second calibration within this window
 _CALIB_DEBOUNCE_S = 5 * 60   # 5 min
+_HDO_UNAVAILABLE_STATES = {"unavailable", "unknown"}
+
+
+def _is_hdo_unavailable_state(state: Optional[str]) -> bool:
+    return str(state or "").strip().lower() in _HDO_UNAVAILABLE_STATES
 
 
 class SmartBoilerController:
@@ -54,7 +59,6 @@ class SmartBoilerController:
         from smartboiler.state_store import StateStore
         from smartboiler.ha_data_collector import HADataCollector
         from smartboiler.predictor import RollingHistogramPredictor
-        from smartboiler.hdo_learner import HDOLearner
         from smartboiler.scheduler import HeatingScheduler, BoilerParams
         from smartboiler.spot_price import SpotPriceFetcher
         from smartboiler.thermal_model import ThermalModel
@@ -107,6 +111,8 @@ class SmartBoilerController:
         self.has_spot_price = bool(options.get("has_spot_price", False))
         self.spot_price_region = options.get("spot_price_region", "CZ")
         self.hdo_explicit_schedule = options.get("hdo_explicit_schedule", "") or ""
+        self.hdo_history_weeks = int(options.get("hdo_history_weeks", 3))
+        self.hdo_decay_weeks = int(options.get("hdo_decay_weeks", 2))
         self.prediction_conservatism = options.get("prediction_conservatism", "medium")
         self.min_training_days = int(options.get("min_training_days", MIN_TRAINING_DAYS_DEFAULT))
 
@@ -135,11 +141,12 @@ class SmartBoilerController:
             self.predictor = saved_predictor
             logger.info("Predictor restored from disk.")
 
-        self.hdo_learner = HDOLearner()
-        self.hdo_learner.set_explicit_schedule(self.hdo_explicit_schedule)
+        self.hdo_learner = self._new_hdo_learner()
         saved_hdo = self.store.load_pickle("hdo_learner")
         if saved_hdo is not None:
             self.hdo_learner = saved_hdo
+            self.hdo_learner.decay_weeks = self.hdo_decay_weeks
+            self.hdo_learner.history_weeks = self.hdo_history_weeks
             self.hdo_learner.set_explicit_schedule(self.hdo_explicit_schedule)
             logger.info("HDO learner restored from disk.")
 
@@ -149,6 +156,7 @@ class SmartBoilerController:
             set_tmp=self.boiler_set_tmp,
             min_tmp=self.boiler_min_tmp,
             area_tmp=self.area_tmp,
+            standby_loss_w=self.boiler_standby_w,
         )
         self.scheduler = HeatingScheduler(boiler_params)
 
@@ -369,7 +377,7 @@ class SmartBoilerController:
             relay_state_obj = self.ha.get_state(self.boiler_switch_entity_id)
             relay_state_str = relay_state_obj["state"] if relay_state_obj else None
             relay_on = relay_state_str == "on"
-            relay_unavailable = relay_state_str == "unavailable"
+            relay_unavailable = _is_hdo_unavailable_state(relay_state_str)
 
             power_w = 0.0
             if self.boiler_power_entity_id:
@@ -727,13 +735,25 @@ class SmartBoilerController:
 
     # ── HDO bootstrap from HA history ─────────────────────────────────────
 
+    def _new_hdo_learner(self):
+        from smartboiler.hdo_learner import HDOLearner
+
+        learner = HDOLearner(
+            decay_weeks=self.hdo_decay_weeks,
+            history_weeks=self.hdo_history_weeks,
+        )
+        learner.set_explicit_schedule(self.hdo_explicit_schedule)
+        return learner
+
     def _bootstrap_hdo_from_ha(self) -> None:
         """Seed HDO learner from HA REST API relay history on fresh startup."""
         if self.hdo_learner.observation_count() > 0:
             return
-        from smartboiler.hdo_learner import HISTORY_WEEKS
-        start = datetime.now().astimezone() - timedelta(weeks=HISTORY_WEEKS)
-        logger.info("Bootstrapping HDO learner from HA history (last %d weeks)…", HISTORY_WEEKS)
+        start = datetime.now().astimezone() - timedelta(weeks=self.hdo_history_weeks)
+        logger.info(
+            "Bootstrapping HDO learner from HA history (last %d weeks)…",
+            self.hdo_history_weeks,
+        )
         try:
             history = self.ha.get_history(self.boiler_switch_entity_id, start)
         except Exception as e:
@@ -752,12 +772,39 @@ class SmartBoilerController:
                 dt = datetime.fromisoformat(last_changed.replace("Z", "+00:00")).astimezone()
             except Exception:
                 continue
-            self.hdo_learner.observe(dt, state_str == "unavailable")
+            self.hdo_learner.observe(dt, _is_hdo_unavailable_state(state_str))
             count += 1
         self.store.save_pickle("hdo_learner", self.hdo_learner)
         logger.info("HDO learner seeded from HA history: %d state transitions ingested.", count)
 
     # ── InfluxDB bootstrap helpers ───────────────────────────────────────
+
+    def _refresh_after_influx_bootstrap(self) -> Dict[str, Any]:
+        """Refresh predictor/dashboard state from the newly imported history."""
+        df_history = self.store.load_consumption_history()
+        self.predictor.update(df_history)
+        self.store.save_pickle("predictor", self.predictor)
+
+        forecast = self.predictor.predict_next_24h()
+        with self._lock:
+            self._forecast_24h = forecast
+
+        info = {
+            "predictor_total_samples": getattr(self.predictor, "_total_samples", 0),
+            "predictor_ready": bool(self.predictor.has_enough_data(self.min_training_days)),
+            "hdo_total_observations": int(self.hdo_learner.observation_count()),
+            "hdo_weekly_blocked_hours": int(
+                sum(len(hours) for hours in self.hdo_learner.get_weekly_schedule().values())
+            ),
+        }
+        if info["hdo_total_observations"] > 0 and info["hdo_weekly_blocked_hours"] == 0:
+            logger.info(
+                "Post-bootstrap HDO state: observations imported, but no blocked hours "
+                "met the trust/confidence threshold. This usually means the Influx relay "
+                "history has no 'unavailable' periods or the pattern is too weak."
+            )
+        logger.info("Post-bootstrap refresh complete: %s", info)
+        return info
 
     def _build_influx_bootstrapper(self, options_override: Optional[Dict] = None):
         from smartboiler.influx_bootstrap import InfluxBootstrapper
@@ -844,9 +891,12 @@ class SmartBoilerController:
         def _run_bootstrap() -> None:
             logger.info("InfluxDB bootstrap (%s) starting in background…", source)
             try:
-                summary = bootstrapper.run(hdo_learner=self.hdo_learner)
+                seeded_hdo = self._new_hdo_learner()
+                summary = bootstrapper.run(hdo_learner=seeded_hdo)
+                self.hdo_learner = seeded_hdo
                 self.store.save_pickle("thermal_model", self.thermal_model)
                 self.store.save_pickle("hdo_learner", self.hdo_learner)
+                summary.update(self._refresh_after_influx_bootstrap())
                 logger.info("InfluxDB bootstrap (%s) done: %s", source, summary)
                 with self._influx_bootstrap_lock:
                     self._influx_bootstrap_status.update({

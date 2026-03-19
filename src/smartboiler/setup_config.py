@@ -58,6 +58,9 @@ DEFAULTS: dict = {
 
     # ── HDO ───────────────────────────────────────────────────────────────
     "hdo_explicit_schedule": "",
+    "hdo_history_weeks": 3,
+    "hdo_decay_weeks": 2,
+    "hdo_retrain_weeks": 3,
 
     # ── Prediction ────────────────────────────────────────────────────────
     "prediction_conservatism": "medium",
@@ -207,6 +210,9 @@ def validate_config(config: dict) -> list[str]:
     _check_range(errors, config, "influxdb_history_years", 1, 20, "years")
     _check_range(errors, config, "min_training_days", 1, 365, "days")
     _check_range(errors, config, "predictor_retrain_weeks", 1, 52, "weeks")
+    _check_range(errors, config, "hdo_history_weeks", 2, 12, "weeks")
+    _check_range(errors, config, "hdo_decay_weeks", 1, 12, "weeks")
+    _check_range(errors, config, "hdo_retrain_weeks", 1, 12, "weeks")
     _check_range(errors, config, "vacation_min_temp", 10, 60, "°C")
 
     # ── Cross-field ─────────────────────────────────────────────────────
@@ -284,6 +290,7 @@ def save_setup_config(data: dict) -> None:
                     "boiler_watt_power", "average_boiler_surroundings_temp",
                     "cold_water_temp", "boiler_standby_watts",
                     "min_training_days", "predictor_retrain_weeks",
+                    "hdo_history_weeks", "hdo_decay_weeks", "hdo_retrain_weeks",
                     "thermal_model_window_days", "influxdb_port",
                     "influxdb_history_years", "vacation_min_temp"):
         try:

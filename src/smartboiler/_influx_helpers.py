@@ -76,7 +76,7 @@ def query_series(
                       (False if str(x).lower() in ("off", "false", "0", "0.0") else None)
         )
     elif dtype == "unavailable":
-        series = series.map(lambda x: str(x).lower() == "unavailable")
+        series = series.map(lambda x: str(x).lower() in ("unavailable", "unknown"))
     else:
         series = pd.to_numeric(series, errors="coerce")
 

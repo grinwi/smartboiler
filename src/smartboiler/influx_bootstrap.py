@@ -63,7 +63,8 @@ class InfluxBootstrapper:
     """
     Periodic import of historical InfluxDB data into the local cache.
 
-    Runs on first startup and then every `predictor_retrain_weeks` weeks,
+    Runs on first startup and then every shared retrain interval
+    (the shorter of `predictor_retrain_weeks` and `hdo_retrain_weeks`),
     so the predictor stays up-to-date without manual intervention.
 
     Typical call from the controller's __init__:
@@ -168,7 +169,10 @@ class InfluxBootstrapper:
             self.start_date = datetime.now() - timedelta(days=365 * years_back)
 
         # ── Periodic retrain interval ──────────────────────────────────────
-        self._retrain_weeks = int(options.get("predictor_retrain_weeks", 4))
+        predictor_retrain_weeks = int(options.get("predictor_retrain_weeks", 4))
+        self.hdo_retrain_weeks = int(options.get("hdo_retrain_weeks", 3))
+        self._retrain_weeks = min(predictor_retrain_weeks, self.hdo_retrain_weeks)
+        self.hdo_history_weeks = int(options.get("hdo_history_weeks", 3))
 
         self._client = None  # lazy-initialised DataFrameClient
 
@@ -183,7 +187,7 @@ class InfluxBootstrapper:
         Returns True if a bootstrap/retrain pass is needed.
 
         Runs on first startup (no timestamp stored) and then every
-        `predictor_retrain_weeks` weeks so the predictor stays current.
+        the configured shared retrain interval so imported models stay current.
         The old boolean `influx_bootstrap_done` flag is migrated automatically:
         if it is True and no timestamp exists the interval clock starts from now.
         """
@@ -330,15 +334,30 @@ class InfluxBootstrapper:
         # ── 3. HDO learner seeding ─────────────────────────────────────────
         if hdo_learner is not None and self.relay_entity:
             try:
+                hdo_start = max(self.start_date, end - timedelta(weeks=self.hdo_history_weeks))
+                presence_sources = []
+                for meas, entity in (
+                    (self.meas_power, self.power_entity),
+                    (self.meas_temp, self.case_tmp_entity),
+                    (self.meas_temp, self.water_tmp_entity),
+                    (self.meas_temp, self.inlet_tmp_entity),
+                    (self.meas_temp, self.outlet_tmp_entity),
+                    (self.meas_flow, self.flow_entity),
+                ):
+                    pair = (meas, entity)
+                    if entity and pair not in presence_sources:
+                        presence_sources.append(pair)
                 n = seed_hdo_learner(
                     client=self._client,
                     relay_entity=self.relay_entity,
                     meas_state=self.meas_state,
                     hdo_learner=hdo_learner,
-                    start=self.start_date,
+                    start=hdo_start,
                     end=end,
+                    presence_sources=presence_sources,
                 )
                 summary["hdo_observations"] = n
+                summary["hdo_history_weeks"] = self.hdo_history_weeks
                 logger.info("InfluxDB bootstrap: seeded HDO learner with %d observations", n)
             except Exception as e:
                 logger.warning("InfluxDB bootstrap: HDO seeding failed: %s", e)

@@ -42,6 +42,8 @@ def ctrl():
     c.has_spot_price = False
     c.has_hdo = False
     c.hdo_explicit_schedule = ""
+    c.hdo_history_weeks = 3
+    c.hdo_decay_weeks = 2
     c.prediction_conservatism = "medium"
     c.min_training_days = 30
     c.pv_surplus_entity_id = None
@@ -105,6 +107,105 @@ def ctrl():
     c.store.get_last_legionella_heating.return_value = datetime.now().astimezone().astimezone()
 
     return c
+
+
+# ---------------------------------------------------------------------------
+# __init__
+# ---------------------------------------------------------------------------
+
+class TestControllerInit:
+    def test_passes_configured_standby_loss_to_scheduler(self):
+        options = {
+            "boiler_switch_entity_id": "switch.boiler",
+            "boiler_standby_watts": 83,
+        }
+
+        with patch("smartboiler.ha_client.HAClient"), \
+             patch("smartboiler.state_store.StateStore") as state_store_cls, \
+             patch("smartboiler.ha_data_collector.HADataCollector"), \
+             patch("smartboiler.predictor.RollingHistogramPredictor"), \
+             patch("smartboiler.hdo_learner.HDOLearner"), \
+             patch("smartboiler.scheduler.HeatingScheduler") as scheduler_cls, \
+             patch("smartboiler.spot_price.SpotPriceFetcher"), \
+             patch("smartboiler.thermal_model.ThermalModel"), \
+             patch("smartboiler.temperature_estimator.TemperatureEstimator"), \
+             patch("smartboiler.legionella_protector.LegionellaProtector"), \
+             patch("smartboiler.web_server.set_state_provider"), \
+             patch("smartboiler.web_server.set_extra_provider"), \
+             patch("smartboiler.web_server.set_calendar_manager"), \
+             patch("smartboiler.web_server.set_influx_bootstrap_handlers"), \
+             patch("smartboiler.web_server.run_dashboard"):
+            store = state_store_cls.return_value
+            store.load_pickle.return_value = None
+            store.get_last_boiler_tmp.return_value = None
+
+            SmartBoilerController(options)
+
+        boiler_params = scheduler_cls.call_args[0][0]
+        assert boiler_params.standby_loss_w == pytest.approx(83.0)
+
+
+# ---------------------------------------------------------------------------
+# HDO helpers
+# ---------------------------------------------------------------------------
+
+class TestHDOHelpers:
+    def test_new_hdo_learner_uses_configured_window_and_explicit_schedule(self, ctrl):
+        ctrl.hdo_history_weeks = 3
+        ctrl.hdo_decay_weeks = 2
+        ctrl.hdo_explicit_schedule = "22:00-06:00"
+
+        learner = ctrl._new_hdo_learner()
+
+        assert learner.history_weeks == 3
+        assert learner.decay_weeks == 2
+        assert learner.is_blocked(0, 22) is True
+        assert learner.is_blocked(0, 12) is False
+
+    def test_run_control_workflow_treats_unknown_state_as_hdo_unavailable(self, ctrl):
+        ctrl.ha.get_state.return_value = {"state": "unknown", "attributes": {}}
+
+        ctrl.run_control_workflow()
+
+        assert ctrl.hdo_learner.observe.call_args[0][1] is True
+
+    def test_start_influx_bootstrap_rebuilds_hdo_from_fresh_learner(self, ctrl):
+        import threading
+
+        class _ImmediateThread:
+            def __init__(self, target, daemon=None, name=None):
+                self._target = target
+
+            def start(self):
+                self._target()
+
+        fresh_hdo = MagicMock()
+        bootstrapper = MagicMock()
+        bootstrapper.is_configured.return_value = True
+        bootstrapper.run.return_value = {"hdo_observations": 12}
+
+        ctrl._options = {"boiler_switch_entity_id": "switch.boiler"}
+        ctrl._influx_bootstrap_lock = threading.Lock()
+        ctrl._influx_bootstrap_status = {
+            "available": True,
+            "configured": False,
+            "running": False,
+            "source": "",
+            "last_started_at": "",
+            "last_finished_at": "",
+            "last_error": "",
+            "last_summary": {},
+        }
+        ctrl._build_influx_bootstrapper = MagicMock(return_value=bootstrapper)
+        ctrl._new_hdo_learner = MagicMock(return_value=fresh_hdo)
+        ctrl._refresh_after_influx_bootstrap = MagicMock(return_value={"predictor_ready": True})
+
+        with patch("smartboiler.controller.threading.Thread", _ImmediateThread):
+            result = ctrl.start_influx_bootstrap(source="test")
+
+        assert result["ok"] is True
+        bootstrapper.run.assert_called_once_with(hdo_learner=fresh_hdo)
+        assert ctrl.hdo_learner is fresh_hdo
 
 
 # ---------------------------------------------------------------------------
@@ -193,6 +294,42 @@ class TestCurrentPlanHourIndex:
     def test_capped_at_23(self, ctrl):
         ctrl._plan_generated_at = datetime.now().astimezone() - timedelta(hours=30)
         assert ctrl._current_plan_hour_index() == 23
+
+
+# ---------------------------------------------------------------------------
+# Influx bootstrap refresh
+# ---------------------------------------------------------------------------
+
+class TestInfluxBootstrapRefresh:
+    def test_refresh_updates_predictor_and_forecast(self, ctrl):
+        import pandas as pd
+
+        idx = pd.date_range(end=datetime.now().replace(minute=0, second=0, microsecond=0), periods=48, freq="1h")
+        df = pd.DataFrame({"consumed_kwh": [0.2] * 48}, index=idx)
+        ctrl.store.load_consumption_history.return_value = df
+        ctrl.predictor._total_samples = 48
+        ctrl.predictor.predict_next_24h.return_value = [0.3] * 24
+        ctrl.predictor.has_enough_data.return_value = True
+        ctrl.hdo_learner.observation_count.return_value = 15
+        ctrl.hdo_learner.get_weekly_schedule.return_value = {
+            "Mon": [1, 2],
+            "Tue": [],
+            "Wed": [],
+            "Thu": [],
+            "Fri": [],
+            "Sat": [],
+            "Sun": [],
+        }
+
+        info = ctrl._refresh_after_influx_bootstrap()
+
+        ctrl.predictor.update.assert_called_once_with(df)
+        ctrl.store.save_pickle.assert_any_call("predictor", ctrl.predictor)
+        assert ctrl._forecast_24h == [0.3] * 24
+        assert info["predictor_total_samples"] == 48
+        assert info["predictor_ready"] is True
+        assert info["hdo_total_observations"] == 15
+        assert info["hdo_weekly_blocked_hours"] == 2
 
 
 # ---------------------------------------------------------------------------
