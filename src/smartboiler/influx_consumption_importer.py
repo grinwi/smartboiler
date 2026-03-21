@@ -406,7 +406,7 @@ def seed_hdo_learner(
 
     # Inject synthetic recent observations for HDO slots only (1-min resolution).
     # Non-HDO slots get no observations → correctly not blocked by default.
-    now_naive = pd.Timestamp.utcnow().tz_localize(None)
+    now_naive = pd.Timestamp.now()  # local time, matches full_idx timestamps
     n_inject = max(MIN_WEEKS_TO_TRUST + 1, getattr(hdo_learner, "history_weeks", 3))
 
     n = 0

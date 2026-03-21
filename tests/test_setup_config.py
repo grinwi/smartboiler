@@ -347,6 +347,180 @@ class TestSaveLoadConfig:
             sc._SETUP_PATH = original_setup_path
 
 
+# ── PV / Battery config validation ──────────────────────────────────────────
+
+class TestPVBatteryConfig:
+    """Validate PV and battery configuration fields."""
+
+    # ── has_pv=False (default) — PV-specific ranges not checked ─────────────
+
+    def test_no_pv_no_validation_of_pv_fields(self):
+        """When has_pv is False, pv_installed_power_kw is not range-checked."""
+        cfg = _valid()
+        cfg["has_pv"] = False
+        cfg["pv_installed_power_kw"] = 0.0   # would fail range check if has_pv=True
+        assert validate_config(cfg) == []
+
+    # ── has_pv=True ───────────────────────────────────────────────────────────
+
+    def test_pv_installed_power_required_when_has_pv(self):
+        cfg = _valid()
+        cfg["has_pv"] = True
+        cfg["pv_installed_power_kw"] = 5.0
+        assert validate_config(cfg) == []
+
+    @pytest.mark.parametrize("bad", [0.0, 201.0])
+    def test_pv_installed_power_out_of_range(self, bad):
+        cfg = _valid()
+        cfg["has_pv"] = True
+        cfg["pv_installed_power_kw"] = bad
+        errs = validate_config(cfg)
+        assert any("pv_installed_power_kw" in e for e in errs)
+
+    def test_pv_entity_ids_are_optional_strings(self):
+        cfg = _valid()
+        cfg["has_pv"] = True
+        cfg["pv_installed_power_kw"] = 6.0
+        cfg["pv_power_entity_id"] = "sensor.pv_power"
+        cfg["pv_forecast_entity_id"] = "sensor.pv_forecast"
+        assert validate_config(cfg) == []
+
+    # ── has_battery=False (default) ──────────────────────────────────────────
+
+    def test_no_battery_no_validation_of_battery_fields(self):
+        cfg = _valid()
+        cfg["has_battery"] = False
+        cfg["battery_capacity_kwh"] = 0.0   # would fail range check if has_battery=True
+        assert validate_config(cfg) == []
+
+    # ── has_battery=True ─────────────────────────────────────────────────────
+
+    def test_valid_battery_config(self):
+        cfg = _valid()
+        cfg["has_battery"] = True
+        cfg["battery_capacity_kwh"] = 10.0
+        cfg["battery_max_charge_kw"] = 5.0
+        cfg["battery_soc_unit"] = "percent"
+        cfg["battery_priority"] = "battery_first"
+        assert validate_config(cfg) == []
+
+    @pytest.mark.parametrize("bad", [0.0, 501.0])
+    def test_battery_capacity_out_of_range(self, bad):
+        cfg = _valid()
+        cfg["has_battery"] = True
+        cfg["battery_capacity_kwh"] = bad
+        cfg["battery_soc_unit"] = "percent"
+        cfg["battery_priority"] = "battery_first"
+        errs = validate_config(cfg)
+        assert any("battery_capacity_kwh" in e for e in errs)
+
+    @pytest.mark.parametrize("bad_unit", ["wh", "kw", "", "PERCENT"])
+    def test_battery_soc_unit_invalid(self, bad_unit):
+        cfg = _valid()
+        cfg["has_battery"] = True
+        cfg["battery_capacity_kwh"] = 10.0
+        cfg["battery_soc_unit"] = bad_unit
+        cfg["battery_priority"] = "battery_first"
+        errs = validate_config(cfg)
+        assert any("battery_soc_unit" in e for e in errs)
+
+    @pytest.mark.parametrize("unit", ["percent", "kwh"])
+    def test_battery_soc_unit_valid(self, unit):
+        cfg = _valid()
+        cfg["has_battery"] = True
+        cfg["battery_capacity_kwh"] = 10.0
+        cfg["battery_soc_unit"] = unit
+        cfg["battery_priority"] = "battery_first"
+        assert validate_config(cfg) == []
+
+    @pytest.mark.parametrize("bad_prio", ["charge_first", "grid_first", "", "BATTERY_FIRST"])
+    def test_battery_priority_invalid(self, bad_prio):
+        cfg = _valid()
+        cfg["has_battery"] = True
+        cfg["battery_capacity_kwh"] = 10.0
+        cfg["battery_soc_unit"] = "percent"
+        cfg["battery_priority"] = bad_prio
+        errs = validate_config(cfg)
+        assert any("battery_priority" in e for e in errs)
+
+    @pytest.mark.parametrize("prio", ["battery_first", "boiler_first", "sell_first"])
+    def test_battery_priority_valid(self, prio):
+        cfg = _valid()
+        cfg["has_battery"] = True
+        cfg["battery_capacity_kwh"] = 10.0
+        cfg["battery_soc_unit"] = "percent"
+        cfg["battery_priority"] = prio
+        assert validate_config(cfg) == []
+
+    def test_battery_max_charge_kw_out_of_range(self):
+        cfg = _valid()
+        cfg["has_battery"] = True
+        cfg["battery_capacity_kwh"] = 10.0
+        cfg["battery_soc_unit"] = "percent"
+        cfg["battery_priority"] = "battery_first"
+        cfg["battery_max_charge_kw"] = 201.0
+        errs = validate_config(cfg)
+        assert any("battery_max_charge_kw" in e for e in errs)
+
+    def test_battery_max_charge_zero_is_valid(self):
+        """0 kW means unlimited — should be accepted."""
+        cfg = _valid()
+        cfg["has_battery"] = True
+        cfg["battery_capacity_kwh"] = 10.0
+        cfg["battery_soc_unit"] = "percent"
+        cfg["battery_priority"] = "boiler_first"
+        cfg["battery_max_charge_kw"] = 0.0
+        assert validate_config(cfg) == []
+
+    # ── save / load roundtrip ────────────────────────────────────────────────
+
+    def test_save_load_pv_battery_config(self):
+        data = _valid()
+        data["has_pv"] = True
+        data["pv_installed_power_kw"] = 8.5
+        data["pv_power_entity_id"] = "sensor.pv_power"
+        data["pv_forecast_entity_id"] = "sensor.pv_forecast"
+        data["has_battery"] = True
+        data["battery_capacity_kwh"] = 13.5
+        data["battery_soc_entity_id"] = "sensor.battery_soc"
+        data["battery_soc_unit"] = "percent"
+        data["battery_max_charge_kw"] = 5.0
+        data["battery_priority"] = "boiler_first"
+        save_setup_config(data)
+        loaded = load_setup_config()
+        assert loaded["has_pv"] is True
+        assert loaded["pv_installed_power_kw"] == pytest.approx(8.5)
+        assert loaded["pv_power_entity_id"] == "sensor.pv_power"
+        assert loaded["has_battery"] is True
+        assert loaded["battery_capacity_kwh"] == pytest.approx(13.5)
+        assert loaded["battery_soc_unit"] == "percent"
+        assert loaded["battery_priority"] == "boiler_first"
+
+    def test_has_pv_coerced_from_string(self):
+        data = _valid()
+        data["has_pv"] = "true"   # string from HTML form
+        data["pv_installed_power_kw"] = 5.0
+        save_setup_config(data)
+        loaded = load_setup_config()
+        assert loaded["has_pv"] is True
+
+    def test_has_battery_defaults_to_false(self):
+        """New installs without battery config should default to False."""
+        loaded = load_setup_config()
+        assert loaded["has_battery"] is False
+        assert loaded["battery_capacity_kwh"] == 0.0
+        assert loaded["battery_priority"] == "battery_first"
+
+    def test_pv_battery_fields_in_defaults(self):
+        """All new fields must be present in DEFAULTS so wizard always has a value."""
+        for key in (
+            "has_pv", "pv_installed_power_kw", "pv_power_entity_id", "pv_forecast_entity_id",
+            "has_battery", "battery_capacity_kwh", "battery_soc_entity_id",
+            "battery_soc_unit", "battery_max_charge_kw", "battery_priority",
+        ):
+            assert key in DEFAULTS, f"Missing key in DEFAULTS: {key}"
+
+
 # ── is_setup_complete ────────────────────────────────────────────────────────
 
 class TestIsSetupComplete:

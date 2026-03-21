@@ -87,6 +87,21 @@ class SmartBoilerController:
         self.boiler_area_tmp_entity_id   = options.get("boiler_area_tmp_entity_id") or None
         self.boiler_direct_tmp_entity_id = options.get("boiler_direct_tmp_entity_id") or None
         self.pv_surplus_entity_id = options.get("pv_surplus_entity_id") or None
+
+        # PV / Solar (FVE)
+        self.has_pv = bool(options.get("has_pv", False))
+        self.pv_installed_power_kw = float(options.get("pv_installed_power_kw", 0.0))
+        self.pv_power_entity_id = options.get("pv_power_entity_id") or None
+        self.pv_forecast_entity_id = options.get("pv_forecast_entity_id") or None
+
+        # Battery
+        self.has_battery = bool(options.get("has_battery", False))
+        self.battery_capacity_kwh = float(options.get("battery_capacity_kwh", 0.0))
+        self.battery_soc_entity_id = options.get("battery_soc_entity_id") or None
+        self.battery_soc_unit = options.get("battery_soc_unit", "percent")
+        self.battery_max_charge_kw = float(options.get("battery_max_charge_kw", 0.0))
+        self.battery_priority = options.get("battery_priority", "battery_first")
+
         self.person_entity_ids: List[str] = options.get("person_entity_ids") or []
 
         self.calendar_entity_id = options.get("calendar_entity_id") or ""
@@ -157,6 +172,10 @@ class SmartBoilerController:
             min_tmp=self.boiler_min_tmp,
             area_tmp=self.area_tmp,
             standby_loss_w=self.boiler_standby_w,
+            battery_capacity_kwh=self.battery_capacity_kwh if self.has_battery else 0.0,
+            battery_soc_kwh=0.0,           # refreshed before each plan from live entity
+            battery_max_charge_kw=self.battery_max_charge_kw,
+            battery_priority=self.battery_priority,
         )
         self.scheduler = HeatingScheduler(boiler_params)
 
@@ -296,26 +315,31 @@ class SmartBoilerController:
                 except Exception as e:
                     logger.warning("Spot price fetch failed: %s", e)
 
-            # 4. Get PV surplus forecast (24 zeros if no sensor)
+            # 4. Get PV surplus forecast (24 zeros if no sensor / PV disabled)
             pv_forecast = self._get_pv_forecast_24h()
 
-            # 5. Get HDO blocked hours
+            # 5. Refresh battery SoC from live HA entity so the scheduler uses
+            #    the current charge level, not the stale value from __init__.
+            if self.has_battery and self.battery_soc_entity_id:
+                self.scheduler.boiler.battery_soc_kwh = self._get_battery_soc_kwh()
+
+            # 6. Get HDO blocked hours
             hdo_blocked = self.hdo_learner.get_blocked_hours_next_24h()
 
-            # 6. Get consumption forecast
+            # 7. Get consumption forecast
             forecast = self.predictor.predict_next_24h()
 
-            # 7. Get current boiler temperature
+            # 8. Get current boiler temperature
             boiler_tmp = self.temp_estimator.get_boiler_tmp(self._last_boiler_tmp) or self.boiler_min_tmp
 
-            # 8. Fetch upcoming calendar events
+            # 9. Fetch upcoming calendar events
             now_dt = datetime.now().astimezone()
             calendar_events = (
                 self.calendar.get_events(now_dt, now_dt + timedelta(hours=24))
                 if self.calendar else []
             )
 
-            # 9. Run scheduler
+            # 10. Run scheduler
             with self._lock:
                 self._spot_prices_indexed = {
                     i: self._spot_prices.get((now_dt.hour + i) % 24)
@@ -351,12 +375,68 @@ class SmartBoilerController:
             logger.error("Forecast workflow error: %s", e, exc_info=True)
 
     def _get_pv_forecast_24h(self) -> List[float]:
-        """Get PV surplus for next 24 hours (zeroes if no sensor)."""
-        if not self.pv_surplus_entity_id:
+        """Get PV surplus for next 24 hours.
+
+        Source priority (first non-zero wins):
+          1. pv_forecast_entity_id  — a dedicated forecast sensor (kWh/h, e.g. Solcast)
+          2. pv_power_entity_id     — current PV production (W), applied as flat 24h proxy
+          3. pv_surplus_entity_id   — legacy surplus sensor (W), same flat proxy
+
+        When has_pv is False, returns all zeros regardless of entity configuration.
+        The flat-24h proxy is intentionally conservative: it spreads current production
+        across 24 hours; the scheduler will heat during those hours for free, but overnight
+        the value will be re-read as zero once darkness falls.
+        """
+        if not self.has_pv:
             return [0.0] * 24
-        val = self.ha.get_state_value(self.pv_surplus_entity_id, default=0.0)
-        surplus = max(0.0, float(val) / 1000.0)  # convert W → kWh/h approximation
-        return [surplus] * 24
+
+        # 1. Forecast entity (kWh per hour value — no unit conversion needed)
+        if self.pv_forecast_entity_id:
+            val = self.ha.get_state_value(self.pv_forecast_entity_id, default=None)
+            if val is not None:
+                kwh = max(0.0, float(val))
+                # Sanity check: some integrations report in Wh instead of kWh
+                if self.pv_installed_power_kw > 0 and kwh > self.pv_installed_power_kw * 24:
+                    kwh /= 1000.0
+                logger.debug("PV forecast from entity: %.3f kWh/h", kwh)
+                return [kwh] * 24
+
+        # 2. Current power sensor (W → kWh/h)
+        for entity_id, label in (
+            (self.pv_power_entity_id, "pv_power"),
+            (self.pv_surplus_entity_id, "pv_surplus"),
+        ):
+            if entity_id:
+                val = self.ha.get_state_value(entity_id, default=None)
+                if val is not None:
+                    surplus = max(0.0, float(val) / 1000.0)
+                    logger.debug("PV forecast from %s: %.3f kWh/h", label, surplus)
+                    return [surplus] * 24
+
+        return [0.0] * 24
+
+    def _get_battery_soc_kwh(self) -> float:
+        """Return current battery state of charge in kWh.
+
+        Reads battery_soc_entity_id and converts if needed:
+          percent: soc_kwh = battery_capacity_kwh * value / 100
+          kwh:     soc_kwh = value  (direct reading)
+        """
+        if not self.battery_soc_entity_id:
+            return 0.0
+        val = self.ha.get_state_value(self.battery_soc_entity_id, default=None)
+        if val is None:
+            return 0.0
+        try:
+            v = float(val)
+        except (ValueError, TypeError):
+            return 0.0
+        if self.battery_soc_unit == "percent":
+            soc = self.battery_capacity_kwh * max(0.0, min(100.0, v)) / 100.0
+        else:
+            soc = max(0.0, v)
+        logger.debug("Battery SoC: %.2f kWh (raw=%.1f %s)", soc, v, self.battery_soc_unit)
+        return soc
 
     # ── Control workflow (every 60s) ──────────────────────────────────────
 
@@ -485,12 +565,16 @@ class SmartBoilerController:
                 should_heat = True
 
             # Don't keep relay ON once the boiler reached its target temperature.
-            # The internal thermostat has already tripped (power≈0 W) — there is
-            # nothing left to heat.  Leaving the relay on wastes standby power.
-            if should_heat and boiler_tmp >= self.boiler_set_tmp:
+            # Two independent signals for "boiler is fully charged":
+            #   1. Temperature sensor at or above set_tmp
+            #   2. Thermostat trip: relay is already ON but power ≈ 0 W
+            #      (the internal thermostat cut the element; the sensor may lag
+            #       by ~0.5–1 °C relative to the actual water temperature)
+            thermostat_tripped = relay_on and float(power_w) < 50
+            if should_heat and (boiler_tmp >= self.boiler_set_tmp or thermostat_tripped):
                 logger.debug(
-                    "Boiler at/above set_tmp (%.1f >= %.1f): relay OFF",
-                    boiler_tmp, self.boiler_set_tmp,
+                    "Boiler fully charged (tmp=%.1f, tripped=%s): relay OFF",
+                    boiler_tmp, thermostat_tripped,
                 )
                 should_heat = False
 

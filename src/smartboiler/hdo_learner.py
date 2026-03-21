@@ -139,10 +139,17 @@ class HDOLearner:
 
         Args:
             dt: Timestamp of the observation (timezone-aware preferred).
-            relay_unavailable: True when the HA entity state == "unavailable",
-                indicating HDO has physically cut the relay circuit.
-                False when the relay is available (state "on" or "off"),
-                regardless of whether the boiler is actually heating.
+            relay_unavailable: True when the HA entity state == "unavailable"
+                or "unknown", indicating the HDO relay has physically cut the
+                circuit so the smart relay cannot communicate.
+                False when the relay is available (state "on" or "off").
+
+        IMPORTANT — what NOT to pass as True here:
+            relay state == "on"  AND  power ≈ 0 W
+            This means the internal boiler thermostat tripped (water reached
+            set temperature).  The relay is still available and controllable —
+            this is NOT an HDO block.  The controller must check this condition
+            separately (see TemperatureEstimator L2).
         """
         key = self._slot_of(dt)
         ts = dt.timestamp()
@@ -154,7 +161,22 @@ class HDOLearner:
     # ── Blocking queries ──────────────────────────────────────────────────────
 
     def _is_slot_blocked(self, weekday: int, slot_idx: int) -> bool:
-        """Return True if the 5-minute slot is HDO-blocked."""
+        """Return True if the 5-minute slot is HDO-blocked.
+
+        Decision logic:
+          1. Explicit schedule set in config → always trust immediately (no learning needed).
+          2. Learned schedule:
+             a. Require observations from at least MIN_WEEKS_TO_TRUST (2) distinct
+                ISO calendar weeks.  This prevents a single anomalous night (e.g. a
+                power outage) from being mistaken for an HDO block pattern.
+             b. Compute exponentially-weighted confidence:
+                  confidence = Σ(weight_i if blocked_i) / Σ(weight_i)
+                where weight_i = exp(-(now - t_i) / half_life)
+                Half-life = decay_weeks × 7 × 24 × 3600 seconds (default 2 weeks).
+                Recent observations count more; an HDO schedule change propagates
+                within a few weeks as old blocked observations decay below noise.
+             c. A slot is blocked if confidence ≥ MIN_CONFIDENCE_TO_BLOCK (0.70).
+        """
         if (weekday, slot_idx) in self._explicit_blocked:
             return True
         key = (weekday, slot_idx)
@@ -165,7 +187,7 @@ class HDOLearner:
         distinct_weeks = len({yw for _, _, yw in obs})
         if distinct_weeks < MIN_WEEKS_TO_TRUST:
             return False
-        # Exponentially-weighted confidence
+        # Exponentially-weighted confidence: (now - t) in seconds / decay_s → dimensionless
         now_ts = _now_ts()
         decay_s = self.decay_weeks * 7 * 24 * 3600
         weights = [np.exp(-(now_ts - t) / decay_s) for t, _, _ in obs]

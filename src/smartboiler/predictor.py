@@ -2,8 +2,24 @@
 # Faculty of Information Technology, Brno University of Technology, 2024
 # Author: Adam Grünwald
 #
-# Rolling histogram predictor — hist_p75 per weekday×hour over last 12 weeks.
-# Much more data-efficient than LSTM; works from day 1 with a global fallback.
+# Rolling histogram predictor — per-(weekday × hour) quantile over last 12 weeks.
+#
+# Why quantile instead of mean?
+#   Hot water consumption within a given slot is right-skewed: most hours have zero
+#   or minimal use, but occasional heavy draws (showers, baths) pull the mean up.
+#   A quantile estimate (p75 by default) is much more robust to this skew and gives
+#   a conservative "plan for this much" number that's rarely exceeded.
+#
+# Why not LSTM?
+#   With < 6 months of data (typical for a new installation) an LSTM offers no
+#   measurable accuracy improvement over a well-tuned histogram.  The histogram
+#   requires no training, no GPU, and < 1 ms per prediction cycle.
+#
+# Fallback strategy:
+#   If a (weekday, hour) slot has fewer than MIN_SAMPLES_FOR_SLOT observations
+#   (new installation, or rarely-used slot), the global quantile of all non-zero
+#   consumption hours is returned instead.  This is intentionally conservative —
+#   it avoids under-heating during the learning period.
 
 import logging
 from datetime import datetime
@@ -15,7 +31,12 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 HISTORY_WEEKS = 12
-MIN_SAMPLES_FOR_SLOT = 4  # need at least 4 observations to trust a slot
+# Minimum observations before trusting a per-slot prediction.
+# 4 is intentionally low — for a slot that fires e.g. every Saturday morning,
+# 4 observations correspond to just one month of data, which is already enough
+# to distinguish "this household showers at this time" from background noise.
+# Increasing this delays adaptation and keeps more slots in fallback mode longer.
+MIN_SAMPLES_FOR_SLOT = 4
 
 
 class RollingHistogramPredictor:
@@ -90,7 +111,14 @@ class RollingHistogramPredictor:
         return predictions
 
     def has_enough_data(self, min_days: int = 30) -> bool:
-        """True if we have enough history to make meaningful predictions."""
+        """True if we have enough history to make meaningful predictions.
+
+        The threshold of 20 usable hours/day is a rough heuristic: a household
+        typically has consumption in ~4-8 distinct hours per day, but the
+        DataFrame contains all 24 hourly rows.  Multiplying min_days × 20 gives
+        a conservative total-sample threshold that corresponds roughly to
+        min_days of collection with a non-trivial usage pattern.
+        """
         return self._total_samples >= min_days * 20  # ~20 usable hours/day
 
     def get_histogram_summary(self) -> Dict:

@@ -16,6 +16,24 @@ logger = logging.getLogger(__name__)
 
 _DATA_DIR = os.environ.get("DATA_PATH", "/data/")
 _SETUP_PATH = os.path.join(_DATA_DIR, "smartboiler_setup.json")
+# Snapshot of the import-time value — used to detect when tests patch _DATA_DIR.
+_DATA_DIR_AT_IMPORT = _DATA_DIR
+
+
+def _resolve_paths() -> tuple:
+    """Return (data_dir, setup_path), re-reading DATA_PATH from the environment.
+
+    Tests may patch _DATA_DIR/_SETUP_PATH directly (legacy approach).  We respect
+    those patches by checking whether _DATA_DIR has drifted from the import-time
+    value; if it has, a test owns the module state and we return the patched values
+    unchanged.  Otherwise we re-read DATA_PATH so that fixtures that set the env
+    var *after* module import (e.g. test_web_routes) see the correct directory.
+    """
+    if _DATA_DIR != _DATA_DIR_AT_IMPORT:
+        # Module var has been patched by a test — honour it.
+        return _DATA_DIR, _SETUP_PATH
+    env_dir = os.environ.get("DATA_PATH", "/data/")
+    return env_dir, os.path.join(env_dir, "smartboiler_setup.json")
 
 DEFAULTS: dict = {
     # ── Mode ──────────────────────────────────────────────────────────────
@@ -51,6 +69,24 @@ DEFAULTS: dict = {
     "draw_detection_threshold_c": 2.0,
     "thermal_model_window_days": 7,
     "thermal_mass_ratio": 0.3,
+
+    # ── PV / Solar (FVE) ──────────────────────────────────────────────────
+    "has_pv": False,
+    "pv_installed_power_kw": 0.0,       # peak installed capacity (kWp)
+    "pv_power_entity_id": "",           # current PV production sensor (W or kW)
+    "pv_forecast_entity_id": "",        # hourly forecast entity (kWh — e.g. Solcast)
+
+    # ── Battery ───────────────────────────────────────────────────────────
+    "has_battery": False,
+    "battery_capacity_kwh": 0.0,        # usable capacity in kWh
+    "battery_soc_entity_id": "",        # state-of-charge sensor
+    "battery_soc_unit": "percent",      # "percent" | "kwh"
+    "battery_max_charge_kw": 0.0,       # max charge rate (kW); 0 = unlimited
+    # Allocation priority when PV is available:
+    #   battery_first — fill battery, then boiler, then sell
+    #   boiler_first  — heat boiler, then battery, then sell
+    #   sell_first    — sell everything (no free energy for boiler or battery)
+    "battery_priority": "battery_first",
 
     # ── Spot price ────────────────────────────────────────────────────────
     "has_spot_price": False,
@@ -191,6 +227,13 @@ def validate_config(config: dict) -> list[str]:
     if config.get("vacation_mode") not in ("min_temp", "off"):
         errors.append("vacation_mode must be 'min_temp' or 'off'")
 
+    # ── PV / Battery enums (only when enabled) ───────────────────────────
+    if config.get("has_battery"):
+        if config.get("battery_soc_unit") not in ("percent", "kwh"):
+            errors.append("battery_soc_unit must be 'percent' or 'kwh'")
+        if config.get("battery_priority") not in ("battery_first", "boiler_first", "sell_first"):
+            errors.append("battery_priority must be 'battery_first', 'boiler_first', or 'sell_first'")
+
     if config.get("logging_level") not in ("DEBUG", "INFO", "WARNING", "ERROR"):
         errors.append("logging_level must be one of: DEBUG, INFO, WARNING, ERROR")
 
@@ -214,6 +257,13 @@ def validate_config(config: dict) -> list[str]:
     _check_range(errors, config, "hdo_decay_weeks", 1, 12, "weeks")
     _check_range(errors, config, "hdo_retrain_weeks", 1, 12, "weeks")
     _check_range(errors, config, "vacation_min_temp", 10, 60, "°C")
+
+    # ── PV / Battery ranges ──────────────────────────────────────────────
+    if config.get("has_pv"):
+        _check_range(errors, config, "pv_installed_power_kw", 0.1, 200.0, "kWp")
+    if config.get("has_battery"):
+        _check_range(errors, config, "battery_capacity_kwh", 0.1, 500.0, "kWh")
+        _check_range(errors, config, "battery_max_charge_kw", 0.0, 200.0, "kW")
 
     # ── Cross-field ─────────────────────────────────────────────────────
     try:
@@ -254,10 +304,11 @@ def load_setup_config() -> dict:
     Also accepts a legacy /data/options.json written by HA from config.yaml,
     so existing installs keep working without re-running the wizard.
     """
+    data_dir, setup_path = _resolve_paths()
     config = dict(DEFAULTS)
 
     # 1. Legacy HA options.json (lower priority)
-    legacy = os.path.join(_DATA_DIR, "options.json")
+    legacy = os.path.join(data_dir, "options.json")
     if os.path.exists(legacy):
         try:
             with open(legacy) as f:
@@ -266,9 +317,9 @@ def load_setup_config() -> dict:
             logger.warning("Could not read legacy options.json: %s", e)
 
     # 2. Web UI setup config (higher priority — overrides legacy)
-    if os.path.exists(_SETUP_PATH):
+    if os.path.exists(setup_path):
         try:
-            with open(_SETUP_PATH) as f:
+            with open(setup_path) as f:
                 config.update(json.load(f))
         except Exception as e:
             logger.warning("Could not read smartboiler_setup.json: %s", e)
@@ -299,23 +350,27 @@ def save_setup_config(data: dict) -> None:
             merged[int_key] = DEFAULTS[int_key]
 
     for float_key in ("thermal_coupling_ratio", "draw_detection_threshold_c",
-                      "thermal_mass_ratio"):
+                      "thermal_mass_ratio", "pv_installed_power_kw",
+                      "battery_capacity_kwh", "battery_max_charge_kw"):
         try:
             merged[float_key] = float(merged[float_key])
         except (ValueError, TypeError):
             merged[float_key] = DEFAULTS[float_key]
 
     merged["has_spot_price"] = bool(merged.get("has_spot_price", False))
+    merged["has_pv"] = bool(merged.get("has_pv", False))
+    merged["has_battery"] = bool(merged.get("has_battery", False))
     _normalize_influx_fields(merged)
 
     errors = validate_config(merged)
     if errors:
         raise ValueError("\n".join(errors))
 
-    os.makedirs(_DATA_DIR, exist_ok=True)
-    with open(_SETUP_PATH, "w") as f:
+    data_dir, setup_path = _resolve_paths()
+    os.makedirs(data_dir, exist_ok=True)
+    with open(setup_path, "w") as f:
         json.dump(merged, f, indent=2)
-    logger.info("Setup config saved to %s", _SETUP_PATH)
+    logger.info("Setup config saved to %s", setup_path)
 
 
 def is_setup_complete(config: Optional[dict] = None) -> bool:
