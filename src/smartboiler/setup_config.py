@@ -16,6 +16,24 @@ logger = logging.getLogger(__name__)
 
 _DATA_DIR = os.environ.get("DATA_PATH", "/data/")
 _SETUP_PATH = os.path.join(_DATA_DIR, "smartboiler_setup.json")
+# Snapshot of the import-time value — used to detect when tests patch _DATA_DIR.
+_DATA_DIR_AT_IMPORT = _DATA_DIR
+
+
+def _resolve_paths() -> tuple:
+    """Return (data_dir, setup_path), re-reading DATA_PATH from the environment.
+
+    Tests may patch _DATA_DIR/_SETUP_PATH directly (legacy approach).  We respect
+    those patches by checking whether _DATA_DIR has drifted from the import-time
+    value; if it has, a test owns the module state and we return the patched values
+    unchanged.  Otherwise we re-read DATA_PATH so that fixtures that set the env
+    var *after* module import (e.g. test_web_routes) see the correct directory.
+    """
+    if _DATA_DIR != _DATA_DIR_AT_IMPORT:
+        # Module var has been patched by a test — honour it.
+        return _DATA_DIR, _SETUP_PATH
+    env_dir = os.environ.get("DATA_PATH", "/data/")
+    return env_dir, os.path.join(env_dir, "smartboiler_setup.json")
 
 DEFAULTS: dict = {
     # ── Mode ──────────────────────────────────────────────────────────────
@@ -286,10 +304,11 @@ def load_setup_config() -> dict:
     Also accepts a legacy /data/options.json written by HA from config.yaml,
     so existing installs keep working without re-running the wizard.
     """
+    data_dir, setup_path = _resolve_paths()
     config = dict(DEFAULTS)
 
     # 1. Legacy HA options.json (lower priority)
-    legacy = os.path.join(_DATA_DIR, "options.json")
+    legacy = os.path.join(data_dir, "options.json")
     if os.path.exists(legacy):
         try:
             with open(legacy) as f:
@@ -298,9 +317,9 @@ def load_setup_config() -> dict:
             logger.warning("Could not read legacy options.json: %s", e)
 
     # 2. Web UI setup config (higher priority — overrides legacy)
-    if os.path.exists(_SETUP_PATH):
+    if os.path.exists(setup_path):
         try:
-            with open(_SETUP_PATH) as f:
+            with open(setup_path) as f:
                 config.update(json.load(f))
         except Exception as e:
             logger.warning("Could not read smartboiler_setup.json: %s", e)
@@ -347,10 +366,11 @@ def save_setup_config(data: dict) -> None:
     if errors:
         raise ValueError("\n".join(errors))
 
-    os.makedirs(_DATA_DIR, exist_ok=True)
-    with open(_SETUP_PATH, "w") as f:
+    data_dir, setup_path = _resolve_paths()
+    os.makedirs(data_dir, exist_ok=True)
+    with open(setup_path, "w") as f:
         json.dump(merged, f, indent=2)
-    logger.info("Setup config saved to %s", _SETUP_PATH)
+    logger.info("Setup config saved to %s", setup_path)
 
 
 def is_setup_complete(config: Optional[dict] = None) -> bool:
