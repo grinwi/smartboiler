@@ -52,6 +52,24 @@ DEFAULTS: dict = {
     "thermal_model_window_days": 7,
     "thermal_mass_ratio": 0.3,
 
+    # ── PV / Solar (FVE) ──────────────────────────────────────────────────
+    "has_pv": False,
+    "pv_installed_power_kw": 0.0,       # peak installed capacity (kWp)
+    "pv_power_entity_id": "",           # current PV production sensor (W or kW)
+    "pv_forecast_entity_id": "",        # hourly forecast entity (kWh — e.g. Solcast)
+
+    # ── Battery ───────────────────────────────────────────────────────────
+    "has_battery": False,
+    "battery_capacity_kwh": 0.0,        # usable capacity in kWh
+    "battery_soc_entity_id": "",        # state-of-charge sensor
+    "battery_soc_unit": "percent",      # "percent" | "kwh"
+    "battery_max_charge_kw": 0.0,       # max charge rate (kW); 0 = unlimited
+    # Allocation priority when PV is available:
+    #   battery_first — fill battery, then boiler, then sell
+    #   boiler_first  — heat boiler, then battery, then sell
+    #   sell_first    — sell everything (no free energy for boiler or battery)
+    "battery_priority": "battery_first",
+
     # ── Spot price ────────────────────────────────────────────────────────
     "has_spot_price": False,
     "spot_price_region": "CZ",
@@ -191,6 +209,13 @@ def validate_config(config: dict) -> list[str]:
     if config.get("vacation_mode") not in ("min_temp", "off"):
         errors.append("vacation_mode must be 'min_temp' or 'off'")
 
+    # ── PV / Battery enums (only when enabled) ───────────────────────────
+    if config.get("has_battery"):
+        if config.get("battery_soc_unit") not in ("percent", "kwh"):
+            errors.append("battery_soc_unit must be 'percent' or 'kwh'")
+        if config.get("battery_priority") not in ("battery_first", "boiler_first", "sell_first"):
+            errors.append("battery_priority must be 'battery_first', 'boiler_first', or 'sell_first'")
+
     if config.get("logging_level") not in ("DEBUG", "INFO", "WARNING", "ERROR"):
         errors.append("logging_level must be one of: DEBUG, INFO, WARNING, ERROR")
 
@@ -214,6 +239,13 @@ def validate_config(config: dict) -> list[str]:
     _check_range(errors, config, "hdo_decay_weeks", 1, 12, "weeks")
     _check_range(errors, config, "hdo_retrain_weeks", 1, 12, "weeks")
     _check_range(errors, config, "vacation_min_temp", 10, 60, "°C")
+
+    # ── PV / Battery ranges ──────────────────────────────────────────────
+    if config.get("has_pv"):
+        _check_range(errors, config, "pv_installed_power_kw", 0.1, 200.0, "kWp")
+    if config.get("has_battery"):
+        _check_range(errors, config, "battery_capacity_kwh", 0.1, 500.0, "kWh")
+        _check_range(errors, config, "battery_max_charge_kw", 0.0, 200.0, "kW")
 
     # ── Cross-field ─────────────────────────────────────────────────────
     try:
@@ -299,13 +331,16 @@ def save_setup_config(data: dict) -> None:
             merged[int_key] = DEFAULTS[int_key]
 
     for float_key in ("thermal_coupling_ratio", "draw_detection_threshold_c",
-                      "thermal_mass_ratio"):
+                      "thermal_mass_ratio", "pv_installed_power_kw",
+                      "battery_capacity_kwh", "battery_max_charge_kw"):
         try:
             merged[float_key] = float(merged[float_key])
         except (ValueError, TypeError):
             merged[float_key] = DEFAULTS[float_key]
 
     merged["has_spot_price"] = bool(merged.get("has_spot_price", False))
+    merged["has_pv"] = bool(merged.get("has_pv", False))
+    merged["has_battery"] = bool(merged.get("has_battery", False))
     _normalize_influx_fields(merged)
 
     errors = validate_config(merged)
