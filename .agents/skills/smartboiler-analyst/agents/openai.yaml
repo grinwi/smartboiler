@@ -1,0 +1,4 @@
+interface:
+  display_name: "SmartBoiler Analyst"
+  short_description: "Check metrics, telemetry, and data quality"
+  default_prompt: "Use $smartboiler-analyst to review metrics, telemetry, forecasting inputs, and measurement quality."

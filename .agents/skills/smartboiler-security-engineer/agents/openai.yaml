@@ -1,0 +1,4 @@
+interface:
+  display_name: "SmartBoiler Security Engineer"
+  short_description: "Threat model auth, ingress, and safety"
+  default_prompt: "Use $smartboiler-security-engineer to review security, secrets handling, and operational safety risks."

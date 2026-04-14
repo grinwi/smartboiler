@@ -1,0 +1,4 @@
+interface:
+  display_name: "SmartBoiler QA"
+  short_description: "Find regressions and validation gaps"
+  default_prompt: "Use $smartboiler-qa to review regression risk, test coverage, and verification for this SmartBoiler task."
