@@ -99,6 +99,10 @@ def ctrl():
     c._last_boiler_tmp_updated_at = datetime.now().astimezone()
     c._plan_generated_at = datetime.now().astimezone().astimezone()
     c._last_calib_ts = 0.0
+    c._trip_window_started_at = None
+    c._trip_window_max_case_tmp = None
+    c._trip_window_max_amb = None
+    c._trip_window_max_ts = None
     c._lock = threading.Lock()
 
     # Default: relay state "off" (available, thermostat cut), no recent legionella
@@ -244,6 +248,106 @@ class TestThermalModelEstimation:
         ctrl.thermal_model.estimate_water_tmp.return_value = 50.0
         ctrl._get_boiler_tmp()
         ctrl.thermal_model.estimate_water_tmp.assert_called_once_with(35.0, 15.0)
+
+
+class TestThermalCalibrationWindow:
+    def test_calibrates_from_peak_case_after_60s_low_power_window(self, ctrl):
+        ctrl.boiler_power_entity_id = "sensor.power"
+        ctrl.boiler_case_tmp_entity_id = "sensor.case_tmp"
+        ctrl.temp_estimator.get_boiler_tmp = MagicMock(return_value=55.0)
+        ctrl.temp_estimator.get_ambient_tmp.return_value = 20.0
+        ctrl.legionella = MagicMock()
+        ctrl.legionella.check_and_act.return_value = False
+        ctrl.ha.get_state.return_value = {"state": "on", "attributes": {}}
+        ctrl.thermal_model.observe_calibration = MagicMock()
+
+        readings = [
+            {"power": 0.0, "case": 41.0},
+            {"power": 0.0, "case": 43.0},
+            {"power": 1400.0, "case": 42.5},
+        ]
+        idx = {"value": 0}
+
+        def _get_state_value(eid, default=None):
+            current = readings[idx["value"]]
+            if eid == "sensor.power":
+                return current["power"]
+            if eid == "sensor.case_tmp":
+                return current["case"]
+            return default
+
+        ctrl.ha.get_state_value.side_effect = _get_state_value
+
+        with patch("smartboiler.controller.time.time", side_effect=[1000.0, 1060.0, 1065.0]):
+            for i in range(len(readings)):
+                idx["value"] = i
+                ctrl.run_control_workflow()
+
+        ctrl.thermal_model.observe_calibration.assert_called_once_with(
+            T_set=ctrl.boiler_set_tmp,
+            T_case=43.0,
+            T_amb=20.0,
+            timestamp=1060.0,
+        )
+        assert ctrl._last_calib_ts == 1060.0
+
+    def test_does_not_calibrate_when_low_power_window_is_shorter_than_60s(self, ctrl):
+        ctrl.boiler_power_entity_id = "sensor.power"
+        ctrl.boiler_case_tmp_entity_id = "sensor.case_tmp"
+        ctrl.temp_estimator.get_boiler_tmp = MagicMock(return_value=55.0)
+        ctrl.temp_estimator.get_ambient_tmp.return_value = 20.0
+        ctrl.legionella = MagicMock()
+        ctrl.legionella.check_and_act.return_value = False
+        ctrl.ha.get_state.return_value = {"state": "on", "attributes": {}}
+        ctrl.thermal_model.observe_calibration = MagicMock()
+
+        readings = [
+            {"power": 0.0, "case": 41.0},
+            {"power": 1200.0, "case": 41.5},
+        ]
+        idx = {"value": 0}
+
+        def _get_state_value(eid, default=None):
+            current = readings[idx["value"]]
+            if eid == "sensor.power":
+                return current["power"]
+            if eid == "sensor.case_tmp":
+                return current["case"]
+            return default
+
+        ctrl.ha.get_state_value.side_effect = _get_state_value
+
+        with patch("smartboiler.controller.time.time", side_effect=[2000.0, 2055.0]):
+            for i in range(len(readings)):
+                idx["value"] = i
+                ctrl.run_control_workflow()
+
+        ctrl.thermal_model.observe_calibration.assert_not_called()
+
+    def test_missing_power_reading_does_not_count_as_zero_power_trip(self, ctrl):
+        ctrl.boiler_power_entity_id = "sensor.power"
+        ctrl.boiler_case_tmp_entity_id = "sensor.case_tmp"
+        ctrl.temp_estimator.get_boiler_tmp = MagicMock(return_value=55.0)
+        ctrl.temp_estimator.get_ambient_tmp.return_value = 20.0
+        ctrl.legionella = MagicMock()
+        ctrl.legionella.check_and_act.return_value = False
+        ctrl.ha.get_state.return_value = {"state": "on", "attributes": {}}
+        ctrl.thermal_model.observe_calibration = MagicMock()
+
+        def _get_state_value(eid, default=None):
+            if eid == "sensor.power":
+                return None
+            if eid == "sensor.case_tmp":
+                return 42.0
+            return default
+
+        ctrl.ha.get_state_value.side_effect = _get_state_value
+
+        with patch("smartboiler.controller.time.time", side_effect=[3000.0, 3065.0]):
+            ctrl.run_control_workflow()
+            ctrl.run_control_workflow()
+
+        ctrl.thermal_model.observe_calibration.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -430,4 +534,17 @@ class TestHeatingPlanExecution:
         ctrl._heating_plan = [False] * 24
         ctrl._last_boiler_tmp = 30.0  # below boiler_min_tmp=37
         ctrl.run_control_workflow()
+        ctrl.ha.turn_on.assert_called_with("switch.boiler")
+
+    def test_no_power_sensor_does_not_fake_thermostat_trip(self, ctrl):
+        ctrl.boiler_power_entity_id = None
+        ctrl.ha.get_state.return_value = {"state": "on", "attributes": {}}
+        ctrl.temp_estimator.get_boiler_tmp = MagicMock(return_value=45.0)
+        ctrl.legionella = MagicMock()
+        ctrl.legionella.check_and_act.return_value = False
+        ctrl._plan_generated_at = datetime.now().astimezone()
+        ctrl._heating_plan = [True] + [False] * 23
+
+        ctrl.run_control_workflow()
+
         ctrl.ha.turn_on.assert_called_with("switch.boiler")

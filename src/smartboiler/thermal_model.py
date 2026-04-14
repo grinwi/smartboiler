@@ -5,7 +5,9 @@
 # Learned thermal model for boiler water temperature estimation.
 #
 # Physics (Newton's law of cooling):
-#   After the thermostat trips (relay ON, power → 0 W) the water is at T_set.
+#   After a confirmed thermostat-trip window (relay ON, measured power → 0 W
+#   for at least 1 minute) the water is at T_set and the case temperature is
+#   anchored to the peak value observed in that window.
 #   Both water and the boiler case then cool exponentially:
 #
 #     T_water(t) = T_amb + (T_set  - T_amb) * exp(-k_w * dt)
@@ -20,7 +22,7 @@
 #
 # Estimation workflow:
 #   Given current T_case and T_amb, and the most-recent calibration event
-#   (timestamp t0, T_set, C0=T_case at trip):
+#   (timestamp t0, T_set, C0=peak T_case during the confirmed trip window):
 #     1. Infer elapsed time from case-sensor decay:
 #          dt = -ln((T_case - T_amb) / (C0 - T_amb)) / k_c
 #     2. Estimate water temperature:
@@ -88,7 +90,7 @@ def _fmt_ts(ts: Optional[float]) -> Optional[str]:
 
 @dataclass
 class _CalibEvent:
-    """Thermostat-trip event: relay ON, power ≈ 0 W → T_water == T_set."""
+    """Confirmed thermostat-trip event anchored to the peak post-trip case temp."""
     ts: float          # unix timestamp
     T_set: float       # water temp (=thermostat set point) at this moment
     T_case: float      # case sensor reading at this moment

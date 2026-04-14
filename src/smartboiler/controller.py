@@ -28,6 +28,7 @@ MIN_TRAINING_DAYS_DEFAULT = 30
 
 # Thermostat-trip debounce: don't record a second calibration within this window
 _CALIB_DEBOUNCE_S = 5 * 60   # 5 min
+_THERMOSTAT_TRIP_CONFIRM_S = 60.0
 _HDO_UNAVAILABLE_STATES = {"unavailable", "unknown"}
 
 
@@ -264,6 +265,10 @@ class SmartBoilerController:
         )
         self._plan_generated_at: Optional[datetime] = None
         self._last_calib_ts: float = 0.0
+        self._trip_window_started_at: Optional[float] = None
+        self._trip_window_max_case_tmp: Optional[float] = None
+        self._trip_window_max_amb: Optional[float] = None
+        self._trip_window_max_ts: Optional[float] = None
         self._lock = threading.Lock()
         self._influx_bootstrap_lock = threading.Lock()
         self._influx_bootstrap_status: Dict[str, Any] = {
@@ -467,6 +472,90 @@ class SmartBoilerController:
         report["updated_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
         return report
 
+    def _reset_trip_window(self) -> None:
+        """Forget the currently tracked thermostat-trip calibration window."""
+        self._trip_window_started_at = None
+        self._trip_window_max_case_tmp = None
+        self._trip_window_max_amb = None
+        self._trip_window_max_ts = None
+
+    def _finalize_trip_window(self, now_ts: float) -> None:
+        """
+        Confirm and store a thermal-model calibration from a completed trip window.
+
+        Calibration is only valid if:
+          - relay was ON while measured power stayed below 50 W,
+          - that state lasted at least _THERMOSTAT_TRIP_CONFIRM_S,
+          - we observed a case-temperature peak during that window.
+        """
+        if self._trip_window_started_at is None:
+            return
+
+        duration_s = now_ts - self._trip_window_started_at
+        max_case_tmp = self._trip_window_max_case_tmp
+        max_amb = self._trip_window_max_amb
+        calib_ts = self._trip_window_max_ts
+
+        if (
+            duration_s >= _THERMOSTAT_TRIP_CONFIRM_S
+            and max_case_tmp is not None
+            and max_amb is not None
+            and calib_ts is not None
+            and (calib_ts - self._last_calib_ts) > _CALIB_DEBOUNCE_S
+        ):
+            self.thermal_model.observe_calibration(
+                T_set=self.boiler_set_tmp,
+                T_case=max_case_tmp,
+                T_amb=max_amb,
+                timestamp=calib_ts,
+            )
+            self._last_calib_ts = calib_ts
+            logger.info(
+                "Thermal calibration confirmed after %.0fs at peak case %.1f°C (T_amb=%.1f°C, ts=%s).",
+                duration_s,
+                max_case_tmp,
+                max_amb,
+                datetime.fromtimestamp(calib_ts).astimezone().isoformat(timespec="seconds"),
+            )
+
+        self._reset_trip_window()
+
+    def _track_trip_window(
+        self,
+        *,
+        relay_on: bool,
+        power_w: Optional[float],
+        case_tmp: Optional[float],
+        amb: Optional[float],
+        now_ts: float,
+    ) -> None:
+        """
+        Track the peak case temperature during a sustained thermostat-trip window.
+
+        The desired calibration anchor is not the first low-power sample, but the
+        maximum case temperature reached while the relay remains ON and measured
+        power stays below 50 W for at least one minute.
+        """
+        trip_active = relay_on and power_w is not None and float(power_w) < 50.0
+        if trip_active:
+            if self._trip_window_started_at is None:
+                self._trip_window_started_at = now_ts
+                self._trip_window_max_case_tmp = None
+                self._trip_window_max_amb = None
+                self._trip_window_max_ts = None
+
+            if case_tmp is not None and amb is not None:
+                if (
+                    self._trip_window_max_case_tmp is None
+                    or float(case_tmp) >= float(self._trip_window_max_case_tmp)
+                ):
+                    self._trip_window_max_case_tmp = float(case_tmp)
+                    self._trip_window_max_amb = float(amb)
+                    self._trip_window_max_ts = now_ts
+            return
+
+        self._finalize_trip_window(now_ts)
+
     def run_control_workflow(self) -> None:
         """Execute heating plan; perform legionella check; observe HDO."""
         try:
@@ -478,36 +567,40 @@ class SmartBoilerController:
             relay_on = relay_state_str == "on"
             relay_unavailable = _is_hdo_unavailable_state(relay_state_str)
 
-            power_w = 0.0
+            power_w: Optional[float] = None
             if self.boiler_power_entity_id:
-                power_w = self.ha.get_state_value(self.boiler_power_entity_id, default=0.0) or 0.0
+                power_raw = self.ha.get_state_value(self.boiler_power_entity_id, default=None)
+                if power_raw is not None:
+                    try:
+                        power_w = float(power_raw)
+                    except (TypeError, ValueError):
+                        power_w = None
 
             # HDO observation
             self.hdo_learner.observe(datetime.now().astimezone(), relay_unavailable)
 
             # ── Thermal model observations ────────────────────────────────
+            now_ts = time.time()
             if self.boiler_case_tmp_entity_id:
+                amb = self.temp_estimator.get_ambient_tmp()
                 case_tmp_raw = self.ha.get_state_value(self.boiler_case_tmp_entity_id)
+                case_tmp = None
                 if case_tmp_raw is not None:
                     case_tmp = float(case_tmp_raw)
-                    amb = self.temp_estimator.get_ambient_tmp()
 
-                    # Thermostat-trip calibration: relay ON + power ≈ 0 W
-                    now_ts = time.time()
-                    trip = relay_on and float(power_w) < 50
-                    debounced = (now_ts - self._last_calib_ts) > _CALIB_DEBOUNCE_S
-                    if trip and debounced:
-                        self.thermal_model.observe_calibration(
-                            T_set=self.boiler_set_tmp,
-                            T_case=case_tmp,
-                            T_amb=amb,
-                            timestamp=now_ts,
-                        )
-                        self._last_calib_ts = now_ts
+                self._track_trip_window(
+                    relay_on=relay_on,
+                    power_w=power_w,
+                    case_tmp=case_tmp,
+                    amb=amb,
+                    now_ts=now_ts,
+                )
 
-                    # Passive-cooling sample (only when relay is OFF)
-                    if not relay_on:
-                        self.thermal_model.observe_case_tmp(case_tmp, amb, timestamp=now_ts)
+                # Passive-cooling sample (only when relay is OFF)
+                if case_tmp is not None and not relay_on:
+                    self.thermal_model.observe_case_tmp(case_tmp, amb, timestamp=now_ts)
+            else:
+                self._finalize_trip_window(now_ts)
 
             # ── Simple Mode: tick the flowless estimator ──────────────────
             if self.flow_estimator is not None:
@@ -589,7 +682,7 @@ class SmartBoilerController:
             #   2. Thermostat trip: relay is already ON but power ≈ 0 W
             #      (the internal thermostat cut the element; the sensor may lag
             #       by ~0.5–1 °C relative to the actual water temperature)
-            thermostat_tripped = relay_on and float(power_w) < 50
+            thermostat_tripped = relay_on and power_w is not None and float(power_w) < 50.0
             if should_heat and (boiler_tmp >= self.boiler_set_tmp or thermostat_tripped):
                 logger.debug(
                     "Boiler fully charged (tmp=%.1f, tripped=%s): relay OFF",
