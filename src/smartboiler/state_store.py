@@ -169,5 +169,21 @@ class StateStore:
         except (ValueError, TypeError):
             return None
 
-    def set_last_boiler_tmp(self, tmp: float) -> None:
-        self.set("last_boiler_tmp", tmp)
+    def get_last_boiler_tmp_updated_at(self) -> Optional[datetime]:
+        val = self._state.get("last_boiler_tmp_updated_at")
+        if val:
+            try:
+                dt = datetime.fromisoformat(val)
+                if dt.tzinfo is None:
+                    return dt.replace(tzinfo=datetime.now().astimezone().tzinfo)
+                return dt
+            except Exception:
+                pass
+        return None
+
+    def set_last_boiler_tmp(self, tmp: float, updated_at: Optional[datetime] = None) -> None:
+        self._state["last_boiler_tmp"] = tmp
+        self._state["last_boiler_tmp_updated_at"] = (
+            updated_at or datetime.now().astimezone()
+        ).isoformat()
+        self._save_json_state()

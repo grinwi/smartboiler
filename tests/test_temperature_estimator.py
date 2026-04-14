@@ -56,6 +56,23 @@ def _make_ha(
 def _make_thermal_model(estimate=None):
     m = MagicMock()
     m.estimate_water_tmp.return_value = estimate
+    m.debug_snapshot.return_value = {
+        "available": estimate is not None,
+        "estimate": estimate,
+        "mode": "fitted_case_decay" if estimate is not None else "unavailable",
+        "mode_label": "Thermal model preview",
+        "reason": "preview",
+        "equations": [],
+        "inputs": {"case_tmp": None, "ambient_tmp": None},
+        "intermediates": {},
+        "calibration": None,
+        "model": {},
+        "recent_calibrations": [],
+        "calibration_point": None,
+        "current_cycle_samples": [],
+        "current_point": None,
+        "current_cycle_max_case_tmp": None,
+    }
     return m
 
 
@@ -248,6 +265,59 @@ class TestL4LastKnown:
         ha = _make_ha(direct_tmp=None, power=None, relay_on=False, case_tmp=None)
         est = _make_estimator(ha, thermal_model=None)
         assert est.get_boiler_tmp(last_known=None) is None
+
+
+# ---------------------------------------------------------------------------
+# Diagnostic report
+# ---------------------------------------------------------------------------
+
+class TestDiagnosticReport:
+    def test_report_marks_direct_sensor_as_source(self):
+        ha = _make_ha(direct_tmp=52.3, area_tmp=19.0)
+        est = _make_estimator(ha, thermal_model=_make_thermal_model(estimate=49.0))
+
+        report = est.get_boiler_tmp_report(last_known=40.0)
+
+        assert report["estimate"] == 52.3
+        assert report["source_key"] == "direct_sensor"
+        assert report["source_level"] == "L1"
+        assert report["direct_sensor"]["value"] == 52.3
+        assert report["ambient"]["value"] == 19.0
+
+    def test_report_marks_active_heating_as_last_known_guard(self):
+        thermal = _make_thermal_model(estimate=55.0)
+        ha = _make_ha(direct_tmp=None, power=1800.0, relay_on=True, case_tmp=35.0, area_tmp=19.0)
+        est = _make_estimator(ha, thermal_model=thermal)
+
+        report = est.get_boiler_tmp_report(last_known=44.0)
+
+        assert report["estimate"] == 44.0
+        assert report["source_key"] == "actively_heating_last_known"
+        assert report["power_feedback"]["actively_heating"] is True
+        assert report["thermal_model_preview"]["usable_now"] is False
+        assert "disabled during active heating" in report["thermal_model_preview"]["skip_reason"]
+
+    def test_report_marks_thermal_model_path_when_used(self):
+        thermal = _make_thermal_model(estimate=47.2)
+        ha = _make_ha(direct_tmp=None, power=0.0, relay_on=False, case_tmp=36.0, area_tmp=18.5)
+        est = _make_estimator(ha, thermal_model=thermal)
+
+        report = est.get_boiler_tmp_report(last_known=41.0)
+
+        assert report["estimate"] == 47.2
+        assert report["source_key"] == "thermal_model"
+        assert report["source_level"] == "L3"
+        assert report["thermal_model_preview"]["estimate"] == 47.2
+
+    def test_report_warns_when_last_known_has_no_timestamp(self):
+        thermal = _make_thermal_model(estimate=None)
+        ha = _make_ha(direct_tmp=None, power=None, relay_on=False, case_tmp=None)
+        est = _make_estimator(ha, thermal_model=thermal)
+
+        report = est.get_boiler_tmp_report(last_known=41.0)
+
+        assert report["source_key"] == "last_known"
+        assert any("no timestamp metadata" in msg for msg in report["warnings"])
 
 
 # ---------------------------------------------------------------------------

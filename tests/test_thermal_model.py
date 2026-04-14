@@ -310,6 +310,50 @@ class TestEstimationAccuracy:
             )
 
 
+# ── Tests: diagnostic snapshot for dashboard ────────────────────────────────
+
+class TestDiagnosticSnapshot:
+    def test_snapshot_uses_proportional_fallback_before_fit(self):
+        model = _fresh_model()
+        model.observe_calibration(T_SET, C0, T_AMB, timestamp=T0)
+
+        dt_h = 1.0
+        T_c = _true_T_case(dt_h)
+        snap = model.debug_snapshot(T_c, T_AMB, timestamp=T0 + dt_h * 3600.0)
+
+        assert snap["available"] is True
+        assert snap["mode"] == "proportional_fallback"
+        assert snap["estimate"] is not None
+        assert snap["intermediates"]["ratio"] > 0.0
+        assert len(snap["equations"]) == 2
+
+    def test_snapshot_uses_fitted_case_decay_after_fit(self):
+        model = _fresh_model(mass_ratio=K_WATER_TRUE / K_CASE_TRUE)
+        _calibrate_and_feed(model, n_samples=24, fit=True)
+
+        dt_h = 2.0
+        T_c = _true_T_case(dt_h)
+        true_water = _true_T_water(dt_h)
+        snap = model.debug_snapshot(T_c, T_AMB, timestamp=T0 + dt_h * 3600.0)
+
+        assert snap["available"] is True
+        assert snap["mode"] == "fitted_case_decay"
+        assert snap["estimate"] == pytest.approx(true_water, abs=3.0)
+        assert snap["intermediates"]["elapsed_h"] == pytest.approx(dt_h, abs=0.4)
+        assert snap["calibration"]["case_tmp"] == pytest.approx(C0, abs=0.1)
+
+    def test_snapshot_contains_current_cycle_samples(self):
+        model = _fresh_model()
+        _calibrate_and_feed(model, n_samples=10, fit=False)
+
+        snap = model.debug_snapshot(_true_T_case(1.0), T_AMB, timestamp=T0 + 3600.0)
+
+        assert len(snap["current_cycle_samples"]) > 0
+        first = snap["current_cycle_samples"][0]
+        assert "timestamp" in first
+        assert "estimated_water_tmp" in first
+
+
 # ── Tests: seasonal adaptation ────────────────────────────────────────────────
 
 class TestSeasonalAdaptation:

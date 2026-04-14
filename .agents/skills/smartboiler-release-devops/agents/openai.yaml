@@ -1,0 +1,4 @@
+interface:
+  display_name: "SmartBoiler Release DevOps"
+  short_description: "Check packaging, runtime, and release flow"
+  default_prompt: "Use $smartboiler-release-devops to review add-on packaging, runtime behavior, and release readiness."

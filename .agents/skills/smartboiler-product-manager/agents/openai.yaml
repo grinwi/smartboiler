@@ -1,0 +1,4 @@
+interface:
+  display_name: "SmartBoiler Product Manager"
+  short_description: "Scope value, UX, and release risk"
+  default_prompt: "Use $smartboiler-product-manager to check scope, UX impact, and release readiness for this change."

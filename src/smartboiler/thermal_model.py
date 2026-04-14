@@ -5,7 +5,11 @@
 # Learned thermal model for boiler water temperature estimation.
 #
 # Physics (Newton's law of cooling):
-#   After the thermostat trips (relay ON, power → 0 W) the water is at T_set.
+#   After a confirmed thermostat-trip cut-off (relay ON, measured power → 0 W
+#   after previously heating, then held low for at least 1 minute), the water
+#   is at T_set. Calibration is recorded only once the case temperature has not
+#   increased in the last 5 minutes, using the current case temperature at that
+#   stable moment.
 #   Both water and the boiler case then cool exponentially:
 #
 #     T_water(t) = T_amb + (T_set  - T_amb) * exp(-k_w * dt)
@@ -20,7 +24,7 @@
 #
 # Estimation workflow:
 #   Given current T_case and T_amb, and the most-recent calibration event
-#   (timestamp t0, T_set, C0=T_case at trip):
+#   (timestamp t0, T_set, C0=T_case at the stable confirmed trip moment):
 #     1. Infer elapsed time from case-sensor decay:
 #          dt = -ln((T_case - T_amb) / (C0 - T_amb)) / k_c
 #     2. Estimate water temperature:
@@ -36,6 +40,7 @@
 import logging
 import math
 import time
+from datetime import datetime
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 
@@ -68,9 +73,26 @@ def _is_valid_tmp(v) -> bool:
         return False
 
 
+def _fmt_num(value: Optional[float], digits: int = 3) -> str:
+    """Format numeric diagnostics consistently for UI/debug output."""
+    if value is None:
+        return "—"
+    try:
+        return f"{float(value):.{digits}f}"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def _fmt_ts(ts: Optional[float]) -> Optional[str]:
+    """Convert unix timestamp to local ISO string for dashboard use."""
+    if ts is None:
+        return None
+    return datetime.fromtimestamp(float(ts)).astimezone().isoformat(timespec="seconds")
+
+
 @dataclass
 class _CalibEvent:
-    """Thermostat-trip event: relay ON, power ≈ 0 W → T_water == T_set."""
+    """Confirmed thermostat-trip event recorded at a stable post-cutoff moment."""
     ts: float          # unix timestamp
     T_set: float       # water temp (=thermostat set point) at this moment
     T_case: float      # case sensor reading at this moment
@@ -94,7 +116,7 @@ class ThermalModel:
     ``StateStore.save_pickle("thermal_model", model)``.
 
     Typical usage in the control loop:
-        # relay ON + power ≈ 0 W → thermostat tripped
+        # relay ON + power drops from heating to ~0 W and then stabilises
         model.observe_calibration(T_set, T_case, T_amb)
 
         # relay OFF → passive cooling; call every ~15 min
@@ -146,7 +168,9 @@ class ThermalModel:
     ) -> None:
         """
         Record a thermostat-trip calibration event.
-        Call this when: relay is ON and power sensor reads < 50 W.
+        Call this after the controller confirms a heater cut-off from active
+        heating into an effective zero-power hold and the case temperature has
+        stabilised.
         """
         if not (_is_valid_tmp(T_set) and _is_valid_tmp(T_case) and _is_valid_tmp(T_amb)):
             _LOGGER.debug(
@@ -297,6 +321,114 @@ class ThermalModel:
             "n_fit_samples": self._n_fit_samples,
             "last_calib_T_set": round(calib.T_set, 1) if calib else None,
             "last_calib_T_case": round(calib.T_case, 1) if calib else None,
+            "last_fit_at": _fmt_ts(self._last_fit_ts) if self._last_fit_ts else None,
+            "last_fit_age_h": (
+                round((self._clock() - self._last_fit_ts) / 3600.0, 2)
+                if self._last_fit_ts else None
+            ),
+            "last_calibration_at": _fmt_ts(calib.ts) if calib else None,
+            "last_calibration_age_h": (
+                round((self._clock() - calib.ts) / 3600.0, 2)
+                if calib else None
+            ),
+        }
+
+    def debug_snapshot(
+        self,
+        T_case: Optional[float],
+        T_amb: Optional[float],
+        timestamp: Optional[float] = None,
+        sample_limit: int = 48,
+        calib_limit: int = 6,
+    ) -> dict:
+        """
+        Return a rich, JSON-safe diagnostic snapshot for the dashboard.
+
+        Includes:
+          - current estimate explanation and substituted equations
+          - last calibration details
+          - recent calibrations
+          - samples from the current cooling cycle for plotting
+        """
+        ts = timestamp if timestamp is not None else self._clock()
+        active_calib_idx = len(self._calib_events) - 1
+        current_cycle_samples = []
+        calibration_point = None
+
+        if active_calib_idx >= 0:
+            cycle_samples = [
+                s for s in self._samples
+                if s.calib_idx == active_calib_idx
+            ][-max(int(sample_limit), 1):]
+            calib = self._calib_events[active_calib_idx]
+            calibration_point = {
+                "timestamp": _fmt_ts(calib.ts),
+                "age_h": 0.0,
+                "case_tmp": round(calib.T_case, 3),
+                "ambient_tmp": round(calib.T_amb, 3),
+                "estimated_water_tmp": round(calib.T_set, 3),
+                "set_tmp": round(calib.T_set, 3),
+            }
+            for sample in cycle_samples:
+                estimate = self.estimate_water_tmp(
+                    sample.T_case, sample.T_amb, timestamp=sample.ts,
+                )
+                current_cycle_samples.append({
+                    "timestamp": _fmt_ts(sample.ts),
+                    "age_h": round((sample.ts - calib.ts) / 3600.0, 3),
+                    "case_tmp": round(sample.T_case, 3),
+                    "ambient_tmp": round(sample.T_amb, 3),
+                    "estimated_water_tmp": (
+                        round(estimate, 3)
+                        if estimate is not None
+                        else None
+                    ),
+                    "set_tmp": round(calib.T_set, 3),
+                })
+
+        explanation = self._explain_estimate(T_case=T_case, T_amb=T_amb, timestamp=ts)
+        current_point = None
+        if (
+            explanation.get("estimate") is not None
+            and _is_valid_tmp(T_case)
+            and _is_valid_tmp(T_amb)
+        ):
+            calib = self._calib_events[-1] if self._calib_events else None
+            current_point = {
+                "timestamp": _fmt_ts(ts),
+                "age_h": (
+                    round((ts - calib.ts) / 3600.0, 3)
+                    if calib is not None else None
+                ),
+                "case_tmp": round(float(T_case), 3),
+                "ambient_tmp": round(float(T_amb), 3),
+                "estimated_water_tmp": round(float(explanation["estimate"]), 3),
+                "set_tmp": round(calib.T_set, 3) if calib is not None else None,
+            }
+
+        recent_calibrations = [
+            self._serialize_calibration(event, now_ts=ts)
+            for event in self._calib_events[-max(int(calib_limit), 1):]
+        ]
+
+        current_cycle_max_case_tmp = None
+        max_case_candidates = []
+        if self._calib_events:
+            max_case_candidates.append(self._calib_events[-1].T_case)
+        max_case_candidates.extend(s["case_tmp"] for s in current_cycle_samples)
+        if current_point is not None:
+            max_case_candidates.append(current_point["case_tmp"])
+        if max_case_candidates:
+            current_cycle_max_case_tmp = round(max(max_case_candidates), 3)
+
+        return {
+            **explanation,
+            "model": self.diagnostics(),
+            "recent_calibrations": recent_calibrations,
+            "calibration_point": calibration_point,
+            "current_cycle_samples": current_cycle_samples,
+            "current_point": current_point,
+            "current_cycle_max_case_tmp": current_cycle_max_case_tmp,
         }
 
     # ── Persistence ───────────────────────────────────────────────────────
@@ -342,6 +474,190 @@ class ThermalModel:
         return m
 
     # ── Internal helpers ──────────────────────────────────────────────────
+
+    def _serialize_calibration(self, event: _CalibEvent, now_ts: Optional[float] = None) -> dict:
+        ts_now = now_ts if now_ts is not None else self._clock()
+        return {
+            "timestamp": _fmt_ts(event.ts),
+            "age_h": round((ts_now - event.ts) / 3600.0, 3),
+            "set_tmp": round(event.T_set, 3),
+            "case_tmp": round(event.T_case, 3),
+            "ambient_tmp": round(event.T_amb, 3),
+        }
+
+    def _explain_estimate(
+        self,
+        T_case: Optional[float],
+        T_amb: Optional[float],
+        timestamp: float,
+    ) -> dict:
+        inputs = {
+            "timestamp": _fmt_ts(timestamp),
+            "case_tmp": round(float(T_case), 3) if _is_valid_tmp(T_case) else None,
+            "ambient_tmp": round(float(T_amb), 3) if _is_valid_tmp(T_amb) else None,
+        }
+
+        base = {
+            "available": False,
+            "estimate": None,
+            "raw_estimate": None,
+            "mode": "unavailable",
+            "mode_label": "Thermal model unavailable",
+            "reason": "",
+            "equations": [],
+            "inputs": inputs,
+            "intermediates": {},
+            "calibration": (
+                self._serialize_calibration(self._calib_events[-1], now_ts=timestamp)
+                if self._calib_events else None
+            ),
+        }
+
+        if not (_is_valid_tmp(T_case) and _is_valid_tmp(T_amb)):
+            base["reason"] = "Current case or ambient temperature is missing or invalid."
+            return base
+
+        T_case_f = float(T_case)
+        T_amb_f = float(T_amb)
+
+        if not self._calib_events:
+            base["reason"] = "No thermostat-trip calibration has been recorded yet."
+            return base
+
+        calib = self._calib_events[-1]
+        base["calibration"] = self._serialize_calibration(calib, now_ts=timestamp)
+
+        if timestamp < calib.ts:
+            return {
+                **base,
+                "available": True,
+                "estimate": round(float(calib.T_set), 3),
+                "raw_estimate": round(float(calib.T_set), 3),
+                "mode": "future_clock_guard",
+                "mode_label": "Clock guard",
+                "reason": "Calibration timestamp is in the future, so the estimate is clamped to T_set.",
+                "equations": [
+                    {
+                        "label": "Clock guard",
+                        "symbolic": "T_water = T_set",
+                        "substituted": f"T_water = {_fmt_num(calib.T_set, 1)} °C",
+                    },
+                ],
+            }
+
+        if self.k_case is not None and self.k_water is not None:
+            c0_adj = calib.T_case - T_amb_f
+            c_adj = T_case_f - T_amb_f
+            if c0_adj > 0.5 and 0 < c_adj < c0_adj:
+                elapsed_h = -math.log(c_adj / c0_adj) / self.k_case
+                mode = "fitted_case_decay"
+                mode_label = "Fitted cooling model"
+                reason = "Using the fitted Newton cooling curve and the current case reading."
+                dt_equation = {
+                    "label": "Elapsed time from case sensor",
+                    "symbolic": "dt = -ln((T_case - T_amb) / (C0 - T_amb)) / k_case",
+                    "substituted": (
+                        "dt = -ln(("
+                        f"{_fmt_num(T_case_f, 1)} - {_fmt_num(T_amb_f, 1)}) / "
+                        f"({_fmt_num(calib.T_case, 1)} - {_fmt_num(T_amb_f, 1)})) / "
+                        f"{_fmt_num(self.k_case, 4)} = {_fmt_num(elapsed_h, 3)} h"
+                    ),
+                }
+            else:
+                elapsed_h = (timestamp - calib.ts) / 3600.0
+                mode = "fitted_time_decay"
+                mode_label = "Fitted model with time fallback"
+                reason = (
+                    "Current case reading is outside the usable range, so elapsed time "
+                    "since the last calibration is used instead of inverting T_case."
+                )
+                dt_equation = {
+                    "label": "Elapsed time fallback",
+                    "symbolic": "dt = (t_now - t_calib) / 3600",
+                    "substituted": (
+                        f"dt = ({_fmt_ts(timestamp)} - {_fmt_ts(calib.ts)}) = "
+                        f"{_fmt_num(elapsed_h, 3)} h"
+                    ),
+                }
+
+            raw_estimate = T_amb_f + (calib.T_set - T_amb_f) * math.exp(-self.k_water * elapsed_h)
+            estimate = float(max(T_amb_f, min(calib.T_set, raw_estimate)))
+            return {
+                **base,
+                "available": True,
+                "estimate": round(estimate, 3),
+                "raw_estimate": round(raw_estimate, 3),
+                "mode": mode,
+                "mode_label": mode_label,
+                "reason": reason,
+                "equations": [
+                    dt_equation,
+                    {
+                        "label": "Water temperature estimate",
+                        "symbolic": "T_water = T_amb + (T_set - T_amb) * exp(-k_water * dt)",
+                        "substituted": (
+                            "T_water = "
+                            f"{_fmt_num(T_amb_f, 1)} + "
+                            f"({_fmt_num(calib.T_set, 1)} - {_fmt_num(T_amb_f, 1)}) * "
+                            f"exp(-{_fmt_num(self.k_water, 4)} * {_fmt_num(elapsed_h, 3)}) = "
+                            f"{_fmt_num(raw_estimate, 3)} °C"
+                        ),
+                    },
+                ],
+                "intermediates": {
+                    "c0_adj": round(c0_adj, 3),
+                    "c_adj": round(c_adj, 3),
+                    "elapsed_h": round(elapsed_h, 3),
+                    "clamp_min": round(T_amb_f, 3),
+                    "clamp_max": round(calib.T_set, 3),
+                },
+            }
+
+        c0_adj = calib.T_case - calib.T_amb
+        if c0_adj <= 0:
+            base["reason"] = "Calibration case temperature is not above ambient, so the fallback ratio is undefined."
+            return base
+
+        ratio = (calib.T_set - calib.T_amb) / c0_adj
+        raw_estimate = T_amb_f + ratio * (T_case_f - T_amb_f)
+        estimate = float(max(T_amb_f, min(calib.T_set, raw_estimate)))
+        return {
+            **base,
+            "available": True,
+            "estimate": round(estimate, 3),
+            "raw_estimate": round(raw_estimate, 3),
+            "mode": "proportional_fallback",
+            "mode_label": "Proportional fallback",
+            "reason": "The thermal model is not fitted yet, so a fixed case-to-water ratio is used.",
+            "equations": [
+                {
+                    "label": "Fallback ratio from calibration",
+                    "symbolic": "ratio = (T_set - T_amb_calib) / (C0 - T_amb_calib)",
+                    "substituted": (
+                        "ratio = ("
+                        f"{_fmt_num(calib.T_set, 1)} - {_fmt_num(calib.T_amb, 1)}) / "
+                        f"({_fmt_num(calib.T_case, 1)} - {_fmt_num(calib.T_amb, 1)}) = "
+                        f"{_fmt_num(ratio, 4)}"
+                    ),
+                },
+                {
+                    "label": "Water temperature estimate",
+                    "symbolic": "T_water = T_amb + ratio * (T_case - T_amb)",
+                    "substituted": (
+                        "T_water = "
+                        f"{_fmt_num(T_amb_f, 1)} + {_fmt_num(ratio, 4)} * "
+                        f"({_fmt_num(T_case_f, 1)} - {_fmt_num(T_amb_f, 1)}) = "
+                        f"{_fmt_num(raw_estimate, 3)} °C"
+                    ),
+                },
+            ],
+            "intermediates": {
+                "ratio": round(ratio, 4),
+                "c0_adj": round(c0_adj, 3),
+                "clamp_min": round(T_amb_f, 3),
+                "clamp_max": round(calib.T_set, 3),
+            },
+        }
 
     def _prune(self) -> None:
         """Drop data outside the rolling window."""

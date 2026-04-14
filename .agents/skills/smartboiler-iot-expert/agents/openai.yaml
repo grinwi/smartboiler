@@ -1,0 +1,4 @@
+interface:
+  display_name: "SmartBoiler IoT Expert"
+  short_description: "Review Home Assistant and boiler behavior"
+  default_prompt: "Use $smartboiler-iot-expert to review SmartBoiler hardware, Home Assistant, and control-loop behavior."

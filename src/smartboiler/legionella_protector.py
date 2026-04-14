@@ -4,6 +4,9 @@
 #
 # Legionella protection logic — enforces periodic heating to ≥65°C to prevent
 # Legionella pneumophila growth, which thrives between 20°C and 50°C.
+# The 21-day full-heat cycle also provides a regular calibration opportunity for
+# the thermal model, because the controller can observe a fresh thermostat cut-off
+# under known "fully heated" conditions.
 
 import logging
 from datetime import datetime, timedelta

@@ -119,6 +119,29 @@
     .s-field label{font-size:.78rem;color:var(--gray)}
     .s-field select{padding:.35rem .5rem;border:1px solid #e2e8f0;border-radius:6px;font-size:.85rem}
 
+    /* Estimator diagnostics */
+    .badge.info{background:var(--blue-l);color:var(--blue)}
+    .badge.good{background:var(--green-l);color:var(--green)}
+    .badge.warn{background:var(--orange-l);color:var(--orange)}
+    .badge.bad{background:var(--red-l);color:var(--red)}
+    .muted{color:var(--gray);font-size:.82rem;line-height:1.45}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+    .callout{margin-top:.75rem;padding:.7rem .85rem;border-radius:10px;font-size:.82rem;line-height:1.45}
+    .callout.warn{background:var(--orange-l);color:#7b341e}
+    .callout.bad{background:var(--red-l);color:#822727}
+    .callout.info{background:var(--blue-l);color:#2c5282}
+    .eq-list{display:grid;gap:.8rem}
+    .eq-card{border:1px solid var(--border);border-radius:10px;padding:.85rem;background:#f8fafc}
+    .eq-label{font-size:.75rem;color:var(--gray);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.35rem}
+    .eq-card code{display:block;white-space:pre-wrap;word-break:break-word;font-size:.88rem;color:#1a202c}
+    .table-wrap{overflow:auto}
+    .diag-table{width:100%;border-collapse:collapse;font-size:.84rem}
+    .diag-table th,.diag-table td{padding:.38rem .45rem;border-bottom:1px solid #edf2f7;text-align:left;vertical-align:top}
+    .diag-table th{font-size:.75rem;color:var(--gray);text-transform:uppercase;letter-spacing:.04em}
+    .diag-table td.num,.diag-table th.num{text-align:right}
+    .warn-list{display:grid;gap:.45rem;margin-top:.85rem}
+    .empty{font-size:.82rem;color:var(--gray);font-style:italic}
+
   </style>
 </head>
 <body>
@@ -130,6 +153,7 @@
 
 <div class="tabs">
   <button class="tab-btn active" onclick="showTab('overview')">Overview</button>
+  <button class="tab-btn" onclick="showTab('estimator')">Estimator</button>
   <button class="tab-btn" onclick="showTab('history')">History</button>
   <button class="tab-btn" onclick="showTab('predictor')">Predictor</button>
   <button class="tab-btn" onclick="showTab('hdo')">HDO</button>
@@ -181,6 +205,64 @@
     <div id="sys-info"></div>
   </div>
 
+</main>
+</div>
+
+<!-- ── ESTIMATOR TAB ────────────────────────────────────────────────── -->
+<div id="tab-estimator" class="tab-pane">
+<main>
+  <div class="card">
+    <h2>Current Estimate</h2>
+    <div class="big" id="est-current-tmp">—<span class="unit">°C</span></div>
+    <div class="badge unavailable" id="est-source-badge">—</div>
+    <div class="muted" style="margin-top:.75rem" id="est-source-reason">—</div>
+    <div class="warn-list" id="est-warning-list"></div>
+  </div>
+
+  <div class="card">
+    <h2>Thermal Model Preview</h2>
+    <div class="big" id="est-preview-tmp">—<span class="unit">°C</span></div>
+    <div class="badge unavailable" id="est-preview-badge">—</div>
+    <div class="muted" style="margin-top:.75rem" id="est-preview-reason">—</div>
+  </div>
+
+  <div class="card span2">
+    <h2>Current Inputs</h2>
+    <div id="est-input-table" class="table-wrap"></div>
+  </div>
+
+  <div class="card full">
+    <h2>Equations</h2>
+    <div class="muted" style="margin-bottom:.85rem">
+      Variables used by the case-sensor model:
+      <span class="mono">T_amb</span> = area temperature,
+      <span class="mono">T_case</span> = current boiler case temperature,
+      <span class="mono">C0</span> = case temperature captured once the thermostat cut off heating and the case temp stopped rising,
+      <span class="mono">T_set</span> = water set point during that calibration.
+    </div>
+    <div id="est-equations" class="eq-list"></div>
+  </div>
+
+  <div class="card full chart-lg">
+    <h2>Cooling Curve Since Last Calibration</h2>
+    <canvas id="estimator-chart"></canvas>
+    <div class="muted" style="margin-top:.75rem" id="est-chart-meta"></div>
+  </div>
+
+  <div class="card span2">
+    <h2>Thermal Model Details</h2>
+    <div id="est-model-table" class="table-wrap"></div>
+  </div>
+
+  <div class="card">
+    <h2>Recent Calibrations</h2>
+    <div id="est-calibrations" class="table-wrap"></div>
+  </div>
+
+  <div class="card full">
+    <h2>Cooling Samples</h2>
+    <div id="est-samples" class="table-wrap"></div>
+  </div>
 </main>
 </div>
 
@@ -283,6 +365,7 @@ function showTab(name) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   event.target.classList.add('active');
+  if (name === 'estimator') loadEstimator();
   if (name === 'history')   loadHistory();
   if (name === 'predictor') loadPredictor();
   if (name === 'hdo')       loadHDO();
@@ -290,9 +373,39 @@ function showTab(name) {
 }
 
 // ── Chart instances ───────────────────────────────────────────────────────
-let forecastChart = null, historyChart = null, accuracyChart = null;
+let forecastChart = null, historyChart = null, accuracyChart = null, estimatorChart = null;
 
 function destroyChart(ref) { if (ref) { try { ref.destroy(); } catch(e){} } return null; }
+function fmtTemp(v, digits = 1) { return v === null || v === undefined ? '—' : Number(v).toFixed(digits) + '°C'; }
+function fmtNum(v, digits = 2) { return v === null || v === undefined ? '—' : Number(v).toFixed(digits); }
+function fmtText(v) { return v === null || v === undefined || v === '' ? '—' : String(v); }
+function fmtTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
+}
+function renderKeyValueTable(rows) {
+  return `<table class="diag-table"><tbody>${rows.map(r => `
+    <tr>
+      <th>${r.label}</th>
+      <td class="${r.numeric ? 'num' : ''}">${r.value}</td>
+      <td>${r.note || ''}</td>
+    </tr>`).join('')}</tbody></table>`;
+}
+function renderDataTable(headers, rows) {
+  return `<table class="diag-table">
+    <thead><tr>${headers.map(h => `<th class="${h.numeric ? 'num' : ''}">${h.label}</th>`).join('')}</tr></thead>
+    <tbody>${rows.join('')}</tbody>
+  </table>`;
+}
+function badgeClassForSource(key) {
+  if (key === 'direct_sensor') return 'good';
+  if (key === 'thermal_model') return 'info';
+  if (key === 'thermostat_tripped') return 'info';
+  if (key === 'actively_heating_last_known') return 'warn';
+  if (key === 'last_known') return 'bad';
+  return 'unavailable';
+}
 
 // ── Overview ──────────────────────────────────────────────────────────────
 async function loadOverview() {
@@ -424,6 +537,186 @@ async function loadHistory() {
       }
     });
   } catch(e) { console.warn('loadHistory error', e); }
+}
+
+// ── Estimator diagnostics ────────────────────────────────────────────────
+async function loadEstimator() {
+  try {
+    const d = await fetch('api/temperature-estimation').then(r => r.json());
+    const preview = d.thermal_model_preview || {};
+    const model = preview.model || {};
+    const inputs = d.inputs || {};
+    const calibration = preview.calibration || {};
+    const currentPoint = preview.current_point || {};
+
+    document.getElementById('est-current-tmp').innerHTML =
+      (d.estimate !== null && d.estimate !== undefined ? Number(d.estimate).toFixed(1) : '—') +
+      '<span class="unit">°C</span>';
+    const sourceBadge = document.getElementById('est-source-badge');
+    sourceBadge.className = 'badge ' + badgeClassForSource(d.source_key);
+    sourceBadge.textContent = `${fmtText(d.source_level)} • ${fmtText(d.source_label)}`;
+    document.getElementById('est-source-reason').textContent = d.reason || '—';
+
+    const warningList = document.getElementById('est-warning-list');
+    const warnings = d.warnings || [];
+    if (!warnings.length) {
+      warningList.innerHTML = '<div class="callout info">No immediate diagnostic warnings.</div>';
+    } else {
+      warningList.innerHTML = warnings.map(w =>
+        `<div class="callout ${d.source_key === 'last_known' || d.source_key === 'actively_heating_last_known' ? 'warn' : 'info'}">${w}</div>`
+      ).join('');
+    }
+
+    document.getElementById('est-preview-tmp').innerHTML =
+      (preview.estimate !== null && preview.estimate !== undefined ? Number(preview.estimate).toFixed(1) : '—') +
+      '<span class="unit">°C</span>';
+    const previewBadge = document.getElementById('est-preview-badge');
+    const previewBlocked = Boolean(preview.skip_reason);
+    previewBadge.className = 'badge ' + (previewBlocked ? 'warn' : (preview.available ? 'info' : 'unavailable'));
+    previewBadge.textContent = previewBlocked
+      ? 'Preview only'
+      : (preview.mode_label || (preview.available ? 'Thermal model' : 'Unavailable'));
+    document.getElementById('est-preview-reason').textContent =
+      preview.skip_reason || preview.reason || '—';
+
+    document.getElementById('est-input-table').innerHTML = renderKeyValueTable([
+      {label:'Current estimate source', value:fmtText(d.source_label), note:fmtText(d.source_level)},
+      {label:'Direct water sensor', value:fmtTemp(inputs.direct_tmp), note:fmtText(d.direct_sensor?.entity_id)},
+      {label:'Relay state', value:d.power_feedback?.relay_on === null || d.power_feedback?.relay_on === undefined ? '—' : (d.power_feedback.relay_on ? 'ON' : 'OFF'), note:fmtText(inputs.switch_entity_id)},
+      {label:'Power draw', value:inputs.power_w === null || inputs.power_w === undefined ? '—' : fmtNum(inputs.power_w, 1) + ' W', note:`Trip threshold ${fmtNum(d.power_feedback?.thermostat_trip_threshold_w, 0)} W`},
+      {label:'Case temperature', value:fmtTemp(inputs.case_tmp), note:fmtText(d.case_sensor?.entity_id)},
+      {label:'Ambient temperature', value:fmtTemp(inputs.ambient_tmp), note:(d.ambient?.source === 'default' ? 'Configured default' : 'Live area sensor')},
+      {label:'Set temperature', value:fmtTemp(inputs.set_tmp), note:'Configured boiler set point'},
+      {label:'Last known cache', value:fmtTemp(inputs.last_known), note:inputs.last_known_updated_at ? `${fmtTime(inputs.last_known_updated_at)} (${fmtNum(inputs.last_known_age_min, 1)} min ago)` : 'No timestamp'},
+      {label:'Current point age from calibration', value:currentPoint.age_h === null || currentPoint.age_h === undefined ? '—' : fmtNum(currentPoint.age_h, 3) + ' h', note:calibration.timestamp ? `Last calibration ${fmtTime(calibration.timestamp)}` : 'No calibration yet'},
+    ]);
+
+    const equations = preview.equations || [];
+    const eqBox = document.getElementById('est-equations');
+    if (!equations.length) {
+      eqBox.innerHTML = `<div class="empty">${preview.reason || 'No equation output is available yet.'}</div>`;
+    } else {
+      eqBox.innerHTML = equations.map(eq => `
+        <div class="eq-card">
+          <div class="eq-label">${eq.label || 'Equation'}</div>
+          <code>${eq.symbolic || ''}</code>
+          <code>${eq.substituted || ''}</code>
+        </div>`).join('');
+    }
+
+    document.getElementById('est-model-table').innerHTML = renderKeyValueTable([
+      {label:'Operation mode', value:fmtText(d.operation_mode), note:''},
+      {label:'Thermal model fitted', value:model.fitted ? 'Yes' : 'No', note:preview.mode_label || ''},
+      {label:'k_case', value:model.k_case === null || model.k_case === undefined ? '—' : fmtNum(model.k_case, 4) + ' /h', note:'Case cooling coefficient'},
+      {label:'k_water', value:model.k_water === null || model.k_water === undefined ? '—' : fmtNum(model.k_water, 4) + ' /h', note:'Derived water cooling coefficient'},
+      {label:'Mass ratio', value:fmtNum(model.mass_ratio, 3), note:'k_water / k_case'},
+      {label:'Window', value:model.window_days === null || model.window_days === undefined ? '—' : fmtNum(model.window_days, 1) + ' d', note:'Rolling fit window'},
+      {label:'Stored calibrations', value:fmtText(model.n_calib_events), note:''},
+      {label:'Stored samples', value:fmtText(model.n_samples), note:`Fit used ${fmtText(model.n_fit_samples)} samples`},
+      {label:'Last calibration C0', value:fmtTemp(calibration.case_tmp, 1), note:'Stable case temp after thermostat cutoff'},
+      {label:'Cycle max case temp', value:fmtTemp(preview.current_cycle_max_case_tmp, 1), note:'Max observed case temp in current cooling cycle'},
+      {label:'Last calibration age', value:calibration.age_h === null || calibration.age_h === undefined ? '—' : fmtNum(calibration.age_h, 2) + ' h', note:fmtTime(calibration.timestamp)},
+      {label:'Last fit age', value:model.last_fit_age_h === null || model.last_fit_age_h === undefined ? '—' : fmtNum(model.last_fit_age_h, 2) + ' h', note:fmtTime(model.last_fit_at)},
+    ]);
+
+    const calibrations = preview.recent_calibrations || [];
+    if (!calibrations.length) {
+      document.getElementById('est-calibrations').innerHTML = '<div class="empty">No calibration events recorded yet.</div>';
+    } else {
+      document.getElementById('est-calibrations').innerHTML = renderDataTable(
+        [
+          {label:'Time'}, {label:'Age', numeric:true}, {label:'T_set', numeric:true},
+          {label:'C0 case', numeric:true}, {label:'Ambient', numeric:true}
+        ],
+        calibrations.slice().reverse().map(c => `
+          <tr>
+            <td>${fmtTime(c.timestamp)}</td>
+            <td class="num">${fmtNum(c.age_h, 2)} h</td>
+            <td class="num">${fmtNum(c.set_tmp, 1)} °C</td>
+            <td class="num">${fmtNum(c.case_tmp, 1)} °C</td>
+            <td class="num">${fmtNum(c.ambient_tmp, 1)} °C</td>
+          </tr>`)
+      );
+    }
+
+    const samples = (preview.current_cycle_samples || []).slice().reverse();
+    if (!samples.length) {
+      document.getElementById('est-samples').innerHTML = '<div class="empty">No cooling samples have been recorded for the active cycle yet.</div>';
+    } else {
+      document.getElementById('est-samples').innerHTML = renderDataTable(
+        [
+          {label:'Time'}, {label:'Age', numeric:true}, {label:'Case', numeric:true},
+          {label:'Ambient', numeric:true}, {label:'Estimated water', numeric:true}, {label:'T_set', numeric:true}
+        ],
+        samples.slice(0, 20).map(s => `
+          <tr>
+            <td>${fmtTime(s.timestamp)}</td>
+            <td class="num">${fmtNum(s.age_h, 3)} h</td>
+            <td class="num">${fmtNum(s.case_tmp, 1)} °C</td>
+            <td class="num">${fmtNum(s.ambient_tmp, 1)} °C</td>
+            <td class="num">${s.estimated_water_tmp === null || s.estimated_water_tmp === undefined ? '—' : fmtNum(s.estimated_water_tmp, 1) + ' °C'}</td>
+            <td class="num">${fmtNum(s.set_tmp, 1)} °C</td>
+          </tr>`)
+      );
+    }
+
+    const chartSamples = [];
+    if (preview.calibration_point) chartSamples.push(preview.calibration_point);
+    chartSamples.push(...(preview.current_cycle_samples || []));
+    if (preview.current_point && (!chartSamples.length || chartSamples[chartSamples.length - 1].timestamp !== preview.current_point.timestamp)) {
+      chartSamples.push(preview.current_point);
+    }
+    document.getElementById('est-chart-meta').textContent = calibration.timestamp
+      ? `Last calibration: ${fmtTime(calibration.timestamp)}  |  Mode: ${fmtText(preview.mode_label)}  |  Reason: ${fmtText(preview.reason)}`
+      : (preview.reason || 'No calibration has been captured yet.');
+
+    estimatorChart = destroyChart(estimatorChart);
+    const chartCtx = document.getElementById('estimator-chart').getContext('2d');
+    estimatorChart = new Chart(chartCtx, {
+      type: 'line',
+      data: {
+        labels: chartSamples.map(s => fmtTime(s.timestamp)),
+        datasets: [
+          {
+            label: 'Estimated water',
+            data: chartSamples.map(s => s.estimated_water_tmp),
+            borderColor: '#2b6cb0',
+            backgroundColor: 'rgba(43,108,176,.12)',
+            tension: .22,
+            pointRadius: 2,
+          },
+          {
+            label: 'Case',
+            data: chartSamples.map(s => s.case_tmp),
+            borderColor: '#c05621',
+            backgroundColor: 'rgba(192,86,33,.12)',
+            tension: .22,
+            pointRadius: 2,
+          },
+          {
+            label: 'Ambient',
+            data: chartSamples.map(s => s.ambient_tmp),
+            borderColor: '#718096',
+            backgroundColor: 'rgba(113,128,150,.12)',
+            tension: .2,
+            pointRadius: 1.5,
+          },
+          {
+            label: 'T_set',
+            data: chartSamples.map(s => s.set_tmp),
+            borderColor: '#276749',
+            borderDash: [6,4],
+            pointRadius: 0,
+            tension: 0,
+          }
+        ]
+      },
+      options: {
+        plugins: { legend: { position:'bottom' } },
+        scales: { y: { title:{ display:true, text:'°C' } } }
+      }
+    });
+  } catch(e) { console.warn('loadEstimator error', e); }
 }
 
 // ── Predictor heatmap ─────────────────────────────────────────────────────
