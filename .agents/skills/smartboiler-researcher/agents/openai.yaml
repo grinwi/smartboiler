@@ -1,0 +1,4 @@
+interface:
+  display_name: "SmartBoiler Researcher"
+  short_description: "Gather evidence before major decisions"
+  default_prompt: "Use $smartboiler-researcher to gather repo evidence, compare options, and reduce uncertainty before acting."

@@ -237,7 +237,7 @@
       Variables used by the case-sensor model:
       <span class="mono">T_amb</span> = area temperature,
       <span class="mono">T_case</span> = current boiler case temperature,
-      <span class="mono">C0</span> = case temperature at the last thermostat trip,
+      <span class="mono">C0</span> = case temperature captured once the thermostat cut off heating and the case temp stopped rising,
       <span class="mono">T_set</span> = water set point during that calibration.
     </div>
     <div id="est-equations" class="eq-list"></div>
@@ -612,7 +612,7 @@ async function loadEstimator() {
       {label:'Window', value:model.window_days === null || model.window_days === undefined ? '—' : fmtNum(model.window_days, 1) + ' d', note:'Rolling fit window'},
       {label:'Stored calibrations', value:fmtText(model.n_calib_events), note:''},
       {label:'Stored samples', value:fmtText(model.n_samples), note:`Fit used ${fmtText(model.n_fit_samples)} samples`},
-      {label:'Last calibration C0', value:fmtTemp(calibration.case_tmp, 1), note:'Case temp at thermostat trip'},
+      {label:'Last calibration C0', value:fmtTemp(calibration.case_tmp, 1), note:'Stable case temp after thermostat cutoff'},
       {label:'Cycle max case temp', value:fmtTemp(preview.current_cycle_max_case_tmp, 1), note:'Max observed case temp in current cooling cycle'},
       {label:'Last calibration age', value:calibration.age_h === null || calibration.age_h === undefined ? '—' : fmtNum(calibration.age_h, 2) + ' h', note:fmtTime(calibration.timestamp)},
       {label:'Last fit age', value:model.last_fit_age_h === null || model.last_fit_age_h === undefined ? '—' : fmtNum(model.last_fit_age_h, 2) + ' h', note:fmtTime(model.last_fit_at)},

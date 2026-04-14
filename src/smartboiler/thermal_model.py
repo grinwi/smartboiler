@@ -5,7 +5,11 @@
 # Learned thermal model for boiler water temperature estimation.
 #
 # Physics (Newton's law of cooling):
-#   After the thermostat trips (relay ON, power → 0 W) the water is at T_set.
+#   After a confirmed thermostat-trip cut-off (relay ON, measured power → 0 W
+#   after previously heating, then held low for at least 1 minute), the water
+#   is at T_set. Calibration is recorded only once the case temperature has not
+#   increased in the last 5 minutes, using the current case temperature at that
+#   stable moment.
 #   Both water and the boiler case then cool exponentially:
 #
 #     T_water(t) = T_amb + (T_set  - T_amb) * exp(-k_w * dt)
@@ -20,7 +24,7 @@
 #
 # Estimation workflow:
 #   Given current T_case and T_amb, and the most-recent calibration event
-#   (timestamp t0, T_set, C0=T_case at trip):
+#   (timestamp t0, T_set, C0=T_case at the stable confirmed trip moment):
 #     1. Infer elapsed time from case-sensor decay:
 #          dt = -ln((T_case - T_amb) / (C0 - T_amb)) / k_c
 #     2. Estimate water temperature:
@@ -88,7 +92,7 @@ def _fmt_ts(ts: Optional[float]) -> Optional[str]:
 
 @dataclass
 class _CalibEvent:
-    """Thermostat-trip event: relay ON, power ≈ 0 W → T_water == T_set."""
+    """Confirmed thermostat-trip event recorded at a stable post-cutoff moment."""
     ts: float          # unix timestamp
     T_set: float       # water temp (=thermostat set point) at this moment
     T_case: float      # case sensor reading at this moment
@@ -112,7 +116,7 @@ class ThermalModel:
     ``StateStore.save_pickle("thermal_model", model)``.
 
     Typical usage in the control loop:
-        # relay ON + power ≈ 0 W → thermostat tripped
+        # relay ON + power drops from heating to ~0 W and then stabilises
         model.observe_calibration(T_set, T_case, T_amb)
 
         # relay OFF → passive cooling; call every ~15 min
@@ -164,7 +168,9 @@ class ThermalModel:
     ) -> None:
         """
         Record a thermostat-trip calibration event.
-        Call this when: relay is ON and power sensor reads < 50 W.
+        Call this after the controller confirms a heater cut-off from active
+        heating into an effective zero-power hold and the case temperature has
+        stabilised.
         """
         if not (_is_valid_tmp(T_set) and _is_valid_tmp(T_case) and _is_valid_tmp(T_amb)):
             _LOGGER.debug(

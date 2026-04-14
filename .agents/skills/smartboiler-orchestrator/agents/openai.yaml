@@ -1,0 +1,4 @@
+interface:
+  display_name: "SmartBoiler Orchestrator"
+  short_description: "Coordinate SmartBoiler specialist reviews"
+  default_prompt: "Use $smartboiler-orchestrator to coordinate the right SmartBoiler specialists for this task."

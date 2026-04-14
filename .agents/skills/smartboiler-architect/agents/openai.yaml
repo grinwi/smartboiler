@@ -1,0 +1,4 @@
+interface:
+  display_name: "SmartBoiler Architect"
+  short_description: "Protect module boundaries and simplicity"
+  default_prompt: "Use $smartboiler-architect to review architecture, coupling, and maintainability in this SmartBoiler change."
