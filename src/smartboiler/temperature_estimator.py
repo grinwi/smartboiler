@@ -295,9 +295,13 @@ class TemperatureEstimator:
                     # Actively heating → thermal model invalid; use last known value
                     return last_known
 
-        # Level 3: learned thermal model from case sensor
-        # Only reached when the relay is OFF (boiler cooling passively).
+        # Level 3: learned thermal model from case sensor.
+        # Only valid during passive cooling (relay OFF).  Without a power sensor
+        # we cannot distinguish "thermostat tripped" from "actively heating", so
+        # the safe fallback is to skip L3 whenever the relay is ON.
         if self._case_tmp_entity_id and self._thermal_model is not None:
+            if self._ha.is_entity_on(self._switch_entity_id):
+                return last_known
             case_tmp = self._ha.get_state_value(self._case_tmp_entity_id)
             if case_tmp is not None:
                 amb = self.get_ambient_tmp()
@@ -363,16 +367,22 @@ class TemperatureEstimator:
             }
 
         preview["configured"] = True
-        preview["usable_now"] = not (
-            relay_on
-            and power_w is not None
-            and power_w >= 50.0
-        )
+        # The cooling equation is only valid during passive cooling (relay OFF).
+        # If there is no power sensor we cannot tell "thermostat tripped" from
+        # "actively heating", so the safe choice is to disable the model any time
+        # the relay is ON.
+        preview["usable_now"] = not relay_on
         if not preview["usable_now"]:
-            preview["skip_reason"] = (
-                "Relay is ON and power is above 50 W, so the cooling equation is intentionally "
-                "disabled during active heating."
-            )
+            if power_w is not None and power_w >= 50.0:
+                preview["skip_reason"] = (
+                    "Relay is ON and power is above 50 W, so the cooling equation is intentionally "
+                    "disabled during active heating."
+                )
+            else:
+                preview["skip_reason"] = (
+                    "Relay is ON, so the cooling equation is disabled "
+                    "(boiler may be actively heating)."
+                )
         return preview
 
     def _build_warnings(

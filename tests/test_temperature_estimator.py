@@ -183,13 +183,14 @@ class TestL2PowerFeedback:
         assert est.get_boiler_tmp(last_known=40.0) == 48.5
         thermal.estimate_water_tmp.assert_called_once()
 
-    def test_relay_on_power_none_falls_through_to_l3(self):
-        """relay ON but power entity returns None → can't use L2; try L3."""
+    def test_relay_on_power_none_falls_to_l4(self):
+        """relay ON but power entity returns None → ambiguous (heating or tripped?);
+        cooling model is invalid → skip L3, fall to L4 (last_known)."""
         thermal = _make_thermal_model(estimate=52.0)
         ha = _make_ha(direct_tmp=None, power=None, relay_on=True, case_tmp=40.0)
         est = _make_estimator(ha, thermal_model=thermal)
-        assert est.get_boiler_tmp(last_known=30.0) == 52.0
-        thermal.estimate_water_tmp.assert_called_once()
+        assert est.get_boiler_tmp(last_known=30.0) == 30.0
+        thermal.estimate_water_tmp.assert_not_called()
 
     def test_no_power_entity_skips_l2_entirely(self):
         """If power_entity_id not configured, L2 is skipped and L3 is tried."""
@@ -249,6 +250,41 @@ class TestL3ThermalModel:
         est = _make_estimator(ha, thermal_model=thermal)
         assert est.get_boiler_tmp(last_known=28.0) == 28.0
         thermal.estimate_water_tmp.assert_not_called()
+
+    def test_l3_skipped_when_relay_on_and_no_power_entity(self):
+        """
+        Regression for Chunk 8: without a power sensor L2 is bypassed entirely,
+        so L3 was reached even while the relay was ON (actively heating).
+        The cooling equation produces nonsense during active heating.
+        Expected: fall to L4 (last_known), NOT the thermal-model estimate.
+        """
+        thermal = _make_thermal_model(estimate=52.0)
+        ha = _make_ha(direct_tmp=None, power=None, relay_on=True, case_tmp=38.0, area_tmp=19.0)
+        est = _make_estimator(ha, power_entity=None, thermal_model=thermal)
+        result = est.get_boiler_tmp(last_known=45.0)
+        assert result == 45.0, (
+            f"Expected last_known=45.0 (cooling model must be skipped during active heating), "
+            f"got {result}"
+        )
+        thermal.estimate_water_tmp.assert_not_called()
+
+    def test_thermal_model_preview_usable_now_false_when_relay_on_no_power_sensor(self):
+        """
+        _build_thermal_model_preview must mark usable_now=False when relay is ON
+        even if there is no power sensor — the cooling equation is still invalid.
+        """
+        thermal = _make_thermal_model(estimate=52.0)
+        ha = _make_ha(direct_tmp=None, power=None, relay_on=True, case_tmp=38.0, area_tmp=19.0)
+        est = _make_estimator(ha, power_entity=None, thermal_model=thermal)
+        preview = est._build_thermal_model_preview(
+            case_tmp=38.0,
+            ambient_tmp=19.0,
+            relay_on=True,
+            power_w=None,
+        )
+        assert preview["usable_now"] is False, (
+            f"Expected usable_now=False when relay is ON (no power sensor), got {preview['usable_now']}"
+        )
 
 
 # ---------------------------------------------------------------------------

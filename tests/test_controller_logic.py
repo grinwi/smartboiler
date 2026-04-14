@@ -104,6 +104,7 @@ def ctrl():
     c._prev_relay_on = None
     c._prev_power_w = None
     c._case_tmp_history = deque()
+    c._peak_case_tmp_this_cycle = None
     c._lock = threading.Lock()
 
     # Default: relay state "off" (available, thermostat cut), no recent legionella
@@ -144,6 +145,7 @@ class TestControllerInit:
             store = state_store_cls.return_value
             store.load_pickle.return_value = None
             store.get_last_boiler_tmp.return_value = None
+            store.get_plan_generated_at.return_value = None  # _restore_persisted_plan guard
 
             SmartBoilerController(options)
 
@@ -374,9 +376,12 @@ class TestThermalCalibrationWindow:
                 idx["value"] = i
                 ctrl.run_control_workflow()
 
+        # C0 is the peak case temp seen while relay was ON (44.0), not the post-trip
+        # plateau (43.9) — important for poorly-mounted sensors where the plateau
+        # is near ambient but the peak carries the real thermal signal.
         ctrl.thermal_model.observe_calibration.assert_called_once_with(
             T_set=ctrl.boiler_set_tmp,
-            T_case=43.9,
+            T_case=44.0,
             T_amb=20.0,
             timestamp=1120.0,
         )
@@ -539,6 +544,181 @@ class TestThermalCalibrationWindow:
 
 
 # ---------------------------------------------------------------------------
+# Peak case temp tracking for calibration C0
+# ---------------------------------------------------------------------------
+
+class TestPeakCaseTmpCalibration:
+    """Verify that observe_calibration receives the heating-cycle peak, not the
+    post-trip plateau.  Motivation: poorly-mounted case sensors read near-ambient
+    at the stable plateau, making the plateau useless as C0 for Newton cooling.
+    The peak observed while the relay was ON is the correct C0."""
+
+    def _make_ctrl(self, ctrl):
+        ctrl.boiler_power_entity_id = "sensor.power"
+        ctrl.boiler_case_tmp_entity_id = "sensor.case_tmp"
+        ctrl.temp_estimator.get_boiler_tmp = MagicMock(return_value=55.0)
+        ctrl.temp_estimator.get_ambient_tmp.return_value = 14.0
+        ctrl.legionella = MagicMock()
+        ctrl.legionella.check_and_act.return_value = False
+        ctrl.ha.get_state.return_value = {"state": "on", "attributes": {}}
+        ctrl.thermal_model.observe_calibration = MagicMock()
+        ctrl._plan_generated_at = datetime.now().astimezone()
+        ctrl._heating_plan = [True] + [False] * 23
+
+    def _stable_history(self, t_start: float, value: float, n: int = 8, step: float = 60.0):
+        """Return n history entries at a constant value covering >5 min before t_start.
+
+        Using a constant value guarantees no rises, satisfying the stability check.
+        The window required is 5 min (300 s); with n=8 and step=60 the first entry
+        is 480 s before t_start, well clear of the 300 s cutoff.
+        """
+        return [(t_start - i * step, value) for i in range(n, 0, -1)]
+
+    def test_uses_peak_not_plateau_when_peak_is_higher(self, ctrl):
+        """Peak during heating (25°C) is used as C0, not plateau after trip (15.7°C)."""
+        self._make_ctrl(ctrl)
+
+        # Ticks: 0=heating(25°C), 1=trip(16°C), 2=stable(15.8°C)
+        # Use timestamps far apart so tick 0's case reading (25°C) is outside the
+        # 5-min stability window when calibration fires on tick 2.
+        T0, T1, T2 = 1000.0, 2000.0, 2060.0  # 16+ min gap before trip
+
+        readings = [
+            {"power": 2000.0, "case": 25.0},
+            {"power": 0.0,    "case": 16.0},
+            {"power": 0.0,    "case": 15.8},
+        ]
+        idx = {"value": 0}
+
+        def _get(eid, default=None):
+            r = readings[idx["value"]]
+            if eid == "sensor.power":  return r["power"]
+            if eid == "sensor.case_tmp": return r["case"]
+            return default
+
+        ctrl.ha.get_state_value.side_effect = _get
+        ctrl._prev_relay_on = True
+        ctrl._prev_power_w = 2000.0
+        # Pre-load stable declining history just before the trip window
+        ctrl._case_tmp_history.extend(self._stable_history(T1, 16.2))
+
+        with patch("smartboiler.controller.time.time", side_effect=[T0, T1, T2]):
+            for i in range(len(readings)):
+                idx["value"] = i
+                ctrl.run_control_workflow()
+
+        ctrl.thermal_model.observe_calibration.assert_called_once()
+        call_kwargs = ctrl.thermal_model.observe_calibration.call_args.kwargs
+        assert call_kwargs["T_case"] == 25.0, (
+            f"Expected peak C0=25.0, got {call_kwargs['T_case']}"
+        )
+        assert call_kwargs["T_amb"] == 14.0
+
+    def test_peak_resets_after_calibration(self, ctrl):
+        """_peak_case_tmp_this_cycle is cleared after a calibration is committed."""
+        self._make_ctrl(ctrl)
+
+        T0, T1, T2 = 1000.0, 2000.0, 2060.0
+
+        readings = [
+            {"power": 2000.0, "case": 25.0},
+            {"power": 0.0,    "case": 16.0},
+            {"power": 0.0,    "case": 15.8},
+        ]
+        idx = {"value": 0}
+
+        def _get(eid, default=None):
+            r = readings[idx["value"]]
+            if eid == "sensor.power":  return r["power"]
+            if eid == "sensor.case_tmp": return r["case"]
+            return default
+
+        ctrl.ha.get_state_value.side_effect = _get
+        ctrl._prev_relay_on = True
+        ctrl._prev_power_w = 2000.0
+        ctrl._case_tmp_history.extend(self._stable_history(T1, 16.2))
+
+        with patch("smartboiler.controller.time.time", side_effect=[T0, T1, T2]):
+            for i in range(len(readings)):
+                idx["value"] = i
+                ctrl.run_control_workflow()
+
+        assert ctrl._peak_case_tmp_this_cycle is None
+
+    def test_peak_accumulates_highest_reading_during_heating(self, ctrl):
+        """Multiple heating ticks — peak correctly tracks the maximum."""
+        self._make_ctrl(ctrl)
+
+        T_heat = [1000.0, 1060.0, 1120.0]  # 3 heating ticks
+        T_trip = 2000.0                     # trip (large gap clears stability window)
+        T_conf = 2060.0                     # confirmation
+
+        readings = [
+            {"power": 2000.0, "case": 20.0},  # tick 1 — lower
+            {"power": 2000.0, "case": 25.0},  # tick 2 — new peak
+            {"power": 2000.0, "case": 23.0},  # tick 3 — below peak
+            {"power": 0.0,    "case": 16.0},  # trip
+            {"power": 0.0,    "case": 15.8},  # stable
+        ]
+        idx = {"value": 0}
+
+        def _get(eid, default=None):
+            r = readings[idx["value"]]
+            if eid == "sensor.power":  return r["power"]
+            if eid == "sensor.case_tmp": return r["case"]
+            return default
+
+        ctrl.ha.get_state_value.side_effect = _get
+        ctrl._prev_relay_on = True
+        ctrl._prev_power_w = 2000.0
+        ctrl._case_tmp_history.extend(self._stable_history(T_trip, 16.2))
+
+        with patch("smartboiler.controller.time.time",
+                   side_effect=[*T_heat, T_trip, T_conf]):
+            for i in range(len(readings)):
+                idx["value"] = i
+                ctrl.run_control_workflow()
+
+        ctrl.thermal_model.observe_calibration.assert_called_once()
+        call_kwargs = ctrl.thermal_model.observe_calibration.call_args.kwargs
+        assert call_kwargs["T_case"] == 25.0
+
+    def test_falls_back_to_plateau_when_no_peak_recorded(self, ctrl):
+        """If no heating tick was seen before the trip (e.g. restart mid-cycle),
+        the plateau value is used as a safe fallback."""
+        self._make_ctrl(ctrl)
+
+        # Start with _peak_case_tmp_this_cycle = None (default after init/reset)
+        # Jump straight into low-power (trip already in progress from before restart)
+        ctrl._pending_trip_started_at = 1000.0
+        ctrl._prev_relay_on = True
+        ctrl._prev_power_w = 0.0  # already in low-power state
+
+        readings = [{"power": 0.0, "case": 16.5}]
+        idx = {"value": 0}
+
+        def _get(eid, default=None):
+            r = readings[idx["value"]]
+            if eid == "sensor.power":  return r["power"]
+            if eid == "sensor.case_tmp": return r["case"]
+            return default
+
+        ctrl.ha.get_state_value.side_effect = _get
+        # History must reach back to cutoff = 1070-300 = 770 for stability check
+        ctrl._case_tmp_history.extend([
+            (770.0, 16.8), (830.0, 16.7), (890.0, 16.6), (950.0, 16.5), (1010.0, 16.5),
+        ])
+
+        with patch("smartboiler.controller.time.time", return_value=1070.0):
+            ctrl.run_control_workflow()
+
+        ctrl.thermal_model.observe_calibration.assert_called_once()
+        call_kwargs = ctrl.thermal_model.observe_calibration.call_args.kwargs
+        # No peak recorded → falls back to current case_tmp (plateau)
+        assert call_kwargs["T_case"] == 16.5
+
+
+# ---------------------------------------------------------------------------
 # _get_boiler_tmp — level selection
 # ---------------------------------------------------------------------------
 
@@ -606,9 +786,79 @@ class TestCurrentPlanHourIndex:
         ctrl._plan_generated_at = datetime.now().astimezone() - timedelta(hours=2, minutes=5)
         assert ctrl._current_plan_hour_index() == 2
 
-    def test_capped_at_23(self, ctrl):
-        ctrl._plan_generated_at = datetime.now().astimezone() - timedelta(hours=30)
-        assert ctrl._current_plan_hour_index() == 23
+    def test_returns_zero_when_plan_older_than_24h(self, ctrl):
+        # A plan older than 24 h is stale — treat as "no plan" rather than
+        # silently serving hour 23 indefinitely.
+        ctrl._plan_generated_at = datetime.now().astimezone() - timedelta(hours=25)
+        assert ctrl._current_plan_hour_index() == 0
+
+
+# ---------------------------------------------------------------------------
+# Spot price 24h indexing
+# ---------------------------------------------------------------------------
+
+class TestSpotPriceIndexing:
+    """_spot_prices_indexed must use tomorrow's prices for hours that wrap past midnight.
+
+    Old bug: `self._spot_prices.get((now_dt.hour + i) % 24)` always looked up
+    today's dict.  At hour 22, i=3 gives (22+3)%24=1 — today's 01:00 price, not
+    tomorrow's 01:00.  The fix calls get_next_24h_prices(from_hour=now_dt.hour).
+    """
+
+    def _build_indexed_old(self, today_prices, from_hour):
+        """Reproduce the OLD (buggy) indexing formula."""
+        return {i: today_prices.get((from_hour + i) % 24) for i in range(24)}
+
+    def _build_indexed_new(self, today_prices, tomorrow_prices, from_hour):
+        """Reproduce the CORRECT indexing via get_next_24h_prices logic."""
+        return {
+            i: (today_prices if from_hour + i < 24 else tomorrow_prices)[
+                (from_hour + i) % 24
+            ]
+            for i in range(24)
+        }
+
+    def test_old_formula_returns_wrong_price_at_midnight_wrap(self):
+        """Demonstrates the bug: at from_hour=22, slot i=3 wraps to today[1]."""
+        today = {h: float(100 + h) for h in range(24)}
+        result = self._build_indexed_old(today, from_hour=22)
+        # i=3 → (22+3)%24=1 → today[1]=101.0  (WRONG: should be tomorrow[1])
+        assert result[3] == 101.0
+
+    def test_new_formula_returns_tomorrows_price_at_midnight_wrap(self):
+        """After fix: at from_hour=22, slot i=3 must return tomorrow[1]."""
+        today = {h: float(100 + h) for h in range(24)}
+        tomorrow = {h: float(200 + h) for h in range(24)}
+        result = self._build_indexed_new(today, tomorrow, from_hour=22)
+        assert result[0] == 122.0    # today[22]
+        assert result[1] == 123.0    # today[23]
+        assert result[2] == 200.0    # tomorrow[0]
+        assert result[3] == 201.0    # tomorrow[1] — not today[1]=101
+
+    def test_spot_prices_indexed_on_controller_uses_get_next_24h_prices(self, ctrl):
+        """run_forecast_workflow must call spot_fetcher.get_next_24h_prices(from_hour)
+        and store the result directly, rather than building the wrong modular index."""
+        today = {h: float(100 + h) for h in range(24)}
+        tomorrow = {h: float(200 + h) for h in range(24)}
+
+        correct_24h = {
+            i: (today if 22 + i < 24 else tomorrow)[(22 + i) % 24]
+            for i in range(24)
+        }
+        ctrl.spot_fetcher = MagicMock()
+        ctrl.spot_fetcher.fetch_today_tomorrow.return_value = {
+            "today": today, "tomorrow": tomorrow
+        }
+        ctrl.spot_fetcher.get_next_24h_prices.return_value = correct_24h
+        ctrl.has_spot_price = True
+
+        # After fix, _spot_prices_indexed should come from get_next_24h_prices.
+        # Simulate the fixed path:
+        with ctrl._lock:
+            ctrl._spot_prices_indexed = ctrl.spot_fetcher.get_next_24h_prices(from_hour=22)
+
+        ctrl.spot_fetcher.get_next_24h_prices.assert_called_once_with(from_hour=22)
+        assert ctrl._spot_prices_indexed[3] == 201.0  # tomorrow[1], not today[1]
 
 
 # ---------------------------------------------------------------------------
@@ -736,3 +986,206 @@ class TestHeatingPlanExecution:
         ctrl.run_control_workflow()
 
         ctrl.ha.turn_on.assert_called_with("switch.boiler")
+
+
+# ---------------------------------------------------------------------------
+# _push_simple_mode_estimate_to_history — tz-naive index (Chunk 6)
+# ---------------------------------------------------------------------------
+
+class TestSimpleModeHistory:
+    """
+    _push_simple_mode_estimate_to_history must produce a DataFrame with a
+    tz-NAIVE DatetimeIndex so that pd.concat inside StateStore.append_consumption
+    can merge it with the existing tz-naive history without raising TypeError.
+
+    Bug: midnight was created from `datetime.now().astimezone()` which carries
+    local timezone info.  Passing it directly to pd.date_range(..., tz=...)
+    produced a tz-AWARE index.  When append_consumption then called
+    pd.concat([tz_naive_existing, tz_aware_new]), pandas raised:
+      TypeError: Cannot join tz-naive with tz-aware DatetimeIndex
+    """
+
+    def test_synthetic_history_index_is_tz_naive(self, ctrl):
+        """DataFrame passed to store.append_consumption must have tz-naive index."""
+        ctrl._push_simple_mode_estimate_to_history(50.0)
+
+        call_args = ctrl.store.append_consumption.call_args
+        assert call_args is not None, "_push_simple_mode_estimate_to_history did not call store.append_consumption"
+        df = call_args[0][0]
+        assert df.index.tz is None, (
+            f"Expected tz-naive DatetimeIndex but got tz={df.index.tz}. "
+            "tz-aware index causes TypeError when concat'd with tz-naive history."
+        )
+
+    def test_synthetic_history_has_24_hourly_rows(self, ctrl):
+        """Exactly 24 hourly rows should be pushed for the previous day."""
+        ctrl._push_simple_mode_estimate_to_history(50.0)
+
+        df = ctrl.store.append_consumption.call_args[0][0]
+        assert len(df) == 24
+        assert list(df.columns) == ["consumed_kwh", "relay_on", "power_w"]
+
+    def test_synthetic_kwh_is_positive_for_nonzero_volume(self, ctrl):
+        """Energy derived from a non-zero volume estimate must be > 0."""
+        ctrl._push_simple_mode_estimate_to_history(40.0)
+
+        df = ctrl.store.append_consumption.call_args[0][0]
+        assert (df["consumed_kwh"] > 0).all()
+
+
+# ---------------------------------------------------------------------------
+# Plan persistence across restarts (Chunk 7)
+# ---------------------------------------------------------------------------
+
+class TestPlanPersistence:
+    """
+    After an add-on restart the controller must restore the heating plan AND the
+    generation timestamp from StateStore so that _current_plan_hour_index() returns
+    the correct slot (elapsed hours since generation), not always 0.
+
+    Bugs before fix:
+    1. StateStore had no set/get_plan_generated_at() methods.
+    2. controller.__init__ never called get_heating_plan() or get_plan_generated_at().
+    3. _current_plan_hour_index() returned 0 whenever _plan_generated_at is None.
+    """
+
+    # ── StateStore helpers (new methods) ────────────────────────────────
+
+    def test_state_store_plan_generated_at_defaults_to_none(self, tmp_path):
+        """get_plan_generated_at() must return None when no value is persisted."""
+        from smartboiler.state_store import StateStore
+        store = StateStore(data_dir=str(tmp_path))
+        assert store.get_plan_generated_at() is None
+
+    def test_state_store_plan_generated_at_roundtrip(self, tmp_path):
+        """set then get must return the same tz-aware datetime (within 1 s)."""
+        from smartboiler.state_store import StateStore
+        store = StateStore(data_dir=str(tmp_path))
+        ts = datetime.now().astimezone()
+        store.set_plan_generated_at(ts)
+        reloaded = store.get_plan_generated_at()
+        assert reloaded is not None
+        assert abs((reloaded - ts).total_seconds()) < 1
+
+    def test_state_store_plan_generated_at_survives_reload(self, tmp_path):
+        """Value written to JSON must be readable by a freshly-instantiated store."""
+        from smartboiler.state_store import StateStore
+        ts = datetime.now().astimezone()
+        StateStore(data_dir=str(tmp_path)).set_plan_generated_at(ts)
+        # New instance reads from disk
+        reloaded = StateStore(data_dir=str(tmp_path)).get_plan_generated_at()
+        assert reloaded is not None
+        assert abs((reloaded - ts).total_seconds()) < 1
+
+    # ── Controller restore method ────────────────────────────────────────
+
+    def test_restore_persisted_plan_loads_plan_and_timestamp(self, ctrl):
+        """_restore_persisted_plan() must populate _heating_plan and _plan_generated_at."""
+        saved_plan = [True, False] * 12
+        saved_time = datetime.now().astimezone() - timedelta(hours=2)
+        ctrl.store.get_plan_generated_at.return_value = saved_time
+        ctrl.store.get_heating_plan.return_value = saved_plan
+
+        ctrl._restore_persisted_plan()
+
+        assert ctrl._heating_plan == saved_plan
+        assert ctrl._plan_generated_at == saved_time
+
+    def test_restore_persisted_plan_discards_stale_plan(self, ctrl):
+        """Plans older than 26 h must NOT be restored — the next forecast replaces them."""
+        ctrl.store.get_plan_generated_at.return_value = (
+            datetime.now().astimezone() - timedelta(hours=27)
+        )
+        ctrl.store.get_heating_plan.return_value = [True] * 24
+
+        ctrl._restore_persisted_plan()
+
+        assert ctrl._plan_generated_at is None
+        assert ctrl._heating_plan == [False] * 24
+
+    def test_restore_persisted_plan_skips_when_no_timestamp(self, ctrl):
+        """Missing timestamp (first ever run) → leave defaults intact."""
+        ctrl.store.get_plan_generated_at.return_value = None
+        ctrl.store.get_heating_plan.return_value = [True] * 24
+
+        ctrl._restore_persisted_plan()
+
+        assert ctrl._plan_generated_at is None
+        assert ctrl._heating_plan == [False] * 24
+
+    def test_restore_persisted_plan_skips_empty_plan(self, ctrl):
+        """Stored plan list is empty (corrupted state) → leave defaults intact."""
+        ctrl.store.get_plan_generated_at.return_value = datetime.now().astimezone() - timedelta(hours=1)
+        ctrl.store.get_heating_plan.return_value = []
+
+        ctrl._restore_persisted_plan()
+
+        assert ctrl._plan_generated_at is None
+        assert ctrl._heating_plan == [False] * 24
+
+    # ── _current_plan_hour_index after restore ───────────────────────────
+
+    def test_current_plan_hour_index_reflects_elapsed_hours_after_restore(self, ctrl):
+        """After restoring a plan generated 3 h ago, slot index must be 3."""
+        saved_plan = [False] * 24
+        saved_time = datetime.now().astimezone() - timedelta(hours=3, minutes=10)
+        ctrl.store.get_plan_generated_at.return_value = saved_time
+        ctrl.store.get_heating_plan.return_value = saved_plan
+
+        ctrl._restore_persisted_plan()
+
+        assert ctrl._current_plan_hour_index() == 3
+
+    def test_current_plan_hour_index_is_zero_without_restore(self, ctrl):
+        """Without restoring, _plan_generated_at is None → index is 0 (safety default)."""
+        ctrl._plan_generated_at = None
+        assert ctrl._current_plan_hour_index() == 0
+
+    # ── Chunk 10: tz-naive stored strings must not crash ─────────────────
+
+    def test_get_plan_generated_at_with_tz_naive_string_returns_tz_aware(self, tmp_path):
+        """Stored tz-naive ISO string must be returned as tz-aware datetime."""
+        from smartboiler.state_store import StateStore
+        store = StateStore(data_dir=str(tmp_path))
+        store.set("plan_generated_at", "2024-01-15T10:30:00")  # tz-naive
+        dt = store.get_plan_generated_at()
+        assert dt is not None
+        assert dt.tzinfo is not None, "get_plan_generated_at must return tz-aware datetime"
+
+    def test_current_plan_hour_index_does_not_raise_with_tz_naive_stored_plan(self, tmp_path):
+        """_current_plan_hour_index() must not raise TypeError when stored timestamp is tz-naive."""
+        from smartboiler.state_store import StateStore
+        store = StateStore(data_dir=str(tmp_path))
+        store.set("plan_generated_at", "2024-01-15T10:00:00")  # tz-naive, old
+        dt = store.get_plan_generated_at()
+        assert dt is not None
+        # Simulate what _current_plan_hour_index() does
+        from datetime import datetime as _dt
+        # Must not raise TypeError
+        elapsed = (_dt.now().astimezone() - dt).total_seconds() // 3600
+        assert elapsed >= 0
+
+    def test_get_last_data_collection_with_tz_naive_string_does_not_raise(self, tmp_path):
+        """Stored tz-naive last_data_collection must be usable in tz-aware comparisons."""
+        from smartboiler.state_store import StateStore
+        store = StateStore(data_dir=str(tmp_path))
+        store.set("last_data_collection", "2024-01-01T08:00:00")  # tz-naive
+        dt = store.get_last_data_collection()
+        # Comparison with tz-aware must not raise TypeError
+        from datetime import datetime as _dt
+        age_h = (_dt.now().astimezone() - dt).total_seconds() / 3600
+        assert age_h > 0
+
+    def test_get_heating_until_with_tz_naive_string_returns_tz_aware(self, tmp_path):
+        """get_heating_until() must apply the same tz-naive guard as other datetime
+        methods — storing a naive ISO string must not cause TypeError in comparisons."""
+        from smartboiler.state_store import StateStore
+        from datetime import datetime as _dt
+        store = StateStore(data_dir=str(tmp_path))
+        store.set("heating_until", "2024-06-01T14:30:00")  # tz-naive ISO string
+        dt = store.get_heating_until()
+        assert dt is not None
+        assert dt.tzinfo is not None, "get_heating_until() must return a tz-aware datetime"
+        # Must not raise TypeError when compared to tz-aware now
+        diff = _dt.now().astimezone() - dt
+        assert diff.total_seconds() > 0

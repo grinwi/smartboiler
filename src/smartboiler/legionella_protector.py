@@ -45,13 +45,20 @@ class LegionellaProtector:
         last = self._store.get_last_legionella_heating()
         return (datetime.now().astimezone() - last) > self._interval
 
-    def check_and_act(self, boiler_tmp: float) -> bool:
+    def check_and_act(self, boiler_tmp: float, relay_active: bool = True) -> bool:
         """
         If a legionella cycle is due, command the relay and return True.
         Returns False when legionella protection is not active (caller continues normally).
 
-        When the water reaches `target_tmp`, the cycle is marked complete and
-        the relay is turned off.
+        When the water reaches `target_tmp` AND the relay is confirmed active
+        (not HDO-blocked), the cycle is marked complete and the relay is turned off.
+
+        Args:
+            boiler_tmp:   Current estimated water temperature in °C.
+            relay_active: False when the relay is in an HDO-unavailable state
+                          (power = 0 despite switch being commanded ON). Prevents
+                          a stale cached temperature from falsely completing the
+                          cycle while the grid operator is blocking the element.
         """
         if not self.is_due():
             return False
@@ -62,7 +69,7 @@ class LegionellaProtector:
         )
         self._ha.turn_on(self._switch_entity_id)
 
-        if boiler_tmp >= self._target_tmp:
+        if boiler_tmp >= self._target_tmp and relay_active:
             now_tz = datetime.now().astimezone()
             self._store.set_last_legionella_heating(now_tz)
             self._ha.turn_off(self._switch_entity_id)

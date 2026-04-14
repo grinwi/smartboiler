@@ -95,12 +95,23 @@ def collector_with_flow(mock_ha, mock_store):
 # ---------------------------------------------------------------------------
 
 def _ha_state(entity_id: str, state: str, ts: datetime) -> Dict:
-    """Create a single HA state-change object in the format returned by the REST API."""
+    """Create a single HA state-change object in the format returned by the REST API.
+
+    ``ts`` is treated as a LOCAL-NAIVE wall-clock time (as produced by test code
+    that uses ``datetime(...)`` without tz info).  The timestamp stored in the
+    returned dict is the corresponding UTC ISO-8601 string — exactly what HA's
+    REST API emits.  ``time.mktime`` is used so that DST transitions on the
+    specific *date* of ``ts`` are handled correctly.
+    """
+    import time
+    from datetime import timezone as _dt_tz
+    epoch = time.mktime(ts.timetuple())
+    utc_dt = datetime.fromtimestamp(epoch, tz=_dt_tz.utc)
     return {
         "entity_id": entity_id,
         "state": state,
-        "last_changed": ts.isoformat() + "+00:00",
-        "last_updated": ts.isoformat() + "+00:00",
+        "last_changed": utc_dt.isoformat(),
+        "last_updated": utc_dt.isoformat(),
         "attributes": {},
     }
 
@@ -192,6 +203,88 @@ class TestStatesToSeries:
             history = [_ha_state("switch.x", off_str, start)]
             series = collector._states_to_series(history, start, end, dtype="bool")
             assert series.iloc[0] == pytest.approx(0.0)
+
+    def test_off_on_transition_placed_at_correct_local_minute(self, collector):
+        """
+        HA timestamps are in UTC. _states_to_series must convert them to LOCAL-naive
+        before comparing with the minute-series index (also local-naive).
+
+        Regression: `pd.to_datetime(ts, utc=True).tz_localize(None)` strips the tz
+        and leaves a UTC-naive timestamp.  In a UTC+N system, this places each event
+        N hours *earlier* in the local-naive index, causing the OFF→ON transition to
+        land at the wrong minute bucket.
+
+        Scenario (UTC+2):
+          - series window: local 10:00–11:00
+          - relay OFF at local 10:00 = UTC 08:00  → HA stores "+00:00"
+          - relay ON  at local 10:30 = UTC 08:30  → HA stores "+00:00"
+        Bug: UTC-naive 08:30 < local-naive 10:00 series-start → OFF not placed,
+             ON event fills the *entire* hour → minute 10:00 = 1.0 (wrong).
+        Fix: convert UTC → local before comparison → minute 10:00 = 0.0,
+             minute 10:30 = 1.0.
+
+        Uses today's date so DST rules are consistent with the current offset.
+        Skipped in UTC-only environments where local == UTC and the bug is invisible.
+        """
+        from datetime import date, timezone as dt_timezone
+
+        today = date.today()
+        local_tz = datetime.now().astimezone().tzinfo
+        offset_h = int(datetime.now().astimezone().utcoffset().total_seconds() // 3600)
+
+        if offset_h == 0:
+            pytest.skip(
+                "System timezone is UTC — no offset to expose the UTC/local mismatch. "
+                "Run in a non-UTC timezone (e.g. CZ UTC+2) to see red→green evidence."
+            )
+
+        # Build local-aware 10:00 and 10:30 for TODAY, then convert to UTC-naive.
+        # This keeps DST consistent: we use the actual offset for today's date.
+        local_10_00 = datetime(today.year, today.month, today.day, 10, 0).replace(tzinfo=local_tz)
+        local_10_30 = datetime(today.year, today.month, today.day, 10, 30).replace(tzinfo=local_tz)
+
+        utc_off_dt = local_10_00.astimezone(dt_timezone.utc).replace(tzinfo=None)
+        utc_on_dt  = local_10_30.astimezone(dt_timezone.utc).replace(tzinfo=None)
+
+        # Series window is local-naive (as _fetch_hourly produces via start.replace(tzinfo=None))
+        start_local = datetime(today.year, today.month, today.day, 10, 0)
+        end_local   = datetime(today.year, today.month, today.day, 11, 0)
+
+        history = [
+            {
+                "entity_id": "switch.boiler",
+                "state": "off",
+                "last_changed": utc_off_dt.isoformat() + "+00:00",
+                "last_updated": utc_off_dt.isoformat() + "+00:00",
+                "attributes": {},
+            },
+            {
+                "entity_id": "switch.boiler",
+                "state": "on",
+                "last_changed": utc_on_dt.isoformat() + "+00:00",
+                "last_updated": utc_on_dt.isoformat() + "+00:00",
+                "attributes": {},
+            },
+        ]
+
+        series = collector._states_to_series(history, start_local, end_local, dtype="bool")
+
+        minute_00 = pd.Timestamp(datetime(today.year, today.month, today.day, 10, 0))
+        minute_30 = pd.Timestamp(datetime(today.year, today.month, today.day, 10, 30))
+
+        assert minute_00 in series.index, "Minute 10:00 not in series index"
+        assert minute_30 in series.index, "Minute 10:30 not in series index"
+
+        assert series.loc[minute_00] == pytest.approx(0.0), (
+            f"Expected OFF at local 10:00 (= UTC {utc_off_dt.strftime('%H:%M')}), "
+            f"got {series.loc[minute_00]}. "
+            "UTC/local mismatch: tz_localize(None) produces UTC-naive, "
+            "placing events at wrong minute bucket."
+        )
+        assert series.loc[minute_30] == pytest.approx(1.0), (
+            f"Expected ON at local 10:30 (= UTC {utc_on_dt.strftime('%H:%M')}), "
+            f"got {series.loc[minute_30]}."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -327,6 +420,33 @@ class TestFetchHourly:
         if not df.empty:
             # Flow-based consumption should be > 0 (or NaN if no valid data)
             assert "consumed_kwh" in df.columns
+
+    def test_rows_with_nan_consumed_kwh_are_dropped(self, collector_with_flow, mock_ha):
+        """_fetch_hourly must not return rows whose consumed_kwh is NaN.
+
+        Without a flow/temp reading the column is NaN for that hour (min_count=1
+        makes resample produce NaN rather than 0).  Such rows must be removed so
+        the predictor is never trained on phantom zero-consumption hours.
+        The old bug: dropna(how="all") only removes rows where EVERY column is NaN,
+        so relay_on / power_w data kept the row alive with NaN consumed_kwh.
+        """
+        start = datetime(2024, 3, 11, 8, 0)
+        end = datetime(2024, 3, 11, 10, 0)
+        # Relay has data for both hours, but flow/temp return empty (no consumption data).
+        relay_hist = [_ha_state("switch.boiler", "on", start)]
+        power_hist = [_ha_state("sensor.boiler_power", "2000", start)]
+        mock_ha.get_history.side_effect = lambda eid, *a, **kw: {
+            "switch.boiler": relay_hist,
+            "sensor.boiler_power": power_hist,
+        }.get(eid, [])
+
+        df = collector_with_flow._fetch_hourly(start, end)
+
+        # With no flow/temp data, consumed_kwh is NaN for every hour.
+        # Those rows must be absent from the result.
+        assert df.empty or df["consumed_kwh"].notna().all(), (
+            "Rows with NaN consumed_kwh must be dropped, not passed to the predictor"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -518,10 +638,17 @@ def _bootstrap_from_weeks(
 
         # Feed HDO learner from raw relay HA history (mirrors production control loop).
         # "unavailable" state = HDO cut the circuit.
+        # Convert UTC HA timestamps → local-naive so that dt.hour reflects local
+        # wall-clock hours (HDO schedules are defined in local time).
         for relay_obj in week_data.get("switch.boiler", []):
-            ts = pd.to_datetime(relay_obj["last_changed"], utc=True).tz_localize(None)
+            ts_local = pd.Timestamp(
+                pd.to_datetime(relay_obj["last_changed"], utc=True)
+                .to_pydatetime()
+                .astimezone()
+                .replace(tzinfo=None)
+            )
             relay_unavailable = relay_obj["state"] == "unavailable"
-            hdo_learner.observe(ts.to_pydatetime(), relay_unavailable=relay_unavailable)
+            hdo_learner.observe(ts_local.to_pydatetime(), relay_unavailable=relay_unavailable)
 
     if all_dfs:
         full_df = pd.concat(all_dfs)

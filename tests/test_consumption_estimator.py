@@ -237,13 +237,18 @@ class TestDrawDetection:
         expected    = 100.0 * delta_water / denom
         assert abs(est._draw_vol_today - expected) < 0.5
 
-    def test_draw_vol_resets_on_day_rollover_in_tick(self):
+    def test_draw_vol_resets_via_finalize_not_tick(self):
+        """After Chunk 11 fix: tick() no longer resets draw_vol on day boundary.
+        Only _finalize_day() (called by maybe_finalize()) resets it."""
         est = make_estimator()
         est._draw_vol_today = 50.0  # simulate accumulated draws
-        # Simulate day rollover in tick()
         from datetime import date
         est._current_day = date.today() - timedelta(days=1)
+        # tick() on new day must NOT reset draw_vol_today
         est.tick(relay_on=False, T_case=20.0, T_amb=18.0, dt_s=60.0)
+        assert est._draw_vol_today == 50.0, "tick() must not reset draw_vol_today"
+        # finalize_day() must reset it
+        est._finalize_day(k_water=None, T_amb=18.0, true_vol_L=None)
         assert est._draw_vol_today == 0.0
 
 
@@ -514,19 +519,29 @@ class TestDayRollover:
         assert est._T_in_samples     == []
         assert est._draw_vol_today   == 0.0
 
-    def test_tick_resets_intraday_accumulators_on_new_day(self):
+    def test_tick_does_not_block_maybe_finalize_on_day_boundary(self):
+        """
+        Regression for Chunk 11: before the fix, tick() updated _current_day when
+        crossing a day boundary, which prevented maybe_finalize() from ever
+        triggering (because it checks today == _current_day).
+
+        After the fix, tick() must NOT update _current_day on a boundary; only
+        _finalize_day() (called from maybe_finalize()) may advance _current_day.
+        """
         est = make_estimator()
-        est._relay_on_s      = 3600.0
-        est._coupling_samples = [0.30]
-        est._T_in_samples     = [11.0]
-        est._draw_vol_today   = 10.0
-        # Simulate day boundary detected in tick()
-        est._current_day = date.today() - timedelta(days=1)
+        est._relay_on_s  = 3600.0   # yesterday had 1 h of heating
+        est._elapsed_s   = 7200.0
+        est._current_day = date.today() - timedelta(days=1)   # pretend yesterday
+
+        # A single tick on the new day must NOT block maybe_finalize()
         est.tick(relay_on=False, T_case=20.0, T_amb=18.0, dt_s=60.0)
-        assert est._relay_on_s       == 0.0
-        assert est._coupling_samples == []
-        assert est._T_in_samples     == []
-        assert est._draw_vol_today   == 0.0
+
+        # _current_day must still be yesterday so maybe_finalize() can trigger
+        result = est.maybe_finalize(k_water=None, T_amb=18.0)
+        assert result is not None, (
+            "maybe_finalize() must finalize yesterday's data even after tick() "
+            "was called on the new day (tick() must NOT advance _current_day)"
+        )
 
     def test_daily_history_bounded_at_90(self):
         est = make_estimator()

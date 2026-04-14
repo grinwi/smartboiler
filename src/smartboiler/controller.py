@@ -269,11 +269,13 @@ class SmartBoilerController:
             else None
         )
         self._plan_generated_at: Optional[datetime] = None
+        self._restore_persisted_plan()
         self._last_calib_ts: float = 0.0
         self._pending_trip_started_at: Optional[float] = None
         self._prev_relay_on: Optional[bool] = None
         self._prev_power_w: Optional[float] = None
         self._case_tmp_history = deque()
+        self._peak_case_tmp_this_cycle: Optional[float] = None
         self._lock = threading.Lock()
         self._influx_bootstrap_lock = threading.Lock()
         self._influx_bootstrap_status: Dict[str, Any] = {
@@ -321,12 +323,14 @@ class SmartBoilerController:
                     self._push_simple_mode_estimate_to_history(est_vol)
                     self.store.save_pickle("flow_estimator", self.flow_estimator)
 
-            # 3. Fetch spot prices
+            # 3. Fetch spot prices (today + tomorrow)
             if self.spot_fetcher:
                 try:
                     prices_data = self.spot_fetcher.fetch_today_tomorrow()
                     self.store.set_spot_cache(prices_data)
                     with self._lock:
+                        # Keep today's dict for the dashboard; the scheduler uses
+                        # _spot_prices_indexed (built below, spanning both days).
                         self._spot_prices = prices_data.get("today", {})
                 except Exception as e:
                     logger.warning("Spot price fetch failed: %s", e)
@@ -356,11 +360,16 @@ class SmartBoilerController:
             )
 
             # 10. Run scheduler
+            # Build a 24-slot price list starting at the current hour.
+            # Using get_next_24h_prices(from_hour) correctly spans today+tomorrow
+            # so late-night planning (e.g. at 22:00) uses tomorrow's prices for
+            # the wrap-around hours, not today's same-hour prices.
+            spot_indexed = (
+                self.spot_fetcher.get_next_24h_prices(from_hour=now_dt.hour)
+                if self.spot_fetcher else {i: None for i in range(24)}
+            )
             with self._lock:
-                self._spot_prices_indexed = {
-                    i: self._spot_prices.get((now_dt.hour + i) % 24)
-                    for i in range(24)
-                }
+                self._spot_prices_indexed = spot_indexed
                 self._heating_plan, self._plan_slots = self.scheduler.plan(
                     current_tmp=boiler_tmp,
                     consumption_forecast=forecast,
@@ -373,9 +382,10 @@ class SmartBoilerController:
                 self._forecast_24h = forecast
                 self._plan_generated_at = datetime.now().astimezone()
 
-            # 10. Persist plan, HDO learner, and thermal model
+            # 10. Persist plan, generation timestamp, HDO learner, and thermal model
             plan_serializable = [bool(h) for h in self._heating_plan]
             self.store.set_heating_plan(plan_serializable)
+            self.store.set_plan_generated_at(self._plan_generated_at)
             self.store.save_pickle("hdo_learner", self.hdo_learner)
 
             self.thermal_model.maybe_refit()
@@ -477,9 +487,16 @@ class SmartBoilerController:
         report["updated_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
         return report
 
-    def _reset_pending_trip(self) -> None:
-        """Forget the currently tracked thermostat-trip calibration candidate."""
+    def _reset_pending_trip(self, *, relay_off: bool = False) -> None:
+        """Forget the currently tracked thermostat-trip calibration candidate.
+
+        Pass relay_off=True when the relay has turned off (end of heating cycle)
+        to also reset the per-cycle peak tracker.  During active heating the peak
+        is preserved so that a later thermostat-trip calibration can use it as C0.
+        """
         self._pending_trip_started_at = None
+        if relay_off:
+            self._peak_case_tmp_this_cycle = None
 
     @staticmethod
     def _is_thermostat_trip_low_power(relay_on: bool, power_w: Optional[float]) -> bool:
@@ -552,6 +569,11 @@ class SmartBoilerController:
         )
         transition_to_zero = prev_heating and low_power
 
+        # Track peak case temp while relay is ON (heating cycle)
+        if relay_on and case_tmp is not None:
+            if self._peak_case_tmp_this_cycle is None or float(case_tmp) > self._peak_case_tmp_this_cycle:
+                self._peak_case_tmp_this_cycle = float(case_tmp)
+
         if transition_to_zero:
             self._pending_trip_started_at = now_ts
             logger.debug(
@@ -573,7 +595,7 @@ class SmartBoilerController:
                 "Thermal calibration candidate expired after %.0fs without a stable case plateau.",
                 zero_power_duration_s,
             )
-            self._reset_pending_trip()
+            self._reset_pending_trip(relay_off=True)
             return
 
         stable_case = self._case_tmp_stable_for_calibration(now_ts)
@@ -586,20 +608,26 @@ class SmartBoilerController:
             and case_tmp is not None
             and amb is not None
         ):
+            # Use the peak case temp observed during this heating cycle as C0.
+            # For poorly-mounted sensors the post-trip plateau is near ambient,
+            # but the peak during heating is the true C0 for the cooling curve.
+            c0 = self._peak_case_tmp_this_cycle if self._peak_case_tmp_this_cycle is not None else float(case_tmp)
             self.thermal_model.observe_calibration(
                 T_set=self.boiler_set_tmp,
-                T_case=float(case_tmp),
+                T_case=c0,
                 T_amb=float(amb),
                 timestamp=now_ts,
             )
             self._last_calib_ts = now_ts
             logger.info(
-                "Thermal calibration confirmed after %.0fs of zero-power hold with current stable case temp %.1f°C (T_amb=%.1f°C).",
+                "Thermal calibration confirmed after %.0fs of zero-power hold: "
+                "C0=%.1f°C (peak during cycle), plateau=%.1f°C, T_amb=%.1f°C.",
                 zero_power_duration_s,
+                c0,
                 float(case_tmp),
                 float(amb),
             )
-            self._reset_pending_trip()
+            self._reset_pending_trip(relay_off=True)
 
     def _should_hold_relay_for_trip_calibration(
         self,
@@ -664,7 +692,7 @@ class SmartBoilerController:
                 if case_tmp is not None and not relay_on:
                     self.thermal_model.observe_case_tmp(case_tmp, amb, timestamp=now_ts)
             else:
-                self._reset_pending_trip()
+                self._reset_pending_trip(relay_off=True)
 
             hold_for_trip_calibration = self._should_hold_relay_for_trip_calibration(
                 relay_on=relay_on,
@@ -705,8 +733,9 @@ class SmartBoilerController:
                 self.ha.turn_on(self.boiler_switch_entity_id)
                 return
 
-            # Legionella protection
-            if self.legionella.check_and_act(boiler_tmp):
+            # Legionella protection — pass relay_active so stale HDO-blocked
+            # temperatures cannot falsely complete the cycle.
+            if self.legionella.check_and_act(boiler_tmp, relay_active=not relay_unavailable):
                 if hold_for_trip_calibration:
                     logger.debug(
                         "Holding relay ON after thermostat cut-off so calibration can be confirmed."
@@ -797,12 +826,49 @@ class SmartBoilerController:
         except Exception as e:
             logger.error("Control workflow error: %s", e, exc_info=True)
 
+    def _restore_persisted_plan(self) -> None:
+        """Reload the heating plan and its generation timestamp from StateStore.
+
+        Called from __init__ so that after an add-on restart the control loop
+        uses the correct plan slot instead of always starting at index 0.
+
+        Guards:
+        - No stored timestamp → skip (first-ever run or corrupted state).
+        - Plan older than 26 h → skip (stale; next ForecastWorkflow will replace it).
+        - Empty plan list → skip (corrupted state).
+
+        In all skip cases the instance attributes are reset to their defaults
+        so this method is idempotent regardless of prior attribute state.
+        """
+        # Always reset to defaults first; override below only on successful restore.
+        self._heating_plan = [False] * 24
+        self._plan_generated_at = None
+
+        ts = self.store.get_plan_generated_at()
+        if ts is None:
+            return
+        age_h = (datetime.now().astimezone() - ts).total_seconds() / 3600
+        if age_h > 26:
+            return
+        plan = self.store.get_heating_plan()
+        if not plan:
+            return
+        self._heating_plan = [bool(h) for h in plan]
+        self._plan_generated_at = ts
+        logger.info(
+            "Restored persisted plan (generated %.1f h ago, %d heating hours).",
+            age_h, sum(self._heating_plan),
+        )
+
     def _current_plan_hour_index(self) -> int:
         """Return the index into the 24h plan for the current time."""
         if self._plan_generated_at is None:
             return 0
         elapsed_h = int((datetime.now().astimezone() - self._plan_generated_at).total_seconds() // 3600)
-        return min(elapsed_h, 23)
+        if elapsed_h >= 24:
+            # Plan is older than 24 h — stale, treat as no valid plan
+            return 0
+        return elapsed_h
 
     # ── Dashboard state assembly ──────────────────────────────────────────
 
@@ -1026,8 +1092,11 @@ class SmartBoilerController:
 
         from datetime import timedelta
         yesterday = datetime.now().astimezone() - timedelta(days=1)
-        midnight  = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
-        idx = pd.date_range(midnight, periods=24, freq="1h", tz=midnight.tzinfo)
+        # Strip tzinfo so the index is tz-naive, matching the tz-naive convention
+        # used by HADataCollector and StateStore.  A tz-aware index would cause
+        # pd.concat to raise TypeError when merged with existing history.
+        midnight  = yesterday.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+        idx = pd.date_range(midnight, periods=24, freq="1h")
         df_synthetic = pd.DataFrame(
             {"consumed_kwh": [hourly_kwh] * 24, "relay_on": [0.0] * 24, "power_w": [0.0] * 24},
             index=idx,
@@ -1228,7 +1297,10 @@ class SmartBoilerController:
             try:
                 seeded_hdo = self._new_hdo_learner()
                 summary = bootstrapper.run(hdo_learner=seeded_hdo)
-                self.hdo_learner = seeded_hdo
+                # Acquire the control-loop lock before swapping hdo_learner so
+                # the control workflow never sees a partial/None reference.
+                with self._lock:
+                    self.hdo_learner = seeded_hdo
                 self.store.save_pickle("thermal_model", self.thermal_model)
                 self.store.save_pickle("hdo_learner", self.hdo_learner)
                 summary.update(self._refresh_after_influx_bootstrap())
