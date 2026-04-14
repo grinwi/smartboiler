@@ -115,7 +115,7 @@ class HADataCollector:
         # min_count=1 makes consumed_kwh NaN for hours with no valid flow/temp data,
         # those rows are then removed by dropna so the predictor sees no phantom zeros.
         df_hourly["relay_on"] = df_hourly["relay_on"] > 0.5
-        return df_hourly.dropna(how="all")
+        return df_hourly.dropna(subset=["consumed_kwh"])
 
     def _states_to_series(
         self,
@@ -135,7 +135,16 @@ class HADataCollector:
             ts_str = state_obj.get("last_changed") or state_obj.get("last_updated", "")
             raw = state_obj.get("state", "")
             try:
-                ts = pd.to_datetime(ts_str, utc=True).tz_localize(None)
+                # Convert the UTC-aware HA timestamp to a local-naive Timestamp so
+                # it can be compared with the local-naive minute-series index.
+                # tz_localize(None) would strip the tz and leave a UTC-naive value,
+                # shifting every event by the local UTC offset (e.g. -2 h for CZ).
+                ts = pd.Timestamp(
+                    pd.to_datetime(ts_str, utc=True)
+                    .to_pydatetime()
+                    .astimezone()
+                    .replace(tzinfo=None)
+                )
                 if raw in ("unavailable", "unknown", ""):
                     # Explicitly mark the gap as NaN so it doesn't silently
                     # forward-fill a stale reading over a long outage.
@@ -151,7 +160,12 @@ class HADataCollector:
             if i + 1 < len(history):
                 next_ts_str = history[i + 1].get("last_changed") or history[i + 1].get("last_updated", "")
                 try:
-                    next_ts = pd.to_datetime(next_ts_str, utc=True).tz_localize(None)
+                    next_ts = pd.Timestamp(
+                        pd.to_datetime(next_ts_str, utc=True)
+                        .to_pydatetime()
+                        .astimezone()
+                        .replace(tzinfo=None)
+                    )
                 except Exception:
                     next_ts = end
             else:

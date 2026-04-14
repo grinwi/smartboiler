@@ -117,7 +117,11 @@ class StateStore:
         val = self._state.get("last_legionella_heating")
         if val:
             try:
-                return datetime.fromisoformat(val)
+                dt = datetime.fromisoformat(val)
+                # Older code stored tz-naive strings; interpret as local time.
+                if dt.tzinfo is None:
+                    dt = dt.astimezone()
+                return dt
             except Exception:
                 pass
         # Default: now (so legionella check doesn't immediately trigger)
@@ -130,10 +134,13 @@ class StateStore:
         val = self._state.get("last_data_collection")
         if val:
             try:
-                return datetime.fromisoformat(val)
+                dt = datetime.fromisoformat(val)
+                if dt.tzinfo is None:
+                    dt = dt.astimezone()
+                return dt
             except Exception:
                 pass
-        return datetime(2000, 1, 1)
+        return datetime(2000, 1, 1).astimezone()
 
     def set_last_data_collection(self, dt: datetime) -> None:
         self.set("last_data_collection", dt.isoformat())
@@ -143,6 +150,21 @@ class StateStore:
 
     def set_heating_plan(self, plan: List) -> None:
         self.set("heating_plan", plan)
+
+    def get_plan_generated_at(self) -> Optional[datetime]:
+        val = self._state.get("plan_generated_at")
+        if val:
+            try:
+                dt = datetime.fromisoformat(val)
+                if dt.tzinfo is None:
+                    dt = dt.astimezone()
+                return dt
+            except Exception:
+                pass
+        return None
+
+    def set_plan_generated_at(self, dt: datetime) -> None:
+        self.set("plan_generated_at", dt.isoformat())
 
     def get_spot_cache(self) -> Dict:
         return self._state.get("spot_cache", {})
@@ -154,7 +176,10 @@ class StateStore:
         val = self._state.get("heating_until")
         if val:
             try:
-                return datetime.fromisoformat(val)
+                dt = datetime.fromisoformat(val)
+                if dt.tzinfo is None:
+                    dt = dt.astimezone()
+                return dt
             except Exception:
                 pass
         return None

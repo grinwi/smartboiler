@@ -73,7 +73,11 @@ class SpotPriceFetcher:
         for ts, price in zip(unix_seconds, price_eur):
             if price is None:
                 continue
-            hour = datetime.utcfromtimestamp(ts).hour
+            # Use local time so the hour key matches local wall-clock hours used
+            # by the scheduler (controller indexes prices by now_dt.hour which is
+            # local). utcfromtimestamp would produce UTC hours and shift every
+            # price slot by the UTC offset (e.g. -1/-2 h for CZ).
+            hour = datetime.fromtimestamp(ts).hour
             prices[hour] = float(price)
 
         return prices

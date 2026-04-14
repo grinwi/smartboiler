@@ -139,15 +139,12 @@ class FlowlessConsumptionEstimator:
         if self._current_day is None:
             self._current_day = today
 
-        # Day boundary crossed — rollover without finalize (maybe_finalize handles it)
-        if today != self._current_day:
-            self._current_day     = today
-            self._relay_on_s      = 0.0
-            self._elapsed_s       = 0.0
-            self._T_set_samples   = []
-            self._coupling_samples = []
-            self._T_in_samples    = []
-            self._draw_vol_today  = 0.0
+        # Day boundary detected — do NOT reset accumulators or advance _current_day
+        # here.  Resetting in tick() would prevent maybe_finalize() from ever
+        # running (maybe_finalize checks today != _current_day, which tick() would
+        # already have updated).  Let _finalize_day() — called by maybe_finalize()
+        # from the hourly forecast workflow — own the reset and _current_day update.
+        # If the forecast workflow misses a cycle by ≤1 h the error is negligible.
 
         self._elapsed_s += dt_s
         if relay_on:

@@ -21,7 +21,9 @@ def test_seed_hdo_learner_infers_hdo_from_auxiliary_telemetry_gap():
     # Monday and repeating the same gap offset in all three weeks).
     import math
 
-    end = datetime.now().replace(second=0, microsecond=0)
+    # Anchor start to a round hour so that minutes 41 and 56 (after ffill)
+    # always land in the same clock-hour regardless of when the test runs.
+    end = datetime.now().replace(minute=0, second=0, microsecond=0)
     start = end - timedelta(weeks=3)
 
     # Build an aux-sensor series that has a 40-min gap (minutes 41–80 relative
@@ -48,7 +50,9 @@ def test_seed_hdo_learner_infers_hdo_from_auxiliary_telemetry_gap():
             return power_series
         return pd.Series(dtype=float)
 
-    learner = HDOLearner(decay_weeks=4)
+    # history_weeks=4 so observations at exactly start = now-3w are not pruned
+    # by the strict t > cutoff_ts boundary in HDOLearner._prune_all().
+    learner = HDOLearner(decay_weeks=4, history_weeks=4)
     with patch("smartboiler.influx_consumption_importer.query_series", side_effect=fake_query_series):
         count = seed_hdo_learner(
             client=object(),
