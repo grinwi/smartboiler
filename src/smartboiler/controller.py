@@ -256,6 +256,12 @@ class SmartBoilerController:
         self._forecast_24h: List[float] = [0.0] * 24
         self._spot_prices: Dict[int, Optional[float]] = {}
         self._last_boiler_tmp: Optional[float] = self.store.get_last_boiler_tmp()
+        last_tmp_updated_at = self.store.get_last_boiler_tmp_updated_at()
+        self._last_boiler_tmp_updated_at: Optional[datetime] = (
+            last_tmp_updated_at
+            if isinstance(last_tmp_updated_at, datetime)
+            else None
+        )
         self._plan_generated_at: Optional[datetime] = None
         self._last_calib_ts: float = 0.0
         self._lock = threading.Lock()
@@ -445,8 +451,21 @@ class SmartBoilerController:
         tmp = self.temp_estimator.get_boiler_tmp(self._last_boiler_tmp)
         if tmp is not None:
             self._last_boiler_tmp = tmp
-            self.store.set_last_boiler_tmp(tmp)
+            self._last_boiler_tmp_updated_at = datetime.now().astimezone()
+            self.store.set_last_boiler_tmp(tmp, updated_at=self._last_boiler_tmp_updated_at)
         return self._last_boiler_tmp or self.boiler_min_tmp
+
+    def _get_temperature_estimation_data(self) -> Dict:
+        """Return a rich diagnostics payload for the web estimator view."""
+        report = self.temp_estimator.get_boiler_tmp_report(
+            self._last_boiler_tmp,
+            last_known_updated_at=self._last_boiler_tmp_updated_at,
+        )
+        report["operation_mode"] = self.operation_mode
+        report["boiler_min_tmp"] = self.boiler_min_tmp
+        report["boiler_set_tmp"] = self.boiler_set_tmp
+        report["updated_at"] = datetime.now().astimezone().isoformat(timespec="seconds")
+        return report
 
     def run_control_workflow(self) -> None:
         """Execute heating plan; perform legionella check; observe HDO."""
@@ -681,6 +700,8 @@ class SmartBoilerController:
             return self._get_accuracy_data()
         if endpoint == "predictor":
             return self._get_predictor_data()
+        if endpoint == "temperature_estimation":
+            return self._get_temperature_estimation_data()
         return {}
 
     def _get_history_data(self, period: str = "7d") -> Dict:

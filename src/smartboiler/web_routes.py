@@ -274,6 +274,17 @@ def api_predictor() -> Response:
         abort(500)
 
 
+@app.route("/api/temperature-estimation")
+def api_temperature_estimation() -> Response:
+    if _rate_limited():
+        abort(429)
+    try:
+        return jsonify(_get_extra("temperature_estimation", {}))
+    except Exception as e:
+        logger.error("api_temperature_estimation error: %s", e)
+        abort(500)
+
+
 @app.route("/api/entities")
 def api_entities() -> Response:
     """Return entity list for UI-based entity selection (name + id only)."""
