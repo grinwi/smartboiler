@@ -333,7 +333,8 @@ async function loadOverview() {
         cls = 'cal-vacation';
       else if (s.calendar_mode === 'boost_max' || s.calendar_mode === 'boost_temp')
         cls = 'cal-boost';
-      const active = i === now_h ? 'outline:2px solid #2b6cb0;' : '';
+      const slotHour = parseInt(s.label);
+      const active = slotHour === now_h ? 'outline:2px solid #2b6cb0;' : '';
       return `<div class="hcell ${cls}" style="${active}" title="${tip}">${s.label.split(':')[0]}</div>`;
     }).join('');
 
