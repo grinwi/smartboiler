@@ -87,6 +87,7 @@ DEFAULTS: dict = {
     #   boiler_first  — heat boiler, then battery, then sell
     #   sell_first    — sell everything (no free energy for boiler or battery)
     "battery_priority": "battery_first",
+    "energy_priority_order": "battery,boiler,spot,standard",
 
     # ── Spot price ────────────────────────────────────────────────────────
     "has_spot_price": False,

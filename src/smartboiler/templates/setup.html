@@ -149,6 +149,32 @@
     /* Success screen */
     .success-icon{font-size:3rem;text-align:center;margin-bottom:1rem}
     .success-text{text-align:center;font-size:1rem;color:#4a5568;line-height:1.6}
+
+    /* Energy step — expandable sections */
+    .energy-fields{margin-top:.9rem;padding-top:.9rem;border-top:1px solid var(--border)}
+
+    /* Priority drag-and-drop list */
+    .priority-list{display:flex;flex-direction:column;gap:.45rem;margin-top:.75rem}
+    .priority-item{display:flex;align-items:center;gap:.7rem;padding:.65rem .9rem;
+                   background:#f8fafc;border:1.5px solid var(--border);border-radius:10px;
+                   cursor:grab;user-select:none;transition:border-color .15s,background .15s}
+    .priority-item:active{cursor:grabbing}
+    .priority-item.locked{cursor:default;background:#f1f5f9;opacity:.65}
+    .priority-item.dragging{opacity:.35;border-style:dashed}
+    .priority-item.drag-over{border-color:var(--blue);background:var(--blue-l)}
+    .priority-item.p-disabled{opacity:.38}
+    .drag-handle{font-size:1.1rem;color:#a0aec0;flex-shrink:0;line-height:1}
+    .p-icon{font-size:1.35rem;flex-shrink:0}
+    .p-text{flex:1}
+    .p-text strong{display:block;font-size:.88rem;font-weight:600}
+    .p-text small{display:block;font-size:.76rem;color:var(--gray);margin-top:.1rem}
+    .lock-badge{font-size:.7rem;background:#e2e8f0;color:#4a5568;padding:.15rem .45rem;
+                border-radius:5px;font-weight:600;flex-shrink:0}
+    .move-btns{display:flex;flex-direction:column;gap:.15rem;margin-left:.1rem}
+    .move-btn{background:none;border:1px solid var(--border);border-radius:4px;
+              width:22px;height:20px;cursor:pointer;font-size:.7rem;line-height:1;
+              color:var(--gray);display:flex;align-items:center;justify-content:center}
+    .move-btn:hover{background:var(--blue-l);color:var(--blue);border-color:var(--blue)}
   </style>
 </head>
 <body>
@@ -176,11 +202,15 @@
   </div>
   <div class="step-sep"></div>
   <div class="step-indicator" data-step="5" onclick="jumpStep(5)">
-    <div class="step-num">5</div><span>Physics</span>
+    <div class="step-num">5</div><span>Energy</span>
   </div>
   <div class="step-sep"></div>
   <div class="step-indicator" data-step="6" onclick="jumpStep(6)">
-    <div class="step-num">6</div><span>Integrations</span>
+    <div class="step-num">6</div><span>Physics</span>
+  </div>
+  <div class="step-sep"></div>
+  <div class="step-indicator" data-step="7" onclick="jumpStep(7)">
+    <div class="step-num">7</div><span>Integrations</span>
   </div>
 </div>
 
@@ -305,12 +335,6 @@
     <p class="desc">These improve scheduling but are not required. You can skip this step and configure later.</p>
 
     <div class="field optional">
-      <label>PV surplus power</label>
-      <div class="picker-wrap" id="picker-pv_surplus_entity_id"></div>
-      <div class="hint">Sensor reporting available PV surplus in watts (positive = surplus). When surplus is detected, heating is prioritised free of charge.</div>
-    </div>
-
-    <div class="field optional">
       <label>Person / device tracker entities</label>
       <div id="multi-persons">
         <div class="picker-wrap" id="picker-person-add"></div>
@@ -334,8 +358,156 @@
   </div>
 </div>
 
-<!-- ── STEP 5: Physics ────────────────────────────────────────────────── -->
+<!-- ── STEP 5: Energy & Priorities ───────────────────────────────────── -->
 <div class="step-pane" id="step-5">
+  <div class="card">
+    <h2>Solar &amp; Battery</h2>
+    <p class="desc">Tell SmartBoiler what energy sources you have. This unlocks free-energy heating and smart charging.</p>
+
+    <!-- PV / Solar -->
+    <div class="toggle-row">
+      <div>
+        <span>Solar panels (PV)</span>
+        <span class="hint">I have solar panels connected to Home Assistant.</span>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="has_pv" onchange="togglePV()">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div id="pv-fields" class="energy-fields" style="display:none">
+      <div class="field-grid">
+        <div class="field">
+          <label>Installed PV power (kWp)</label>
+          <input type="number" id="pv_installed_power_kw" value="5.0" min="0.1" max="200" step="0.1">
+          <div class="hint">Total nameplate peak power</div>
+        </div>
+      </div>
+      <div class="field optional">
+        <label>PV surplus / net export sensor</label>
+        <div class="picker-wrap" id="picker-pv_surplus_entity_id"></div>
+        <div class="hint">Sensor in watts — positive = export. Used for real-time free-energy detection.</div>
+      </div>
+      <div class="field optional">
+        <label>PV production sensor</label>
+        <div class="picker-wrap" id="picker-pv_power_entity_id"></div>
+        <div class="hint">Current PV generation in watts. Helps the scheduler plan day-ahead.</div>
+      </div>
+      <div class="field optional">
+        <label>PV forecast entity</label>
+        <div class="picker-wrap" id="picker-pv_forecast_entity_id"></div>
+        <div class="hint">HA entity with tomorrow's expected solar yield (kWh). Optional but improves planning.</div>
+      </div>
+    </div>
+
+    <hr class="section-sep">
+
+    <!-- Battery -->
+    <div class="toggle-row">
+      <div>
+        <span>Home battery storage</span>
+        <span class="hint">I have a battery (e.g. Solax, Huawei, Victron, Sofar…).</span>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="has_battery" onchange="toggleBattery()">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div id="battery-fields" class="energy-fields" style="display:none">
+      <div class="field-grid">
+        <div class="field">
+          <label>Battery capacity (kWh)</label>
+          <input type="number" id="battery_capacity_kwh" value="10.0" min="0.1" max="500" step="0.1">
+        </div>
+        <div class="field">
+          <label>Max charge power (kW)</label>
+          <input type="number" id="battery_max_charge_kw" value="5.0" min="0" max="200" step="0.1">
+        </div>
+      </div>
+      <div class="field optional">
+        <label>Battery state of charge (SoC)</label>
+        <div class="picker-wrap" id="picker-battery_soc_entity_id"></div>
+        <div class="hint">Entity reporting current SoC.</div>
+      </div>
+      <div class="field">
+        <label>SoC unit</label>
+        <select id="battery_soc_unit">
+          <option value="percent">% (0–100)</option>
+          <option value="kwh">kWh (absolute)</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Priority card -->
+  <div class="card">
+    <h2>Scheduling priority</h2>
+    <p class="desc">Drag (or use ▲▼) to set the order the scheduler fills heating slots. Sources higher on the list are tried first.</p>
+    <div class="priority-list" id="priority-list">
+
+      <div class="priority-item" draggable="true" data-key="battery">
+        <span class="drag-handle">⠿</span>
+        <span class="p-icon">🔋</span>
+        <div class="p-text">
+          <strong>Fill battery first</strong>
+          <small>Charge battery from solar before diverting surplus to boiler</small>
+        </div>
+        <div class="move-btns">
+          <button class="move-btn" onclick="movePriorityItem('battery',-1)" title="Move up">▲</button>
+          <button class="move-btn" onclick="movePriorityItem('battery', 1)" title="Move down">▼</button>
+        </div>
+      </div>
+
+      <div class="priority-item" draggable="true" data-key="boiler">
+        <span class="drag-handle">⠿</span>
+        <span class="p-icon">☀️</span>
+        <div class="p-text">
+          <strong>Free solar → Boiler</strong>
+          <small>Use PV surplus directly for heating — zero marginal cost</small>
+        </div>
+        <div class="move-btns">
+          <button class="move-btn" onclick="movePriorityItem('boiler',-1)" title="Move up">▲</button>
+          <button class="move-btn" onclick="movePriorityItem('boiler', 1)" title="Move down">▼</button>
+        </div>
+      </div>
+
+      <div class="priority-item" draggable="true" data-key="spot">
+        <span class="drag-handle">⠿</span>
+        <span class="p-icon">💰</span>
+        <div class="p-text">
+          <strong>Cheap grid electricity</strong>
+          <small>Heat during cheapest spot-price hours (requires spot price enabled)</small>
+        </div>
+        <div class="move-btns">
+          <button class="move-btn" onclick="movePriorityItem('spot',-1)" title="Move up">▲</button>
+          <button class="move-btn" onclick="movePriorityItem('spot', 1)" title="Move down">▼</button>
+        </div>
+      </div>
+
+      <div class="priority-item locked" data-key="standard">
+        <span class="drag-handle" style="opacity:.3">⠿</span>
+        <span class="p-icon">🌡️</span>
+        <div class="p-text">
+          <strong>Standard scheduled heating</strong>
+          <small>Fallback — heat when needed regardless of price</small>
+        </div>
+        <span class="lock-badge">always last</span>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-secondary" onclick="goStep(4)">← Back</button>
+    <div style="display:flex;gap:.75rem;align-items:center">
+      <button class="btn-skip" onclick="goStep(6)">Skip</button>
+      <button class="btn btn-primary" onclick="goStep(6)">Next →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── STEP 6: Physics ────────────────────────────────────────────────── -->
+<div class="step-pane" id="step-6">
   <div class="card">
     <h2>Boiler parameters</h2>
     <p class="desc">Physical parameters of your boiler. Check the label on the tank or your installation documents.</p>
@@ -395,13 +567,13 @@
     </div>
   </div>
   <div class="btn-row">
-    <button class="btn btn-secondary" onclick="goStep(4)">← Back</button>
-    <button class="btn btn-primary" onclick="goStep(6)">Next →</button>
+    <button class="btn btn-secondary" onclick="goStep(5)">← Back</button>
+    <button class="btn btn-primary" onclick="goStep(7)">Next →</button>
   </div>
 </div>
 
-<!-- ── STEP 6: Integrations ───────────────────────────────────────────── -->
-<div class="step-pane" id="step-6">
+<!-- ── STEP 7: Integrations ───────────────────────────────────────────── -->
+<div class="step-pane" id="step-7">
   <div class="card">
     <h2>Optional integrations</h2>
     <p class="desc">Configure spot prices, HDO ripple control, and InfluxDB cold-start bootstrap. All optional — you can skip and configure later in Settings.</p>
@@ -462,7 +634,7 @@
   </div>
 
   <div class="btn-row">
-    <button class="btn btn-secondary" onclick="goStep(5)">← Back</button>
+    <button class="btn btn-secondary" onclick="goStep(6)">← Back</button>
     <div style="display:flex;gap:.75rem;align-items:center">
       <button class="btn-skip" onclick="saveConfig()">Skip &amp; Save</button>
       <button class="btn btn-primary" id="btn-save" onclick="saveConfig()">
@@ -749,6 +921,9 @@ function initAllPickers() {
   makePicker('picker-boiler_water_flow_entity_id', 'boiler_water_flow_entity_id', sensorDomains, 'Search sensor entities...');
   makePicker('picker-boiler_water_temp_entity_id', 'boiler_water_temp_entity_id', sensorDomains, 'Search temperature sensors...');
   makePicker('picker-pv_surplus_entity_id', 'pv_surplus_entity_id', sensorDomains, 'Search sensor entities...');
+  makePicker('picker-pv_power_entity_id', 'pv_power_entity_id', sensorDomains, 'Search sensor entities...');
+  makePicker('picker-pv_forecast_entity_id', 'pv_forecast_entity_id', sensorDomains, 'Search sensor entities...');
+  makePicker('picker-battery_soc_entity_id', 'battery_soc_entity_id', sensorDomains, 'Search sensor entities...');
   makePicker('picker-calendar_entity_id', 'calendar_entity_id', ['calendar'], 'Search calendar entities...');
 
   initPersonPicker();
@@ -799,7 +974,8 @@ function showStep(n) {
   });
   currentStep = n;
   if (n === 3) updateModeUI();
-  if (n === 5) document.getElementById('simple-physics').style.display =
+  if (n === 5) updateEnergyUI();
+  if (n === 6) document.getElementById('simple-physics').style.display =
     CFG.operation_mode === 'simple' ? '' : 'none';
   window.scrollTo(0, 0);
 }
@@ -826,18 +1002,19 @@ function validateAndGoStep(from, to) {
 
 // ── Collect form values into CFG ──────────────────────────────────────────
 function collectCurrentStepValues() {
-  // Numeric fields from step 5
+  // Numeric fields from steps 5/6
   const nums = ['boiler_volume','boiler_set_tmp','boiler_min_operation_tmp',
                 'boiler_watt_power','average_boiler_surroundings_temp',
                 'cold_water_temp','boiler_standby_watts',
-                'thermal_coupling_ratio','draw_detection_threshold_c'];
+                'thermal_coupling_ratio','draw_detection_threshold_c',
+                'pv_installed_power_kw','battery_capacity_kwh','battery_max_charge_kw'];
   nums.forEach(id => {
     const el = document.getElementById(id);
     if (el) CFG[id] = parseFloat(el.value) || CFG[id];
   });
 
   // Select fields
-  ['spot_price_region','prediction_conservatism'].forEach(id => {
+  ['spot_price_region','prediction_conservatism','battery_soc_unit'].forEach(id => {
     const el = document.getElementById(id);
     if (el) CFG[id] = el.value;
   });
@@ -999,6 +1176,8 @@ async function startInfluxBootstrap() {
 async function saveConfig() {
   collectCurrentStepValues();
   CFG.has_spot_price = document.getElementById('has_spot_price').checked;
+  CFG.has_pv = document.getElementById('has_pv').checked;
+  CFG.has_battery = document.getElementById('has_battery').checked;
   if (!document.getElementById('use_influxdb').checked) CFG.influxdb_host = '';
 
   const btn = document.getElementById('btn-save');
@@ -1059,6 +1238,23 @@ async function loadExistingConfig() {
       document.getElementById('has_spot_price').checked = true;
       document.getElementById('spot-region').style.display = '';
     }
+    if (CFG.has_pv) {
+      document.getElementById('has_pv').checked = true;
+      document.getElementById('pv-fields').style.display = '';
+    }
+    if (CFG.has_battery) {
+      document.getElementById('has_battery').checked = true;
+      document.getElementById('battery-fields').style.display = '';
+    }
+    // Restore PV/battery numeric fields
+    ['pv_installed_power_kw','battery_capacity_kwh','battery_max_charge_kw'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el && CFG[id] != null) el.value = CFG[id];
+    });
+    const socUnit = document.getElementById('battery_soc_unit');
+    if (socUnit && CFG.battery_soc_unit) socUnit.value = CFG.battery_soc_unit;
+    // Restore priority order
+    if (CFG.energy_priority_order) loadPriorityOrder();
     if (CFG.influxdb_host) {
       document.getElementById('use_influxdb').checked = true;
       document.getElementById('influx-section').style.display = '';
@@ -1070,9 +1266,113 @@ async function loadExistingConfig() {
   } catch(e) { console.warn('Could not load existing config', e); }
 }
 
+// ── Energy step toggles ───────────────────────────────────────────────────
+function togglePV() {
+  const on = document.getElementById('has_pv').checked;
+  CFG.has_pv = on;
+  document.getElementById('pv-fields').style.display = on ? '' : 'none';
+  updatePriorityItemVisibility();
+}
+
+function toggleBattery() {
+  const on = document.getElementById('has_battery').checked;
+  CFG.has_battery = on;
+  document.getElementById('battery-fields').style.display = on ? '' : 'none';
+  updatePriorityItemVisibility();
+}
+
+function updateEnergyUI() {
+  document.getElementById('has_pv').checked = !!CFG.has_pv;
+  document.getElementById('pv-fields').style.display = CFG.has_pv ? '' : 'none';
+  document.getElementById('has_battery').checked = !!CFG.has_battery;
+  document.getElementById('battery-fields').style.display = CFG.has_battery ? '' : 'none';
+  updatePriorityItemVisibility();
+}
+
+function updatePriorityItemVisibility() {
+  const pvOn = document.getElementById('has_pv')?.checked;
+  const batOn = document.getElementById('has_battery')?.checked;
+  document.querySelector('#priority-list [data-key="boiler"]')?.classList.toggle('p-disabled', !pvOn);
+  document.querySelector('#priority-list [data-key="battery"]')?.classList.toggle('p-disabled', !batOn);
+}
+
+// ── Priority drag-and-drop ────────────────────────────────────────────────
+function savePriorityOrder() {
+  const keys = [...document.querySelectorAll('#priority-list .priority-item')].map(i => i.dataset.key);
+  CFG.energy_priority_order = keys.join(',');
+  // Derive battery_priority for backward compat
+  const boilerIdx = keys.indexOf('boiler');
+  const batIdx    = keys.indexOf('battery');
+  if (batIdx >= 0 && (boilerIdx < 0 || batIdx < boilerIdx)) CFG.battery_priority = 'battery_first';
+  else if (boilerIdx >= 0) CFG.battery_priority = 'boiler_first';
+}
+
+function loadPriorityOrder() {
+  const list = document.getElementById('priority-list');
+  if (!list) return;
+  const order = (CFG.energy_priority_order || 'battery,boiler,spot,standard').split(',').map(s => s.trim());
+  // Append each item in declared order (unknown keys ignored)
+  order.forEach(key => {
+    const item = list.querySelector(`[data-key="${key}"]`);
+    if (item) list.appendChild(item);
+  });
+  savePriorityOrder();
+}
+
+function movePriorityItem(key, dir) {
+  const list = document.getElementById('priority-list');
+  const items = [...list.querySelectorAll('.priority-item')];
+  const idx = items.findIndex(i => i.dataset.key === key);
+  if (idx < 0) return;
+  // locked items always stay at the bottom — don't move above them or swap with them
+  if (dir === -1 && idx > 0 && !items[idx - 1].classList.contains('locked')) {
+    list.insertBefore(items[idx], items[idx - 1]);
+  } else if (dir === 1 && idx < items.length - 1 && !items[idx + 1].classList.contains('locked')) {
+    list.insertBefore(items[idx + 1], items[idx]);
+  }
+  savePriorityOrder();
+}
+
+function initPriorityList() {
+  const list = document.getElementById('priority-list');
+  if (!list) return;
+  loadPriorityOrder();
+
+  let dragSrc = null;
+  list.querySelectorAll('.priority-item:not(.locked)').forEach(item => {
+    item.addEventListener('dragstart', e => {
+      dragSrc = item;
+      item.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    item.addEventListener('dragend', () => {
+      dragSrc?.classList.remove('dragging');
+      list.querySelectorAll('.priority-item').forEach(i => i.classList.remove('drag-over'));
+      savePriorityOrder();
+    });
+    item.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (item !== dragSrc && !item.classList.contains('locked')) {
+        list.querySelectorAll('.priority-item').forEach(i => i.classList.remove('drag-over'));
+        item.classList.add('drag-over');
+      }
+    });
+    item.addEventListener('drop', e => {
+      e.preventDefault();
+      if (item !== dragSrc && !item.classList.contains('locked')) {
+        list.insertBefore(dragSrc, item);
+        list.querySelectorAll('.priority-item').forEach(i => i.classList.remove('drag-over'));
+        savePriorityOrder();
+      }
+    });
+  });
+}
+
 // ── Boot ──────────────────────────────────────────────────────────────────
 const IS_SETTINGS = document.querySelector('meta[name="sb-settings-mode"]').content === 'true';
 document.addEventListener('DOMContentLoaded', async () => {
+  initPriorityList();
   await loadEntities();
   if (IS_SETTINGS) {
     await loadExistingConfig();
