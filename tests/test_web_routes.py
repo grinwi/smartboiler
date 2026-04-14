@@ -259,6 +259,31 @@ class TestInfluxBootstrapAction:
             set_influx_bootstrap_handlers(None, None)
 
 
+class TestTemperatureEstimationEndpoint:
+    def test_returns_extra_provider_payload(self, client):
+        from smartboiler.web_server import set_extra_provider
+
+        def _provider(endpoint, _params):
+            if endpoint == "temperature_estimation":
+                return {
+                    "estimate": 48.5,
+                    "source_key": "thermal_model",
+                    "source_level": "L3",
+                }
+            return {}
+
+        try:
+            set_extra_provider(_provider)
+            resp = client.get("/api/temperature-estimation")
+            assert resp.status_code == 200
+            data = resp.get_json()
+            assert data["estimate"] == 48.5
+            assert data["source_key"] == "thermal_model"
+            assert data["source_level"] == "L3"
+        finally:
+            set_extra_provider(lambda _endpoint, _params: {})
+
+
 # ── 4. Controller has no shadowing `import threading` inside start() ──────────
 
 class TestControllerThreadingImport:

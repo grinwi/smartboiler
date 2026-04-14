@@ -96,6 +96,7 @@ def ctrl():
     c._forecast_24h = [0.0] * 24
     c._spot_prices = {}
     c._last_boiler_tmp = 50.0
+    c._last_boiler_tmp_updated_at = datetime.now().astimezone()
     c._plan_generated_at = datetime.now().astimezone().astimezone()
     c._last_calib_ts = 0.0
     c._lock = threading.Lock()
@@ -272,6 +273,28 @@ class TestGetBoilerTmp:
         ctrl.ha.get_state_value.return_value = 52.0
         result = ctrl._get_boiler_tmp()
         assert result == pytest.approx(52.0)
+
+
+class TestTemperatureEstimationDiagnostics:
+    def test_returns_estimator_report_with_controller_metadata(self, ctrl):
+        ctrl.temp_estimator.get_boiler_tmp_report.return_value = {
+            "estimate": 48.5,
+            "source_key": "thermal_model",
+            "source_level": "L3",
+            "source_label": "Case sensor thermal model",
+            "thermal_model_preview": {"mode": "fitted_case_decay"},
+        }
+
+        data = ctrl._get_temperature_estimation_data()
+
+        ctrl.temp_estimator.get_boiler_tmp_report.assert_called_once_with(
+            ctrl._last_boiler_tmp,
+            last_known_updated_at=ctrl._last_boiler_tmp_updated_at,
+        )
+        assert data["estimate"] == 48.5
+        assert data["source_key"] == "thermal_model"
+        assert data["operation_mode"] == "standard"
+        assert data["boiler_set_tmp"] == ctrl.boiler_set_tmp
 
 
 # ---------------------------------------------------------------------------
