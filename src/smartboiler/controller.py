@@ -670,6 +670,15 @@ class SmartBoilerController:
                 relay_on=relay_on,
                 power_w=power_w,
             )
+            # Keep a one-tick memory of an ON+low-power thermostat trip so the
+            # controller can release the relay cleanly even if heater draw
+            # resumes before the 60 s calibration window completes.
+            recent_thermostat_trip = (
+                relay_on
+                and self._prev_relay_on is True
+                and self._prev_power_w is not None
+                and float(self._prev_power_w) < _THERMOSTAT_TRIP_POWER_W
+            )
             self._prev_relay_on = relay_on
             self._prev_power_w = power_w
 
@@ -767,10 +776,14 @@ class SmartBoilerController:
             #      (the internal thermostat cut the element; the sensor may lag
             #       by ~0.5–1 °C relative to the actual water temperature)
             thermostat_tripped = self._is_thermostat_trip_low_power(relay_on, power_w)
-            if should_heat and (boiler_tmp >= self.boiler_set_tmp or thermostat_tripped):
+            if should_heat and (
+                boiler_tmp >= self.boiler_set_tmp
+                or thermostat_tripped
+                or recent_thermostat_trip
+            ):
                 logger.debug(
-                    "Boiler fully charged (tmp=%.1f, tripped=%s): relay OFF",
-                    boiler_tmp, thermostat_tripped,
+                    "Boiler fully charged (tmp=%.1f, tripped=%s, recent_trip=%s): relay OFF",
+                    boiler_tmp, thermostat_tripped, recent_thermostat_trip,
                 )
                 should_heat = False
 
