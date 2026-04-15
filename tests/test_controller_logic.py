@@ -435,6 +435,57 @@ class TestThermalCalibrationWindow:
         assert ctrl.ha.turn_on.call_count == 2
         ctrl.ha.turn_off.assert_called_once_with("switch.boiler")
 
+    def test_calibrates_even_when_control_loop_has_small_jitter(self, ctrl):
+        """A slightly late 60 s loop must not block the 5-minute stability check."""
+        ctrl.boiler_power_entity_id = "sensor.power"
+        ctrl.boiler_case_tmp_entity_id = "sensor.case_tmp"
+        ctrl.temp_estimator.get_boiler_tmp = MagicMock(return_value=55.0)
+        ctrl.temp_estimator.get_ambient_tmp.return_value = 20.0
+        ctrl.legionella = MagicMock()
+        ctrl.legionella.check_and_act.return_value = False
+        ctrl.ha.get_state.return_value = {"state": "on", "attributes": {}}
+        ctrl.thermal_model.observe_calibration = MagicMock()
+        ctrl._plan_generated_at = datetime.now().astimezone()
+        ctrl._heating_plan = [True] + [False] * 23
+
+        readings = [
+            {"power": 1800.0, "case": 44.0},
+            {"power": 0.0, "case": 44.0},
+            {"power": 0.0, "case": 43.9},
+            {"power": 0.0, "case": 43.8},
+            {"power": 0.0, "case": 43.8},
+            {"power": 0.0, "case": 43.7},
+        ]
+        idx = {"value": 0}
+
+        def _get_state_value(eid, default=None):
+            current = readings[idx["value"]]
+            if eid == "sensor.power":
+                return current["power"]
+            if eid == "sensor.case_tmp":
+                return current["case"]
+            return default
+
+        ctrl.ha.get_state_value.side_effect = _get_state_value
+
+        # Real control loops are not exactly 60.0 s apart. With 61 s jitter the
+        # old strict cutoff check never saw "full" 5-minute coverage and missed
+        # this calibration entirely.
+        with patch(
+            "smartboiler.controller.time.time",
+            side_effect=[1000.0, 1061.0, 1122.0, 1183.0, 1244.0, 1305.0],
+        ):
+            for i in range(len(readings)):
+                idx["value"] = i
+                ctrl.run_control_workflow()
+
+        ctrl.thermal_model.observe_calibration.assert_called_once_with(
+            T_set=ctrl.boiler_set_tmp,
+            T_case=44.0,
+            T_amb=20.0,
+            timestamp=1244.0,
+        )
+
     def test_missing_power_reading_does_not_count_as_zero_power_trip(self, ctrl):
         ctrl.boiler_power_entity_id = "sensor.power"
         ctrl.boiler_case_tmp_entity_id = "sensor.case_tmp"

@@ -31,6 +31,7 @@ MIN_TRAINING_DAYS_DEFAULT = 30
 _CALIB_DEBOUNCE_S = 5 * 60   # 5 min
 _THERMOSTAT_TRIP_CONFIRM_S = 60.0
 _CASE_STABLE_WINDOW_S = 5 * 60.0
+_CASE_STABLE_COVERAGE_GRACE_S = CONTROL_LOOP_INTERVAL_S
 _THERMOSTAT_TRIP_POWER_W = 50.0       # effective zero-power threshold
 _THERMOSTAT_TRIP_HOLD_MAX_S = 15 * 60.0
 _CASE_RISE_TOLERANCE_C = 0.1
@@ -520,9 +521,9 @@ class SmartBoilerController:
         """
         Return True when the case temperature has not increased in the last 5 min.
 
-        We require full 5-minute coverage and reject any upward step above the
-        noise tolerance. This avoids calibrating too early while the casing is
-        still soaking heat after the thermostat has opened.
+        We require near-full 5-minute coverage and reject any upward step above
+        the noise tolerance. One control-loop interval of slack is allowed so a
+        slightly jittery 60 s loop does not permanently block calibration.
         """
         if not self._case_tmp_history:
             return False
@@ -531,7 +532,9 @@ class SmartBoilerController:
         recent = [(ts, tmp) for ts, tmp in self._case_tmp_history if ts >= cutoff]
         if len(recent) < 2:
             return False
-        if recent[0][0] > cutoff:
+        covered_span_s = recent[-1][0] - recent[0][0]
+        min_required_span_s = max(0.0, _CASE_STABLE_WINDOW_S - _CASE_STABLE_COVERAGE_GRACE_S)
+        if covered_span_s < min_required_span_s:
             return False
 
         prev_tmp = recent[0][1]
