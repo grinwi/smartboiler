@@ -11,6 +11,7 @@ on:
         description: "Volitelně: ID úřední desky (Bílovice n. Sv. = 1061)"
         required: false
         type: string
+        default: "1061"
       search_with:
         description: "es = i skloňované tvary a obsah, sql = jen název"
         required: false
@@ -20,9 +21,10 @@ on:
           - sql
         default: es
       created_from:
-        description: "Jen dokumenty od tohoto data (YYYY-MM-DD). Bez zadání API vrací jen nedávné dokumenty — pro celou historii zadej např. 2000-01-01"
+        description: "Jen dokumenty od tohoto data (YYYY-MM-DD). Bez zadání API vrací jen nedávné dokumenty."
         required: false
         type: string
+        default: "2000-01-01"
 
 jobs:
   search:
