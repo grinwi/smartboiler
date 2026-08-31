@@ -19,6 +19,10 @@ on:
           - es
           - sql
         default: es
+      created_from:
+        description: "Jen dokumenty od tohoto data (YYYY-MM-DD). Bez zadání API vrací jen nedávné dokumenty — pro celou historii zadej např. 2000-01-01"
+        required: false
+        type: string
 
 jobs:
   search:
@@ -40,4 +44,5 @@ jobs:
           python3 scripts/edesky_hledej.py \
             --keywords "${{ inputs.keywords }}" \
             --search-with "${{ inputs.search_with }}" \
-            ${{ inputs.dashboard_id && format('--dashboard-id {0}', inputs.dashboard_id) || '' }}
+            ${{ inputs.dashboard_id && format('--dashboard-id {0}', inputs.dashboard_id) || '' }} \
+            ${{ inputs.created_from && format('--created-from {0}', inputs.created_from) || '' }}
