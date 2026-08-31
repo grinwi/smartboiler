@@ -16,6 +16,10 @@ Použití:
     # omezení na jednu desku (Bílovice nad Svitavou = 1061)
     python3 edesky_hledej.py --keywords "Výleta" --dashboard-id 1061
 
+    # kompletní historie, ne jen nedávné dokumenty (bez created_from API
+    # vrací jen nedávnou dobu)
+    python3 edesky_hledej.py --keywords "Výleta" --created-from 2000-01-01
+
     # ověření parseru bez sítě
     python3 edesky_hledej.py --selftest
 
@@ -29,6 +33,8 @@ Poznámky k API (zdroj: https://edesky.cz/api a github.com/edesky/edesky_api):
   - dashboard_id: volitelné omezení na konkrétní úřední desku
   - page:       API vrací max 200 dokumentů na stránku; skript automaticky
                 stáhne a spojí VŠECHNY stránky, ne jen tu první
+  - created_from: bez zadání API vrací jen nedávné dokumenty (přesné okno
+                není zdokumentované); pro celou historii zadej staré datum
 
 Přesný název parametru pro filtr desky ("dashboard_id") je odvozen; pokud by
 API vrátilo chybu parametru, mrkněte do apiary.apib v repu edesky_api a hodnotu
@@ -50,7 +56,8 @@ STRANKA_VELIKOST = 200  # dle apiary.apib vrací API max 200 dokumentů na strá
 MAX_STRANEK = 100  # pojistka proti nekonečnému stahování (max 20 000 dokumentů)
 
 
-def sestav_url(keywords, api_key, dashboard_id=None, search_with="es", order="date", page=None):
+def sestav_url(keywords, api_key, dashboard_id=None, search_with="es", order="date",
+               page=None, created_from=None):
     """Sestaví URL dotazu. Vrací hotovou adresu se správně zakódovanými parametry."""
     params = {
         "keywords": keywords,
@@ -62,6 +69,8 @@ def sestav_url(keywords, api_key, dashboard_id=None, search_with="es", order="da
         params[PARAM_DASHBOARD] = dashboard_id
     if page:
         params["page"] = page
+    if created_from:
+        params["created_from"] = created_from
     return API_URL + "?" + urllib.parse.urlencode(params)
 
 
@@ -79,16 +88,22 @@ def stahni(url):
         return None, "Chyba sítě: %s" % e.reason
 
 
-def stahni_vse(keywords, api_key, dashboard_id=None, search_with="es", order="date"):
+def stahni_vse(keywords, api_key, dashboard_id=None, search_with="es", order="date",
+               created_from=None):
     """
     Stáhne a naparsuje VŠECHNY stránky výsledků (API vrací max 200 dokumentů
     na stránku). Vrací (seznam_dokumentů, None) při úspěchu, ([], chyba) při
     selhání. Stahování skončí, jakmile stránka vrátí méně než plnou dávku,
     nebo po dosažení MAX_STRANEK.
+
+    Bez created_from API vrací jen dokumenty z nedávné doby (přesné výchozí
+    okno není zdokumentované) — pro kompletní historii zadej created_from
+    hodně starým datem, např. "2000-01-01".
     """
     vsechny = []
     for stranka in range(1, MAX_STRANEK + 1):
-        url = sestav_url(keywords, api_key, dashboard_id, search_with, order, page=stranka)
+        url = sestav_url(keywords, api_key, dashboard_id, search_with, order,
+                         page=stranka, created_from=created_from)
         text, chyba = stahni(url)
         if chyba:
             return vsechny, chyba
@@ -202,6 +217,10 @@ def main(argv=None):
     p.add_argument("--search-with", default="es", choices=["es", "sql"],
                    help="es = i skloňované + obsah (výchozí), sql = jen název")
     p.add_argument("--order", default="date", help="řazení (výchozí: date)")
+    p.add_argument("--created-from",
+                   help="jen dokumenty načtené po tomto datu (YYYY-MM-DD); "
+                        "bez tohoto parametru API vrací jen nedávné dokumenty, "
+                        "pro celou historii zadej např. 2000-01-01")
     p.add_argument("--url-only", action="store_true",
                    help="jen vypsat sestavenou URL, nedotazovat")
     p.add_argument("--selftest", action="store_true", help="ověřit parser bez sítě")
@@ -217,11 +236,11 @@ def main(argv=None):
 
     if args.url_only:
         print(sestav_url(args.keywords, args.api_key, args.dashboard_id,
-                         args.search_with, args.order))
+                         args.search_with, args.order, created_from=args.created_from))
         return 0
 
     dokumenty, chyba = stahni_vse(args.keywords, args.api_key, args.dashboard_id,
-                                   args.search_with, args.order)
+                                   args.search_with, args.order, args.created_from)
     if chyba:
         print("CHYBA: %s" % chyba, file=sys.stderr)
         if not dokumenty:
