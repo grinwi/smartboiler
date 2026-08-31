@@ -1,0 +1,48 @@
+name: Edesky fulltext search
+
+on:
+  workflow_dispatch:
+    inputs:
+      dashboard_id:
+        description: "ID úřední desky"
+        required: true
+        type: string
+        default: "1061"
+      broad_keywords:
+        description: "Široký výraz pokrývající prakticky všechny dokumenty desky (např. název obce)"
+        required: true
+        type: string
+        default: "Bílovice"
+      words:
+        description: "Hledaná slova/tvary oddělené čárkou"
+        required: true
+        type: string
+        default: "Výleta,Výlety,Výletovi,Výletu,Výletou,Výletem"
+      created_from:
+        description: "Jen dokumenty od tohoto data (YYYY-MM-DD)"
+        required: false
+        type: string
+        default: "2000-01-01"
+
+jobs:
+  fulltext-search:
+    name: Fulltext search over dashboard documents
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Run fulltext search
+        env:
+          EDESKY_API_KEY: ${{ secrets.EDESKY_API_KEY }}
+        run: |
+          python3 scripts/edesky_fulltext_hledej.py \
+            --dashboard-id "${{ inputs.dashboard_id }}" \
+            --broad-keywords "${{ inputs.broad_keywords }}" \
+            --words "${{ inputs.words }}" \
+            --created-from "${{ inputs.created_from }}"
