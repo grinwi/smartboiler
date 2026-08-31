@@ -44,6 +44,7 @@ upravte v konstantě PARAM_DASHBOARD níže.
 import argparse
 import os
 import sys
+import time
 import urllib.parse
 import urllib.request
 import urllib.error
@@ -54,6 +55,9 @@ PARAM_DASHBOARD = "dashboard_id"  # v případě potřeby uprav dle apiary.apib
 TIMEOUT_S = 30
 STRANKA_VELIKOST = 200  # dle apiary.apib vrací API max 200 dokumentů na stránku
 MAX_STRANEK = 100  # pojistka proti nekonečnému stahování (max 20 000 dokumentů)
+POKUSY_NA_STRANKU = 4  # opakování při přechodné chybě (rate limit apod.)
+CEKANI_MEZI_POKUSY_S = [2, 4, 8]  # exponenciální odstup mezi opakováními
+CEKANI_MEZI_STRANKAMI_S = 0.5  # slušnost k serveru edesky.cz
 
 
 def sestav_url(keywords, api_key, dashboard_id=None, search_with="es", order="date",
@@ -88,6 +92,21 @@ def stahni(url):
         return None, "Chyba sítě: %s" % e.reason
 
 
+def _je_prechodna_chyba(chyba):
+    """
+    Rozpozná chyby, které stojí za to zopakovat. Server edesky.cz umí i
+    platný api_key přechodně odmítnout jako HTTP 401 (patrně při
+    přetížení/rate limitu), ne jen při skutečně špatném klíči — proto se
+    401 zkouší znovu stejně jako 429/5xx.
+    """
+    if not chyba:
+        return False
+    for kod in ("401", "429", "500", "502", "503", "504"):
+        if ("HTTP %s" % kod) in chyba:
+            return True
+    return False
+
+
 def stahni_vse(keywords, api_key, dashboard_id=None, search_with="es", order="date",
                created_from=None):
     """
@@ -95,6 +114,11 @@ def stahni_vse(keywords, api_key, dashboard_id=None, search_with="es", order="da
     na stránku). Vrací (seznam_dokumentů, None) při úspěchu, ([], chyba) při
     selhání. Stahování skončí, jakmile stránka vrátí méně než plnou dávku,
     nebo po dosažení MAX_STRANEK.
+
+    Přechodné chyby (401/429/5xx) na jednotlivé stránce se automaticky
+    zkouší znovu (POKUSY_NA_STRANKU) s rostoucím odstupem, než se stahování
+    celé vzdá — první stránka bývala v pořádku a až další selhávaly, což
+    ukazuje na rate limit, ne na neplatný klíč.
 
     Bez created_from API vrací jen dokumenty z nedávné doby (přesné výchozí
     okno není zdokumentované) — pro kompletní historii zadej created_from
@@ -104,16 +128,23 @@ def stahni_vse(keywords, api_key, dashboard_id=None, search_with="es", order="da
     for stranka in range(1, MAX_STRANEK + 1):
         url = sestav_url(keywords, api_key, dashboard_id, search_with, order,
                          page=stranka, created_from=created_from)
-        text, chyba = stahni(url)
+        text, chyba = None, None
+        for pokus in range(POKUSY_NA_STRANKU):
+            text, chyba = stahni(url)
+            if not chyba or not _je_prechodna_chyba(chyba):
+                break
+            if pokus < POKUSY_NA_STRANKU - 1:
+                time.sleep(CEKANI_MEZI_POKUSY_S[min(pokus, len(CEKANI_MEZI_POKUSY_S) - 1)])
         if chyba:
-            return vsechny, chyba
+            return vsechny, "stránka %d: %s" % (stranka, chyba)
         try:
             dokumenty = parsuj(text)
         except ET.ParseError as e:
-            return vsechny, "odpověď není platné XML (%s)" % e
+            return vsechny, "stránka %d: odpověď není platné XML (%s)" % (stranka, e)
         vsechny.extend(dokumenty)
         if len(dokumenty) < STRANKA_VELIKOST:
             break
+        time.sleep(CEKANI_MEZI_STRANKAMI_S)
     return vsechny, None
 
 
