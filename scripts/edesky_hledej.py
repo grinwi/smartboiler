@@ -27,6 +27,8 @@ Poznámky k API (zdroj: https://edesky.cz/api a github.com/edesky/edesky_api):
                  (vhodné pro příjmení), "sql" hledá jen přesně v názvu
   - order:      "date" = řadit podle data
   - dashboard_id: volitelné omezení na konkrétní úřední desku
+  - page:       API vrací max 200 dokumentů na stránku; skript automaticky
+                stáhne a spojí VŠECHNY stránky, ne jen tu první
 
 Přesný název parametru pro filtr desky ("dashboard_id") je odvozen; pokud by
 API vrátilo chybu parametru, mrkněte do apiary.apib v repu edesky_api a hodnotu
@@ -44,9 +46,11 @@ import xml.etree.ElementTree as ET
 API_URL = "https://edesky.cz/api/v1/documents"
 PARAM_DASHBOARD = "dashboard_id"  # v případě potřeby uprav dle apiary.apib
 TIMEOUT_S = 30
+STRANKA_VELIKOST = 200  # dle apiary.apib vrací API max 200 dokumentů na stránku
+MAX_STRANEK = 100  # pojistka proti nekonečnému stahování (max 20 000 dokumentů)
 
 
-def sestav_url(keywords, api_key, dashboard_id=None, search_with="es", order="date"):
+def sestav_url(keywords, api_key, dashboard_id=None, search_with="es", order="date", page=None):
     """Sestaví URL dotazu. Vrací hotovou adresu se správně zakódovanými parametry."""
     params = {
         "keywords": keywords,
@@ -56,6 +60,8 @@ def sestav_url(keywords, api_key, dashboard_id=None, search_with="es", order="da
     }
     if dashboard_id:
         params[PARAM_DASHBOARD] = dashboard_id
+    if page:
+        params["page"] = page
     return API_URL + "?" + urllib.parse.urlencode(params)
 
 
@@ -71,6 +77,29 @@ def stahni(url):
         return None, "HTTP %d — %s" % (e.code, e.reason)
     except urllib.error.URLError as e:
         return None, "Chyba sítě: %s" % e.reason
+
+
+def stahni_vse(keywords, api_key, dashboard_id=None, search_with="es", order="date"):
+    """
+    Stáhne a naparsuje VŠECHNY stránky výsledků (API vrací max 200 dokumentů
+    na stránku). Vrací (seznam_dokumentů, None) při úspěchu, ([], chyba) při
+    selhání. Stahování skončí, jakmile stránka vrátí méně než plnou dávku,
+    nebo po dosažení MAX_STRANEK.
+    """
+    vsechny = []
+    for stranka in range(1, MAX_STRANEK + 1):
+        url = sestav_url(keywords, api_key, dashboard_id, search_with, order, page=stranka)
+        text, chyba = stahni(url)
+        if chyba:
+            return vsechny, chyba
+        try:
+            dokumenty = parsuj(text)
+        except ET.ParseError as e:
+            return vsechny, "odpověď není platné XML (%s)" % e
+        vsechny.extend(dokumenty)
+        if len(dokumenty) < STRANKA_VELIKOST:
+            break
+    return vsechny, None
 
 
 def _text(el):
@@ -186,23 +215,18 @@ def main(argv=None):
     if not args.api_key:
         p.error("chybí API klíč — zadej --api-key nebo nastav EDESKY_API_KEY")
 
-    url = sestav_url(args.keywords, args.api_key, args.dashboard_id,
-                     args.search_with, args.order)
     if args.url_only:
-        print(url)
+        print(sestav_url(args.keywords, args.api_key, args.dashboard_id,
+                         args.search_with, args.order))
         return 0
 
-    text, chyba = stahni(url)
+    dokumenty, chyba = stahni_vse(args.keywords, args.api_key, args.dashboard_id,
+                                   args.search_with, args.order)
     if chyba:
         print("CHYBA: %s" % chyba, file=sys.stderr)
-        return 1
-    try:
-        dokumenty = parsuj(text)
-    except ET.ParseError as e:
-        print("CHYBA: odpověď není platné XML (%s)." % e, file=sys.stderr)
-        print("--- prvních 500 znaků odpovědi ---", file=sys.stderr)
-        print(text[:500], file=sys.stderr)
-        return 1
+        if not dokumenty:
+            return 1
+        print("(zobrazuji alespoň částečně stažené výsledky)", file=sys.stderr)
     vypis(dokumenty)
     return 0
 
