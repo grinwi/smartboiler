@@ -1,0 +1,54 @@
+name: Edesky region search
+
+on:
+  workflow_dispatch:
+    inputs:
+      anchor_dashboard_id:
+        description: "Kotevní deska — prohledá se okolí (obce se stejným administrativním rodičem)"
+        required: true
+        type: string
+        default: "1061"
+      kraj_id:
+        description: "ID kraje, ve kterém se dohledává rodič kotevní desky (Jihomoravský kraj = 32)"
+        required: false
+        type: string
+        default: "32"
+      words:
+        description: "Hledaná slova/tvary oddělené čárkou"
+        required: true
+        type: string
+        default: "Výleta,Výlety,Výletovi,Výletu,Výletou,Výletem"
+      created_from:
+        description: "Jen dokumenty od tohoto data (YYYY-MM-DD)"
+        required: false
+        type: string
+        default: "2000-01-01"
+      max_desek:
+        description: "Nejvýše kolik desek okolí prohledat"
+        required: false
+        type: string
+        default: "60"
+
+jobs:
+  region-search:
+    name: Fulltext search over surrounding dashboards
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Run region search
+        env:
+          EDESKY_API_KEY: ${{ secrets.EDESKY_API_KEY }}
+        run: |
+          python3 scripts/edesky_region_hledej.py \
+            --anchor-dashboard-id "${{ inputs.anchor_dashboard_id }}" \
+            --kraj-id "${{ inputs.kraj_id }}" \
+            --words "${{ inputs.words }}" \
+            --created-from "${{ inputs.created_from }}" \
+            --max-desek "${{ inputs.max_desek }}"

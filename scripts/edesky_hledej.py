@@ -51,6 +51,7 @@ import urllib.error
 import xml.etree.ElementTree as ET
 
 API_URL = "https://edesky.cz/api/v1/documents"
+DASHBOARDS_URL = "https://edesky.cz/api/v1/dashboards"
 PARAM_DASHBOARD = "dashboard_id"  # v případě potřeby uprav dle apiary.apib
 TIMEOUT_S = 30
 STRANKA_VELIKOST = 200  # dle apiary.apib vrací API max 200 dokumentů na stránku
@@ -152,27 +153,55 @@ def _text(el):
     return (el.text or "").strip() if el is not None else ""
 
 
-def parsuj(xml_text):
+def parsuj(xml_text, tag_prvku="document"):
     """
     Naparsuje XML odpovědi na seznam slovníků.
 
     Parser je záměrně defenzivní — nespoléhá na přesné schéma. Z každého prvku,
-    jehož tag končí na 'document', vytáhne atributy i texty přímých potomků,
-    takže funguje, i kdyby edesky drobně změnilo strukturu.
+    jehož tag odpovídá tag_prvku (výchozí 'document', pro desky 'dashboard'),
+    vytáhne atributy i texty přímých potomků, takže funguje, i kdyby edesky
+    drobně změnilo strukturu.
     """
     root = ET.fromstring(xml_text)
-    dokumenty = []
+    polozky = []
     for el in root.iter():
         tag = el.tag.split("}")[-1].lower()  # odstraní případný namespace
-        if tag != "document":
+        if tag != tag_prvku:
             continue
-        zaznam = dict(el.attrib)  # atributy prvku <document ...>
+        zaznam = dict(el.attrib)  # atributy prvku <document .../> resp. <dashboard .../>
         for dite in el:  # texty potomků (kdyby data byla v elementech)
             k = dite.tag.split("}")[-1]
             if k not in zaznam and _text(dite):
                 zaznam[k] = _text(dite)
-        dokumenty.append(zaznam)
-    return dokumenty
+        polozky.append(zaznam)
+    return polozky
+
+
+def sestav_dashboards_url(api_key, id=None, include_subordinated=None):
+    """Sestaví URL dotazu na /api/v1/dashboards."""
+    params = {"api_key": api_key}
+    if id is not None:
+        params["id"] = id
+    if include_subordinated is not None:
+        params["include_subordinated"] = include_subordinated
+    return DASHBOARDS_URL + "?" + urllib.parse.urlencode(params)
+
+
+def stahni_desky(api_key, id=None, include_subordinated=None):
+    """
+    Stáhne seznam úředních desek z /api/v1/dashboards. Bez 'id' vrací desky
+    nejvyšší úrovně; s 'id' vrací desky podřízené té s daným id (include_subordinated=1
+    pro celou podstromovou hierarchii, ne jen přímé potomky).
+    Vrací (seznam_desek, None) při úspěchu, ([], chyba) při selhání.
+    """
+    url = sestav_dashboards_url(api_key, id, include_subordinated)
+    text, chyba = stahni(url)
+    if chyba:
+        return [], chyba
+    try:
+        return parsuj(text, tag_prvku="dashboard"), None
+    except ET.ParseError as e:
+        return [], "odpověď není platné XML (%s)" % e
 
 
 def _first(d, klice):

@@ -63,6 +63,54 @@ def _najdi_useky(text, slovo, kontext=60):
     return useky
 
 
+def sken_desku(dashboard_id, broad_keywords, slova, api_key,
+               created_from="2000-01-01", search_with="es", stderr_prefix=""):
+    """
+    Stáhne seznam dokumentů jedné desky (přes broad_keywords) a ručně
+    prohledá jejich plný text (edesky_text_url) na zadaná slova.
+
+    Vrací (nalezeno, pocet_dokumentu, pocet_bez_textu, chyba_seznamu), kde
+    nalezeno je seznam (nazev, datum, url, zasahy) a chyba_seznamu je None
+    nebo chybová hláška ze stahování seznamu dokumentů (i při chybě může
+    nalezeno obsahovat výsledky z částečně staženého seznamu).
+    """
+    dokumenty, chyba = stahni_vse(broad_keywords, api_key, dashboard_id,
+                                   search_with, "date", created_from)
+    dokumenty = _dedup(dokumenty)
+
+    nalezeno = []
+    chybely_text = 0
+    for i, d in enumerate(dokumenty, 1):
+        nazev = _first(d, ["name", "title"]) or "(bez názvu)"
+        text_url = _first(d, ["edesky_text_url"])
+        edesky_url = _first(d, ["edesky_url", "url"])
+        datum = _first(d, ["created_at", "edited_date", "created_date", "date"])
+
+        if not text_url:
+            chybely_text += 1
+            continue
+
+        text, chyba_t = stahni(text_url)
+        time.sleep(SLEEP_MEZI_DOTAZY_S)
+        if chyba_t or text is None:
+            print("%s  [%d/%d] %s — nelze stáhnout text (%s)" %
+                  (stderr_prefix, i, len(dokumenty), nazev, chyba_t), file=sys.stderr)
+            continue
+
+        zasahy = {}
+        for slovo in slova:
+            useky = _najdi_useky(text, slovo)
+            if useky:
+                zasahy[slovo] = useky
+
+        if zasahy:
+            nalezeno.append((nazev, datum, edesky_url, zasahy))
+            print("%s  [%d/%d] SHODA: %s" % (stderr_prefix, i, len(dokumenty), nazev),
+                  file=sys.stderr)
+
+    return nalezeno, len(dokumenty), chybely_text, chyba
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description="Fulltextové prohledání všech dokumentů desky.")
     p.add_argument("--api-key", default=os.environ.get("EDESKY_API_KEY"))
@@ -85,49 +133,17 @@ def main(argv=None):
 
     print("Stahuji seznam dokumentů desky %s (broad-keywords=%r, created_from=%s)..."
           % (args.dashboard_id, args.broad_keywords, args.created_from), file=sys.stderr)
-    dokumenty, chyba = stahni_vse(args.broad_keywords, args.api_key, args.dashboard_id,
-                                   args.search_with, "date", args.created_from)
+    nalezeno, pocet_dok, chybely_text, chyba = sken_desku(
+        args.dashboard_id, args.broad_keywords, slova, args.api_key,
+        args.created_from, args.search_with)
     if chyba:
         print("CHYBA při stahování seznamu: %s" % chyba, file=sys.stderr)
-        if not dokumenty:
-            return 1
-
-    dokumenty = _dedup(dokumenty)
-    print("Nalezeno %d unikátních dokumentů k prohledání.\n" % len(dokumenty), file=sys.stderr)
-
-    nalezeno = []
-    chybely_text = 0
-    for i, d in enumerate(dokumenty, 1):
-        nazev = _first(d, ["name", "title"]) or "(bez názvu)"
-        text_url = _first(d, ["edesky_text_url"])
-        edesky_url = _first(d, ["edesky_url", "url"])
-        datum = _first(d, ["created_at", "edited_date", "created_date", "date"])
-
-        if not text_url:
-            chybely_text += 1
-            continue
-
-        text, chyba_t = stahni(text_url)
-        time.sleep(SLEEP_MEZI_DOTAZY_S)
-        if chyba_t or text is None:
-            print("  [%d/%d] %s — nelze stáhnout text (%s)" %
-                  (i, len(dokumenty), nazev, chyba_t), file=sys.stderr)
-            continue
-
-        zasahy = {}
-        for slovo in slova:
-            useky = _najdi_useky(text, slovo)
-            if useky:
-                zasahy[slovo] = useky
-
-        if zasahy:
-            nalezeno.append((nazev, datum, edesky_url, zasahy))
-            print("  [%d/%d] SHODA: %s" % (i, len(dokumenty), nazev), file=sys.stderr)
+    print("Nalezeno %d unikátních dokumentů k prohledání.\n" % pocet_dok, file=sys.stderr)
 
     print("\n" + "=" * 60)
     if not nalezeno:
         print("Ve fulltextu žádného z %d dokumentů nebyla nalezena žádná ze zadaných forem: %s"
-              % (len(dokumenty), ", ".join(slova)))
+              % (pocet_dok, ", ".join(slova)))
         if chybely_text:
             print("(%d dokumentů nemělo edesky_text_url, text.gz nebyl k dispozici)" % chybely_text)
         return 0
