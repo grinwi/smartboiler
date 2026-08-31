@@ -1,0 +1,43 @@
+name: Edesky search
+
+on:
+  workflow_dispatch:
+    inputs:
+      keywords:
+        description: "Hledaný výraz (např. jméno v dokumentu)"
+        required: true
+        type: string
+      dashboard_id:
+        description: "Volitelně: ID úřední desky (Bílovice n. Sv. = 1061)"
+        required: false
+        type: string
+      search_with:
+        description: "es = i skloňované tvary a obsah, sql = jen název"
+        required: false
+        type: choice
+        options:
+          - es
+          - sql
+        default: es
+
+jobs:
+  search:
+    name: Search edesky.cz
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Run search
+        env:
+          EDESKY_API_KEY: ${{ secrets.EDESKY_API_KEY }}
+        run: |
+          python3 scripts/edesky_hledej.py \
+            --keywords "${{ inputs.keywords }}" \
+            --search-with "${{ inputs.search_with }}" \
+            ${{ inputs.dashboard_id && format('--dashboard-id {0}', inputs.dashboard_id) || '' }}
