@@ -1,0 +1,45 @@
+name: Edesky nationwide search
+
+on:
+  workflow_dispatch:
+    inputs:
+      words:
+        description: "Hledaná slova/tvary oddělené čárkou"
+        required: true
+        type: string
+        default: "Výleta,Výlety,Výletovi,Výletu,Výletou,Výletem"
+      created_from:
+        description: "Jen dokumenty od tohoto data (YYYY-MM-DD)"
+        required: false
+        type: string
+        default: "2000-01-01"
+      search_with:
+        description: "es = i skloňované tvary a obsah, sql = jen název"
+        required: false
+        type: choice
+        options:
+          - es
+          - sql
+        default: es
+
+jobs:
+  nationwide-search:
+    name: Search across all edesky.cz dashboards
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Run nationwide search
+        env:
+          EDESKY_API_KEY: ${{ secrets.EDESKY_API_KEY }}
+        run: |
+          python3 scripts/edesky_celostatni_hledej.py \
+            --words "${{ inputs.words }}" \
+            --created-from "${{ inputs.created_from }}" \
+            --search-with "${{ inputs.search_with }}"
