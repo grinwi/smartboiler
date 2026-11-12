@@ -27,9 +27,9 @@ Housekeeping found on the way (cheap, do first):
 
 This repo:
 
-- Unrelated or dead files in the tree: `test.txt` (study notes), `prediction_form.pdf`, both
-  `lstm_example_with_multivariate_time_series 2.ipynb` copies, empty `cmd`, `control/`,
-  `scripts/edesky_*.py` with their four `edesky-*` workflows (a different project).
+- Unrelated or dead files in the tree: `test.txt` (study notes), `prediction_form.pdf`, the
+  LSTM and analysis notebooks, empty `cmd`, `control/`, `scripts/edesky_*.py` with their four
+  `edesky-*` workflows (a different project). *(done)*
 - Dead code shipped in the package: `legacy/` (LSTM-era boiler, forecast, data handler), `fotovoltaics.py`
   (Solax cloud), `switch.py`, `main.py`. Only `tests/test_boiler_calculations.py` imports `legacy.boiler`; delete both together.
 - `MANUAL.md` still describes the InfluxDB / NMAP / Google-token setup removed in 2.0.
@@ -243,8 +243,8 @@ Each phase is shippable alone and useful alone.
 
 ### Done so far
 
-- **Phase 0**: dead code removed, atomic state writes, HA GET retries. Open: `MANUAL.md` rewrite, `schema_version`,
-  personal files in the repo (edesky scripts, `test.txt`, PDF, notebooks) — waiting for the maintainer.
+- **Phase 0**: dead code and unrelated files removed, atomic state writes, HA GET retries, multi-window
+  HDO schedules accepted by validation. Open: `MANUAL.md` rewrite, `schema_version`.
 - **Phase 1, part**: tariff model (`tariff.py`: spot / fixed / low+high, fees, export price) used by the scheduler;
   Open-Meteo PV forecast (`pv_forecast.py`) with a constant house base load. Open: 15-min slots,
   self-calibration of the PV forecast, learned base load, Energy-dashboard discovery.
