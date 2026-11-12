@@ -67,7 +67,10 @@ BASE_DT = datetime(2024, 3, 11, 8, 0)  # Monday 08:00
 # ---------------------------------------------------------------------------
 
 class TestHourSlotEffectiveCost:
-    def _slot(self, hdo_blocked=False, pv_surplus_kwh=0.0, spot_price: Optional[float] = None):
+    """effective_cost = average price per kWh of one heater-hour (local currency)."""
+
+    def _slot(self, hdo_blocked=False, pv_surplus_kwh=0.0, spot_price: Optional[float] = None,
+              **kw):
         return HourSlot(
             index=0,
             dt=BASE_DT,
@@ -75,23 +78,46 @@ class TestHourSlotEffectiveCost:
             pv_surplus_kwh=pv_surplus_kwh,
             spot_price=spot_price,
             hdo_blocked=hdo_blocked,
+            **kw,
         )
 
     def test_hdo_blocked_infinite_cost(self):
         slot = self._slot(hdo_blocked=True)
         assert slot.effective_cost == float("inf")
+        assert slot.blocked
 
-    def test_pv_surplus_free_energy(self):
-        slot = self._slot(pv_surplus_kwh=0.5)
-        assert slot.effective_cost == -1.0
+    def test_pv_surplus_covering_heater_costs_export_price(self):
+        slot = self._slot(pv_surplus_kwh=2.5, heater_kwh=2.0, export_price=0.0)
+        assert slot.pv_covered_kwh == pytest.approx(2.0)
+        assert slot.effective_cost == pytest.approx(0.0)
+
+    def test_partial_pv_mixes_export_and_import_price(self):
+        # 0.5 kWh PV at export 0.0 + 1.5 kWh grid at 4.0 → 3.0 per kWh
+        slot = self._slot(pv_surplus_kwh=0.5, heater_kwh=2.0, import_price=4.0, export_price=0.0)
+        assert slot.effective_cost == pytest.approx(3.0)
+
+    def test_paid_feed_in_makes_pv_cost_the_export_price(self):
+        slot = self._slot(pv_surplus_kwh=3.0, heater_kwh=2.0, import_price=5.0, export_price=1.5)
+        assert slot.effective_cost == pytest.approx(1.5)
 
     def test_known_spot_price_used(self):
+        # Default tariff: spot EUR/MWh → EUR/kWh, no fees
         slot = self._slot(spot_price=42.0)
-        assert slot.effective_cost == pytest.approx(42.0)
+        assert slot.effective_cost == pytest.approx(0.042)
 
     def test_no_spot_price_falls_back_to_default(self):
         slot = self._slot(spot_price=None)
-        assert slot.effective_cost == pytest.approx(DEFAULT_MEDIUM_PRICE)
+        assert slot.effective_cost == pytest.approx(DEFAULT_MEDIUM_PRICE / 1000.0)
+
+    def test_boost_is_forced_but_keeps_real_cost(self):
+        slot = self._slot(spot_price=100.0, calendar_mode="boost_max")
+        assert slot.forced
+        assert slot.effective_cost == pytest.approx(0.1)
+
+    def test_boost_does_not_override_hdo(self):
+        slot = self._slot(hdo_blocked=True, calendar_mode="boost_max")
+        assert not slot.forced
+        assert slot.effective_cost == float("inf")
 
     def test_hdo_blocks_even_with_pv_surplus(self):
         """HDO takes absolute priority — never heat even if PV is available."""
@@ -99,13 +125,14 @@ class TestHourSlotEffectiveCost:
         assert slot.effective_cost == float("inf")
 
     def test_pv_threshold_boundary_below(self):
-        """pv_surplus_kwh=0.1 is NOT > 0.1, so should use spot price or default."""
+        """pv_surplus_kwh=0.1 is NOT > 0.1 (noise), so the full import price applies."""
         slot = self._slot(pv_surplus_kwh=0.1, spot_price=50.0)
-        assert slot.effective_cost == pytest.approx(50.0)
+        assert slot.pv_covered_kwh == 0.0
+        assert slot.effective_cost == pytest.approx(0.05)
 
     def test_pv_threshold_just_above(self):
         slot = self._slot(pv_surplus_kwh=0.101)
-        assert slot.effective_cost == -1.0
+        assert slot.pv_covered_kwh == pytest.approx(0.101)
 
 
 # ---------------------------------------------------------------------------

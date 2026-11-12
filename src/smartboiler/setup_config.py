@@ -93,6 +93,19 @@ DEFAULTS: dict = {
     "has_spot_price": False,
     "spot_price_region": "CZ",
 
+    # ── Tariff (see tariff.py) — all prices in local currency per kWh ────
+    # Defaults reproduce the behaviour before tariffs existed: spot in EUR,
+    # no fees, export earns nothing.
+    "tariff_mode": "spot",              # spot | fixed | dual
+    "currency_per_eur": 1.0,            # local currency per 1 EUR (e.g. 25 for CZK)
+    "grid_fee_per_kwh": 0.0,            # distribution + taxes added to every bought kWh
+    "fixed_price_per_kwh": 0.0,         # tariff_mode=fixed: energy price
+    "low_price_per_kwh": 0.0,           # tariff_mode=dual: low-tariff energy price
+    "high_price_per_kwh": 0.0,          # tariff_mode=dual: high-tariff energy price
+    "low_tariff_schedule": "",          # tariff_mode=dual: "22:00-06:00,13:00-15:00"; empty = HDO-free hours
+    "export_price_per_kwh": 0.0,        # earned per exported kWh (feed-in)
+    "export_at_spot": False,            # True: export earns the spot price (needs spot prices)
+
     # ── HDO ───────────────────────────────────────────────────────────────
     "hdo_explicit_schedule": "",
     "hdo_history_weeks": 3,
@@ -235,6 +248,8 @@ def validate_config(config: dict) -> list[str]:
         if config.get("battery_priority") not in ("battery_first", "boiler_first", "sell_first"):
             errors.append("battery_priority must be 'battery_first', 'boiler_first', or 'sell_first'")
 
+    _validate_tariff(errors, config)
+
     if config.get("logging_level") not in ("DEBUG", "INFO", "WARNING", "ERROR"):
         errors.append("logging_level must be one of: DEBUG, INFO, WARNING, ERROR")
 
@@ -279,6 +294,29 @@ def validate_config(config: dict) -> list[str]:
         errors.append("hdo_explicit_schedule must be empty or in format HH:MM-HH:MM (e.g. 22:00-06:00)")
 
     return errors
+
+
+def _validate_tariff(errors: list[str], config: dict) -> None:
+    """Tariff fields: mode enum, price ranges, and what each mode needs."""
+    from smartboiler.tariff import TARIFF_MODES, parse_time_windows
+
+    mode = config.get("tariff_mode")
+    if mode not in TARIFF_MODES:
+        errors.append("tariff_mode must be one of: " + ", ".join(TARIFF_MODES))
+    _check_range(errors, config, "currency_per_eur", 0.01, 10000)
+    _check_range(errors, config, "grid_fee_per_kwh", 0.0, 1000)
+    _check_range(errors, config, "export_price_per_kwh", -1000, 1000)
+    if mode == "fixed":
+        _check_range(errors, config, "fixed_price_per_kwh", 0.0001, 1000)
+    if mode == "dual":
+        _check_range(errors, config, "low_price_per_kwh", 0.0001, 1000)
+        _check_range(errors, config, "high_price_per_kwh", 0.0001, 1000)
+        try:
+            parse_time_windows(str(config.get("low_tariff_schedule", "")))
+        except ValueError as e:
+            errors.append(f"low_tariff_schedule: {e}")
+    if config.get("export_at_spot") and not config.get("has_spot_price"):
+        errors.append("export_at_spot needs spot prices enabled (has_spot_price)")
 
 
 def _check_range(
@@ -352,7 +390,9 @@ def save_setup_config(data: dict) -> None:
 
     for float_key in ("thermal_coupling_ratio", "draw_detection_threshold_c",
                       "thermal_mass_ratio", "pv_installed_power_kw",
-                      "battery_capacity_kwh", "battery_max_charge_kw"):
+                      "battery_capacity_kwh", "battery_max_charge_kw",
+                      "currency_per_eur", "grid_fee_per_kwh", "fixed_price_per_kwh",
+                      "low_price_per_kwh", "high_price_per_kwh", "export_price_per_kwh"):
         try:
             merged[float_key] = float(merged[float_key])
         except (ValueError, TypeError):
@@ -361,6 +401,7 @@ def save_setup_config(data: dict) -> None:
     merged["has_spot_price"] = bool(merged.get("has_spot_price", False))
     merged["has_pv"] = bool(merged.get("has_pv", False))
     merged["has_battery"] = bool(merged.get("has_battery", False))
+    merged["export_at_spot"] = bool(merged.get("export_at_spot", False))
     _normalize_influx_fields(merged)
 
     errors = validate_config(merged)

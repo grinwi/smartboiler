@@ -68,6 +68,7 @@ class SmartBoilerController:
         from smartboiler.predictor import RollingHistogramPredictor
         from smartboiler.scheduler import HeatingScheduler, BoilerParams
         from smartboiler.spot_price import SpotPriceFetcher
+        from smartboiler.tariff import Tariff
         from smartboiler.thermal_model import ThermalModel
         from smartboiler.temperature_estimator import TemperatureEstimator
         from smartboiler.legionella_protector import LegionellaProtector
@@ -184,7 +185,8 @@ class SmartBoilerController:
             battery_max_charge_kw=self.battery_max_charge_kw,
             battery_priority=self.battery_priority,
         )
-        self.scheduler = HeatingScheduler(boiler_params)
+        self.tariff = Tariff.from_config(options)
+        self.scheduler = HeatingScheduler(boiler_params, tariff=self.tariff)
 
         self.spot_fetcher = SpotPriceFetcher(country=self.spot_price_region) if self.has_spot_price else None
 

@@ -130,7 +130,7 @@ t=1h   ┌───────────────────────�
 
 **What happens if spot prices are unavailable?**
 - `SpotPriceFetcher` returns an empty dict; slots get `spot_price=None`.
-- `HourSlot.__post_init__` assigns `DEFAULT_MEDIUM_PRICE` (75 EUR/MWh), so the scheduler still works — it just can't optimise across price differences.
+- The tariff uses `DEFAULT_SPOT_EUR_MWH` (75 EUR/MWh) for unknown hours, so the scheduler still works — it just can't optimise across price differences.
 - Tomorrow's prices are typically published at ~14:30 CET; the ForecastWorkflow fetches them on the next hourly cycle after they appear.
 
 ---
@@ -198,15 +198,24 @@ For a typical single-family household, the LSTM offered no measurable accuracy i
 
 ### Slot Cost Assignment
 
-Each hour slot is assigned an **effective cost** at construction time:
+Prices are in the user's currency per kWh. `Tariff` (tariff.py) turns the contract into two numbers per hour:
 
 ```
-calendar_mode == vacation_off  →  cost = ∞           (never heat)
-calendar_mode == boost_*       →  cost = -2.0         (always heat)
-hdo_blocked                    →  cost = ∞           (cannot heat)
-pv_surplus > 0.1 kWh           →  cost = -1.0         (free solar)
-spot_price known               →  cost = spot_price   (market rate)
-spot_price unknown             →  cost = 75 EUR/MWh   (medium guess)
+import_price = energy + grid_fee
+    energy = spot_EUR_MWh / 1000 × currency_per_eur   (mode spot; 75 EUR/MWh if unknown)
+           = fixed_price                               (mode fixed)
+           = low_price | high_price                    (mode dual; low hours from
+                                                         low_tariff_schedule, else HDO-free hours)
+export_price = export_price_per_kwh, or the converted spot price if export_at_spot
+```
+
+Each hour slot then gets an **effective cost** = average price per kWh of one heater-hour:
+
+```
+blocked (HDO / vacation_off)  →  ∞
+otherwise                     →  (pv_covered × export_price + grid_part × import_price) / heater_kwh
+    pv_covered = min(pv_surplus, heater_kwh) if pv_surplus > 0.1 kWh else 0
+forced = calendar boost (and not blocked)
 ```
 
 ### Greedy Fill Loop
@@ -214,9 +223,10 @@ spot_price unknown             →  cost = 75 EUR/MWh   (medium guess)
 ```
 heating_plan = [False] * 24
 
-# Step 1: always enable forced/free slots
-for slot in slots:
-    if slot.effective_cost < 0:
+# Step 1: forced slots, and slots cheaper than any grid hour
+cheapest_import = min(import_price of open slots)
+for slot in open slots:
+    if slot.forced or slot.effective_cost < 0 or slot.effective_cost < cheapest_import:
         heating_plan[slot.index] = True
 
 # Step 2: greedy fill until temperature constraint satisfied
@@ -229,7 +239,7 @@ repeat up to 24 times:
     candidates = [slots where index <= first_viol and not already heating and cost < ∞]
 
     cheapest = argmin over candidates of:
-        (effective_cost / 1000 * wattage_kw) + standby_penalty * (first_viol - slot.index)
+        effective_cost * heater_kwh + standby_penalty * (first_viol - slot.index)
 
     heating_plan[cheapest.index] = True
 ```
