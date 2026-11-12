@@ -47,11 +47,6 @@ setup(
         "pytz",
         "requests>=2.31",
     ],
-    # Optional
-    entry_points={  # Optional
-        "console_scripts": [
-            "smartboiler=smartboiler.command_line:main",
-        ],
-    },
-    package_data={"smartboiler": ["templates/*.html", "static/style.css"]},
+    # Run with: python3 -m smartboiler.controller
+    package_data={"smartboiler": ["templates/*.html"]},
 )

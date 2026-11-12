@@ -336,3 +336,22 @@ class TestGetAttribute:
         state = _state_obj(attributes={"voltage": 230.0})
         with patch.object(client, "get_state", return_value=state):
             assert client.get_attribute("sensor.power", "voltage") == pytest.approx(230.0)
+
+
+# ---------------------------------------------------------------------------
+# Retry policy
+# ---------------------------------------------------------------------------
+
+class TestRetryPolicy:
+    def test_session_retries_transient_get_errors(self):
+        client = _make_client()
+        retry = client._session.get_adapter("http://ha-test/api").max_retries
+        assert retry.total == 3
+        assert 503 in retry.status_forcelist
+        assert retry.is_retry("GET", 503)
+
+    def test_service_calls_are_not_retried(self):
+        # A relay command must never be sent twice by the HTTP layer.
+        client = _make_client()
+        retry = client._session.get_adapter("http://ha-test/api").max_retries
+        assert not retry.is_retry("POST", 503)

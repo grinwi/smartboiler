@@ -1,15 +1,10 @@
-# Tests for FlowlessConsumptionEstimator
-# Run with:  python -m pytest smartboiler/src/smartboiler/tests/test_consumption_estimator.py -v
+# Scenario tests for FlowlessConsumptionEstimator (energy balance, thermal
+# model inference, serialisation). Complements test_consumption_estimator.py.
 
-import sys
-import os
 from datetime import date, datetime, timedelta
 from unittest.mock import patch
 
-# Allow running from repo root without installing the package
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-from consumption_estimator import FlowlessConsumptionEstimator, C_WATER, RHO
+from smartboiler.consumption_estimator import FlowlessConsumptionEstimator, C_WATER, RHO
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 

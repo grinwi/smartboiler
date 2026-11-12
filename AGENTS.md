@@ -50,7 +50,6 @@
 - `src/smartboiler/setup_config.py`
 - `src/smartboiler/state_store.py`
 - `Dockerfile`
-- `config.yml`
 
 ## Validation
 

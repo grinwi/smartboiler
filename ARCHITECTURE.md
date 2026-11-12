@@ -419,8 +419,8 @@ All state is persisted to `/data/` — the HA add-on persistent volume that surv
 ```
 
 **Persistence guarantees:**
-- JSON files: written atomically via Python `json.dump` (single write)
-- Pickle files: written in-place; a crash during write can corrupt the file. The loader catches `Exception` and starts fresh (losing accumulated history but not crashing the controller)
+- All files (JSON and pickle) are written atomically: temp file in the same directory, `fsync`, then `os.replace`. A crash mid-write leaves the previous version intact.
+- If a file is unreadable anyway (e.g. manual edit), the loader catches `Exception` and starts fresh instead of crashing the controller.
 
 ---
 
@@ -628,8 +628,8 @@ HDO tariffs in Czechia offer a significantly discounted rate during HDO-availabl
 
 | Area | Current | Improvement |
 |------|---------|-------------|
-| HA API retries | No retry on 429/504 | Exponential backoff with jitter |
-| Pickle corruption | Silent — starts fresh | Atomic write via temp file + rename |
+| HA API retries | GET retried 3× with exponential backoff on 429/5xx; service calls not retried | — |
+| Pickle corruption | Atomic write via temp file + rename | — |
 | Schema versioning | None | Add version field to `state.json` + migration code |
 | Sensor validation | No range checks | Reject readings outside physical bounds (e.g., T > 100 °C) |
 
