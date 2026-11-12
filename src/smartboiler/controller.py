@@ -33,6 +33,9 @@ _THERMOSTAT_TRIP_CONFIRM_S = 60.0
 _CASE_STABLE_WINDOW_S = 5 * 60.0
 _CASE_STABLE_COVERAGE_GRACE_S = CONTROL_LOOP_INTERVAL_S
 _THERMOSTAT_TRIP_POWER_W = 50.0       # effective zero-power threshold
+# Surplus heating stops at set_tmp and restarts only this far below it,
+# so the relay does not toggle around the target temperature.
+SURPLUS_REHEAT_DELTA_C = 3.0
 _THERMOSTAT_TRIP_HOLD_MAX_S = 15 * 60.0
 _CASE_RISE_TOLERANCE_C = 0.1
 _HDO_UNAVAILABLE_STATES = {"unavailable", "unknown"}
@@ -95,6 +98,8 @@ class SmartBoilerController:
         self.boiler_area_tmp_entity_id   = options.get("boiler_area_tmp_entity_id") or None
         self.boiler_direct_tmp_entity_id = options.get("boiler_direct_tmp_entity_id") or None
         self.pv_surplus_entity_id = options.get("pv_surplus_entity_id") or None
+        # True when the sensor reports import as positive (export negative)
+        self.pv_surplus_inverted = bool(options.get("pv_surplus_inverted", False))
 
         # PV / Solar (FVE)
         self.has_pv = bool(options.get("has_pv", False))
@@ -191,6 +196,14 @@ class SmartBoilerController:
         self.scheduler = HeatingScheduler(boiler_params, tariff=self.tariff)
 
         self.spot_fetcher = SpotPriceFetcher(country=self.spot_price_region) if self.has_spot_price else None
+
+        # Real-time PV surplus heating (needs a live export sensor)
+        from smartboiler.surplus_dispatcher import SurplusDispatcher
+        self.surplus_dispatcher: Optional[SurplusDispatcher] = (
+            SurplusDispatcher(heater_w=self.boiler_watt)
+            if self.has_pv and self.pv_surplus_entity_id and options.get("surplus_dispatch", True)
+            else None
+        )
 
         # Calendar manager (optional)
         self.calendar: Optional[Any] = None
@@ -440,18 +453,56 @@ class SmartBoilerController:
                 return [kwh] * 24
 
         # 2. Current power sensor (W → kWh/h)
-        for entity_id, label in (
-            (self.pv_power_entity_id, "pv_power"),
-            (self.pv_surplus_entity_id, "pv_surplus"),
-        ):
-            if entity_id:
-                val = self.ha.get_state_value(entity_id, default=None)
-                if val is not None:
-                    surplus = max(0.0, float(val) / 1000.0)
-                    logger.debug("PV forecast from %s: %.3f kWh/h", label, surplus)
-                    return [surplus] * 24
+        if self.pv_power_entity_id:
+            val = self.ha.get_state_value(self.pv_power_entity_id, default=None)
+            if val is not None:
+                surplus = max(0.0, float(val) / 1000.0)
+                logger.debug("PV forecast from pv_power: %.3f kWh/h", surplus)
+                return [surplus] * 24
+
+        # 3. Live export sensor
+        export_w = self._read_export_w()
+        if export_w is not None:
+            surplus = max(0.0, export_w / 1000.0)
+            logger.debug("PV forecast from pv_surplus: %.3f kWh/h", surplus)
+            return [surplus] * 24
 
         return [0.0] * 24
+
+    def _read_export_w(self) -> Optional[float]:
+        """Current grid export in W (negative = import), or None if unknown.
+
+        Reads pv_surplus_entity_id and flips the sign when the sensor
+        reports import as positive (pv_surplus_inverted).
+        """
+        if not self.pv_surplus_entity_id:
+            return None
+        val = self.ha.get_state_value(self.pv_surplus_entity_id, default=None)
+        try:
+            w = float(val)
+        except (TypeError, ValueError):
+            return None
+        return -w if self.pv_surplus_inverted else w
+
+    def _surplus_heating_allowed(
+        self, hour_idx: int, relay_unavailable: bool, boiler_tmp: float
+    ) -> bool:
+        """Whether real-time surplus heating may run in this tick.
+
+        Not when HDO cuts the relay, when the water is already hot (with
+        hysteresis, see SURPLUS_REHEAT_DELTA_C), or when exporting the
+        energy earns at least as much as buying it costs this hour.
+        """
+        if relay_unavailable:
+            return False
+        reheat_gap = 0.0 if self.surplus_dispatcher.active else SURPLUS_REHEAT_DELTA_C
+        if boiler_tmp >= self.boiler_set_tmp - reheat_gap:
+            return False
+        with self._lock:
+            slot = self._plan_slots[hour_idx] if hour_idx < len(self._plan_slots) else None
+        if slot is not None and (slot.blocked or slot.export_price >= slot.import_price):
+            return False
+        return True
 
     def _open_meteo_surplus(self) -> Optional[List[float]]:
         """PV surplus from Open-Meteo, or None if not configured or failing.
@@ -834,6 +885,16 @@ class SmartBoilerController:
                 )
                 should_heat = True
 
+            # Real-time PV surplus — only when the plan does not heat anyway.
+            surplus_on = False
+            if self.surplus_dispatcher is not None:
+                allowed = not should_heat and self._surplus_heating_allowed(
+                    current_hour_idx, relay_unavailable, boiler_tmp
+                )
+                surplus_on = self.surplus_dispatcher.update(
+                    self._read_export_w() if allowed else None, allowed
+                )
+
             # Don't keep relay ON once the boiler reached its target temperature.
             # Two independent signals for "boiler is fully charged":
             #   1. Temperature sensor at or above set_tmp
@@ -855,6 +916,11 @@ class SmartBoilerController:
             if should_heat:
                 self.ha.turn_on(self.boiler_switch_entity_id)
                 logger.debug("Boiler ON (plan hour %d, tmp=%.1f)", current_hour_idx, boiler_tmp)
+            elif surplus_on:
+                # The boiler's own thermostat protects against overheating, so
+                # the relay may stay ON even after it cuts the element.
+                self.ha.turn_on(self.boiler_switch_entity_id)
+                logger.debug("Boiler ON (solar surplus, tmp=%.1f)", boiler_tmp)
             else:
                 self.ha.turn_off(self.boiler_switch_entity_id)
                 logger.debug("Boiler OFF (plan hour %d, tmp=%.1f)", current_hour_idx, boiler_tmp)
@@ -962,6 +1028,7 @@ class SmartBoilerController:
             "operation_mode": self.operation_mode,
             "simple_mode": simple_mode_diag,
             "heating_until": None,
+            "surplus_heating": bool(self.surplus_dispatcher and self.surplus_dispatcher.active),
             "last_legionella": last_leg.strftime("%Y-%m-%d") if last_leg else None,
             "predictor_has_data": bool(self.predictor.has_enough_data(self.min_training_days)),
             "forecast_24h": [round(v, 4) for v in forecast_copy],

@@ -414,7 +414,9 @@
       <div class="field optional">
         <label>PV surplus / net export sensor</label>
         <div class="picker-wrap" id="picker-pv_surplus_entity_id"></div>
-        <div class="hint">Sensor in watts — positive = export. Used for real-time free-energy detection.</div>
+        <div class="hint">Grid power in watts. Lets the boiler follow the real sun minute by minute: it switches on when the surplus covers most of the heater and off when a cloud makes it draw from the grid.</div>
+        <label style="font-weight:400;margin-top:.5rem"><input type="checkbox" id="pv_surplus_inverted"> This sensor shows <em>import</em> as positive (export negative)</label>
+        <label style="font-weight:400"><input type="checkbox" id="surplus_dispatch" checked> Heat the boiler from real-time surplus</label>
       </div>
       <div class="field optional">
         <label>PV production sensor</label>
@@ -1104,6 +1106,8 @@ function collectCurrentStepValues() {
     if (Number.isFinite(v)) CFG[id] = v;
   });
   CFG.pv_forecast_source = document.getElementById('pv_forecast_source').value;
+  CFG.pv_surplus_inverted = document.getElementById('pv_surplus_inverted').checked;
+  CFG.surplus_dispatch = document.getElementById('surplus_dispatch').checked;
 
   // Tariff (0 is a valid price, so do not fall back on falsy values)
   CFG.tariff_mode = document.getElementById('tariff_mode').value;
@@ -1371,6 +1375,8 @@ async function loadExistingConfig() {
       const el = document.getElementById(id);
       if (el && CFG[id] != null) el.value = CFG[id];
     });
+    document.getElementById('pv_surplus_inverted').checked = !!CFG.pv_surplus_inverted;
+    document.getElementById('surplus_dispatch').checked = CFG.surplus_dispatch !== false;
     const socUnit = document.getElementById('battery_soc_unit');
     if (socUnit && CFG.battery_soc_unit) socUnit.value = CFG.battery_soc_unit;
     // Restore priority order

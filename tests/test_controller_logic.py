@@ -48,6 +48,8 @@ def ctrl():
     c.prediction_conservatism = "medium"
     c.min_training_days = 30
     c.pv_surplus_entity_id = None
+    c.pv_surplus_inverted = False
+    c.surplus_dispatcher = None
     c.boiler_inlet_tmp_entity_id = None
     c.boiler_outlet_tmp_entity_id = None
     c.operation_mode = "standard"
@@ -1240,3 +1242,77 @@ class TestPlanPersistence:
         # Must not raise TypeError when compared to tz-aware now
         diff = _dt.now().astimezone() - dt
         assert diff.total_seconds() > 0
+
+
+# ---------------------------------------------------------------------------
+# Real-time PV surplus heating in the control loop
+# ---------------------------------------------------------------------------
+
+class TestSurplusHeating:
+    """Plan says idle; the dispatcher may still run the boiler on measured surplus."""
+
+    @pytest.fixture
+    def sctrl(self, ctrl):
+        from smartboiler.surplus_dispatcher import SurplusDispatcher
+
+        ctrl.pv_surplus_entity_id = "sensor.grid_export"
+        ctrl.surplus_dispatcher = SurplusDispatcher(heater_w=2000.0)
+        ctrl._heating_plan = [False] * 24
+        ctrl._last_boiler_tmp = 50.0
+        ctrl.export_w = 0.0
+
+        def _state_value(entity_id, default=None):
+            if entity_id == "sensor.grid_export":
+                return ctrl.export_w
+            return default
+
+        ctrl.ha.get_state_value.side_effect = _state_value
+        return ctrl
+
+    def _tick(self, c, export_w):
+        c.export_w = export_w
+        c.ha.reset_mock(return_value=False, side_effect=False)
+        c.run_control_workflow()
+        if c.ha.turn_on.called:
+            return "on"
+        return "off" if c.ha.turn_off.called else None
+
+    def test_starts_on_sustained_export(self, sctrl):
+        assert [self._tick(sctrl, 2500), self._tick(sctrl, 2500)] == ["off", "on"]
+
+    def test_stops_when_cloud_causes_import(self, sctrl):
+        self._tick(sctrl, 2500)
+        self._tick(sctrl, 2500)
+        assert [self._tick(sctrl, -1500), self._tick(sctrl, -1500)] == ["on", "off"]
+
+    def test_inverted_sensor_sign(self, sctrl):
+        sctrl.pv_surplus_inverted = True
+        assert [self._tick(sctrl, -2500), self._tick(sctrl, -2500)] == ["off", "on"]
+
+    def test_not_during_hdo_block(self, sctrl):
+        sctrl.ha.get_state.return_value = {"state": "unavailable", "attributes": {}}
+        assert [self._tick(sctrl, 2500), self._tick(sctrl, 2500)] == ["off", "off"]
+
+    def test_hot_water_waits_for_reheat_gap(self, sctrl):
+        sctrl._last_boiler_tmp = 58.0   # set 60, restart only below 57
+        assert [self._tick(sctrl, 2500), self._tick(sctrl, 2500)] == ["off", "off"]
+        sctrl._last_boiler_tmp = 56.0
+        assert [self._tick(sctrl, 2500), self._tick(sctrl, 2500)] == ["off", "on"]
+
+    def test_not_when_export_pays_more_than_import(self, sctrl):
+        from smartboiler.scheduler import HourSlot
+
+        now = datetime.now().astimezone()
+        sctrl._plan_slots = [
+            HourSlot(index=i, dt=now, consumption_kwh=0.0, pv_surplus_kwh=0.0, spot_price=None,
+                     hdo_blocked=False, import_price=2.0, export_price=3.0)
+            for i in range(24)
+        ]
+        assert [self._tick(sctrl, 2500), self._tick(sctrl, 2500)] == ["off", "off"]
+
+    def test_plan_heating_takes_over_and_resets_dispatcher(self, sctrl):
+        self._tick(sctrl, 2500)
+        self._tick(sctrl, 2500)
+        sctrl._heating_plan = [True] * 24
+        assert self._tick(sctrl, 2500) == "on"
+        assert not sctrl.surplus_dispatcher.active

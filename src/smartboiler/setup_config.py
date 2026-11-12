@@ -50,7 +50,9 @@ DEFAULTS: dict = {
     "boiler_area_tmp_entity_id": "",
     "boiler_water_flow_entity_id": "",
     "boiler_water_temp_entity_id": "",
-    "pv_surplus_entity_id": "",
+    "pv_surplus_entity_id": "",         # live grid export in W (positive = export)
+    "pv_surplus_inverted": False,       # True if that sensor shows import as positive
+    "surplus_dispatch": True,           # heat from measured surplus in real time
     "person_entity_ids": "",
     "calendar_entity_id": "",
 
@@ -419,6 +421,8 @@ def save_setup_config(data: dict) -> None:
     merged["has_pv"] = bool(merged.get("has_pv", False))
     merged["has_battery"] = bool(merged.get("has_battery", False))
     merged["export_at_spot"] = bool(merged.get("export_at_spot", False))
+    merged["pv_surplus_inverted"] = bool(merged.get("pv_surplus_inverted", False))
+    merged["surplus_dispatch"] = bool(merged.get("surplus_dispatch", True))
     _normalize_influx_fields(merged)
 
     errors = validate_config(merged)
