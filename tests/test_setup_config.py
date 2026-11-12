@@ -175,13 +175,23 @@ class TestValidateConfig:
         cfg["hdo_explicit_schedule"] = ""
         assert validate_config(cfg) == []
 
-    @pytest.mark.parametrize("hdo", ["22:00-06:00", "0:00-8:00", "23:59-00:00"])
+    @pytest.mark.parametrize("hdo", [
+        "22:00-06:00", "0:00-8:00", "23:59-00:00",
+        "22:00-06:00,12:05-13:35",            # example from the docs
+        " 22:00-06:00 , 13:00-15:00 ",       # spaces around windows
+        "00:00-01:00,08:00-09:00,20:00-21:00",
+    ])
     def test_valid_hdo_formats(self, hdo):
         cfg = _valid()
         cfg["hdo_explicit_schedule"] = hdo
         assert validate_config(cfg) == []
 
-    @pytest.mark.parametrize("bad_hdo", ["2200-0600", "22:00", "22:00/06:00", "aa:bb-cc:dd"])
+    @pytest.mark.parametrize("bad_hdo", [
+        "2200-0600", "22:00", "22:00/06:00", "aa:bb-cc:dd",
+        "22:00-06:00,13:00",                 # second window incomplete
+        "25:00-06:00", "22:60-06:00",        # out-of-range hour / minute
+        "22:00-06:00;13:00-15:00",           # wrong separator
+    ])
     def test_invalid_hdo_formats(self, bad_hdo):
         cfg = _valid()
         cfg["hdo_explicit_schedule"] = bad_hdo

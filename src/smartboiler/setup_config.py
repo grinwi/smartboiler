@@ -9,7 +9,6 @@ all entity/integration options.
 import json
 import logging
 import os
-import re
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -160,7 +159,6 @@ DEFAULTS: dict = {
     "logging_level": "INFO",
 }
 
-_HDO_PATTERN = re.compile(r"^\d{1,2}:\d{2}-\d{1,2}:\d{2}$")
 
 _MODE_SPECIFIC_INFLUX_FALLBACKS = {
     "influxdb_standard_relay_entity_id": ("influxdb_relay_entity_id",),
@@ -299,10 +297,17 @@ def validate_config(config: dict) -> list[str]:
     except (ValueError, TypeError):
         pass  # already caught by range checks above
 
-    # ── HDO format ──────────────────────────────────────────────────────
+    # ── HDO format: one or more comma-separated HH:MM-HH:MM windows ─────
+    from smartboiler.tariff import parse_time_windows
+
     hdo = str(config.get("hdo_explicit_schedule", "")).strip()
-    if hdo and not _HDO_PATTERN.match(hdo):
-        errors.append("hdo_explicit_schedule must be empty or in format HH:MM-HH:MM (e.g. 22:00-06:00)")
+    try:
+        parse_time_windows(hdo)
+    except ValueError:
+        errors.append(
+            "hdo_explicit_schedule must be empty or HH:MM-HH:MM windows separated by commas "
+            "(e.g. 22:00-06:00,12:05-13:35)"
+        )
 
     return errors
 
