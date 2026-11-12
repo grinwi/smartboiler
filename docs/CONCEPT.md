@@ -248,6 +248,8 @@ Each phase is shippable alone and useful alone.
 - **Phase 1, part**: tariff model (`tariff.py`: spot / fixed / low+high, fees, export price) used by the scheduler;
   Open-Meteo PV forecast (`pv_forecast.py`) with a constant house base load. Open: 15-min slots,
   self-calibration of the PV forecast, learned base load, Energy-dashboard discovery.
+- **Phase 2**: `surplus_dispatcher.py` runs the boiler on measured export with hysteresis (2 readings,
+  start ≥ 80 % covered, stop < 50 %). Uses the existing 60 s control loop; a faster loop is open.
 
 Phases 1–2 already pay off for boiler-only users. Do the refactor (3) **after** them only if
 they can be added cleanly; otherwise 0 → 3 → 1 → 2. Implementer's call after reading `controller.py`.

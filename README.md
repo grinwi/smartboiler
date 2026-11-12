@@ -74,6 +74,13 @@ L3  Thermal model: Newton's law cooling from case sensor
 L4  Last known value  (stale — logged as warning)
 ```
 
+### Real-time solar surplus
+
+With a live grid-export sensor configured, the boiler also follows the real sun: it switches on
+when the measured export covers at least 80 % of the heater for two minutes, and off when a cloud
+makes it draw more than half its power from the grid. The day-ahead plan, legionella cycle and
+calendar events keep priority.
+
 ### HDO Ripple-Control Learning
 
 Czech/Slovak low-tariff electricity uses an HDO relay that physically disconnects the boiler switch.

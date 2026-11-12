@@ -112,8 +112,9 @@ t=0h   ┌───────────────────────�
        │ spot_price.fetch()       │           │ get_boiler_tmp()         │
        │ hdo_learner.next_24h()   │           │ check legionella_due?    │
        │ scheduler.plan()         │           │ execute heating_plan[h]  │
-       │ state_store.save()       │           │ hdo_learner.observe()    │
-       └──────────────────────────┘           │ thermal_model.observe()  │
+       │ state_store.save()       │           │ surplus_dispatcher       │
+       └──────────────────────────┘           │ hdo_learner.observe()    │
+                                              │ thermal_model.observe()  │
                                               └──────────────────────────┘
 
 t=1h   ┌──────────────────────────┐
@@ -134,6 +135,24 @@ t=1h   ┌───────────────────────�
 - Tomorrow's prices are typically published at ~14:30 CET; the ForecastWorkflow fetches them on the next hourly cycle after they appear.
 
 ---
+
+### Real-time PV surplus (surplus_dispatcher.py)
+
+The hourly plan is built from forecasts. In hours where the plan does **not** heat, the
+control loop also asks `SurplusDispatcher` whether the *measured* grid export
+(`pv_surplus_entity_id`, positive = export, or flipped with `pv_surplus_inverted`) should run
+the boiler:
+
+```
+start  export ≥ 0.8 × heater W for 2 consecutive ticks (2 min)
+stop   import > 0.5 × heater W for 2 consecutive ticks
+never  HDO cuts the relay · water ≥ set_tmp (restart only below set_tmp − 3 °C)
+       · export price ≥ import price this hour · plan already heating
+```
+
+Freeze protection, legionella, calendar events and the plan all take priority. While running
+on surplus the relay may stay ON after the boiler's own thermostat cuts the element; the
+draw drops to 0 W, export rises again, and nothing chatters.
 
 ## 4. Prediction Pipeline
 
