@@ -1,6 +1,6 @@
 # Concept: from SmartBoiler to a Home Energy Manager
 
-Status: **proposal** (no code yet). Audience: the maintainer and whoever implements it.
+Status: **in progress** — see "Done so far" under the roadmap. Audience: the maintainer and whoever implements it.
 Scope: this library (all the logic, UI and tests) and the thin `grinwi/smartboiler-add-on` repo that only packages it for Home Assistant.
 
 Goal: extend the boiler controller to a household with any mix of
@@ -240,6 +240,14 @@ Each phase is shippable alone and useful alone.
 | **5 Heat pump** | SG-Ready + DHW; block in expensive slots with max block time by outdoor temp; then learned 1R1C house model and COP curve | Largest consumer in the house under control |
 | **6 Reporting** | Cost vs "dumb" baseline, self-consumption %, forecast accuracy, notifications | Proof of value |
 | **7 Later** | Battery grid-charging, EV charger, main-breaker / 15-min peak guard, joint LP, proportional PV diverter | — |
+
+### Done so far
+
+- **Phase 0**: dead code removed, atomic state writes, HA GET retries. Open: `MANUAL.md` rewrite, `schema_version`,
+  personal files in the repo (edesky scripts, `test.txt`, PDF, notebooks) — waiting for the maintainer.
+- **Phase 1, part**: tariff model (`tariff.py`: spot / fixed / low+high, fees, export price) used by the scheduler;
+  Open-Meteo PV forecast (`pv_forecast.py`) with a constant house base load. Open: 15-min slots,
+  self-calibration of the PV forecast, learned base load, Energy-dashboard discovery.
 
 Phases 1–2 already pay off for boiler-only users. Do the refactor (3) **after** them only if
 they can be added cleanly; otherwise 0 → 3 → 1 → 2. Implementer's call after reading `controller.py`.

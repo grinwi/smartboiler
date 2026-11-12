@@ -75,6 +75,12 @@ DEFAULTS: dict = {
     "pv_installed_power_kw": 0.0,       # peak installed capacity (kWp)
     "pv_power_entity_id": "",           # current PV production sensor (W or kW)
     "pv_forecast_entity_id": "",        # hourly forecast entity (kWh — e.g. Solcast)
+    # Forecast source: "auto" = Open-Meteo for HA's location when kWp is set,
+    # falling back to the entities above; "entity" = entities only.
+    "pv_forecast_source": "auto",
+    "pv_tilt_deg": 35,                  # panel tilt: 0 = flat, 90 = vertical
+    "pv_azimuth_deg": 180,              # direction panels face: 90 E, 180 S, 270 W
+    "house_base_load_w": 300,           # typical house consumption subtracted from PV
 
     # ── Battery ───────────────────────────────────────────────────────────
     "has_battery": False,
@@ -277,6 +283,11 @@ def validate_config(config: dict) -> list[str]:
     # ── PV / Battery ranges ──────────────────────────────────────────────
     if config.get("has_pv"):
         _check_range(errors, config, "pv_installed_power_kw", 0.1, 200.0, "kWp")
+        if config.get("pv_forecast_source") not in ("auto", "entity"):
+            errors.append("pv_forecast_source must be 'auto' or 'entity'")
+        _check_range(errors, config, "pv_tilt_deg", 0, 90, "°")
+        _check_range(errors, config, "pv_azimuth_deg", 0, 360, "°")
+        _check_range(errors, config, "house_base_load_w", 0, 20000, "W")
     if config.get("has_battery"):
         _check_range(errors, config, "battery_capacity_kwh", 0.1, 500.0, "kWh")
         _check_range(errors, config, "battery_max_charge_kw", 0.0, 200.0, "kW")
@@ -382,7 +393,8 @@ def save_setup_config(data: dict) -> None:
                     "min_training_days", "predictor_retrain_weeks",
                     "hdo_history_weeks", "hdo_decay_weeks", "hdo_retrain_weeks",
                     "thermal_model_window_days", "influxdb_port",
-                    "influxdb_history_years", "vacation_min_temp"):
+                    "influxdb_history_years", "vacation_min_temp",
+                    "pv_tilt_deg", "pv_azimuth_deg", "house_base_load_w"):
         try:
             merged[int_key] = int(merged[int_key])
         except (ValueError, TypeError):

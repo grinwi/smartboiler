@@ -191,7 +191,7 @@ For a typical single-family household, the LSTM offered no measurable accuracy i
 |-------|--------|
 | `current_tmp` | TemperatureEstimator |
 | `consumption_forecast[24]` | RollingHistogramPredictor |
-| `pv_forecast[24]` | PV entity / forecast entity (kWh) |
+| `pv_forecast[24]` | PV surplus (kWh): Open-Meteo irradiance × kWp × 0.8 − house base load (pv_forecast.py); falls back to the forecast / power entity |
 | `spot_prices{0..23}` | SpotPriceFetcher |
 | `hdo_blocked[24]` | HDOLearner |
 | `calendar_events` | CalendarManager |

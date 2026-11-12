@@ -102,6 +102,15 @@ class HAClient:
             logger.warning("get_all_states failed: %s", e)
             return []
 
+    def get_config(self) -> Optional[Dict]:
+        """Return Home Assistant's core config (latitude, longitude, time_zone…),
+        or None on error."""
+        try:
+            return self._get("/config")
+        except Exception as e:
+            logger.warning("get_config failed: %s", e)
+            return None
+
     # ── History ───────────────────────────────────────────────────────────
 
     def get_history(

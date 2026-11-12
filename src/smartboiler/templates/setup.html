@@ -382,6 +382,34 @@
           <input type="number" id="pv_installed_power_kw" value="5.0" min="0.1" max="200" step="0.1">
           <div class="hint">Total nameplate peak power</div>
         </div>
+        <div class="field">
+          <label for="house_base_load_w">Typical house consumption (W)</label>
+          <input type="number" id="house_base_load_w" value="300" min="0" max="20000" step="50">
+          <div class="hint">Fridge, router, standby… Subtracted from the solar forecast to get the surplus.</div>
+        </div>
+        <div class="field">
+          <label for="pv_tilt_deg">Panel tilt (°)</label>
+          <input type="number" id="pv_tilt_deg" value="35" min="0" max="90">
+          <div class="hint">0 = flat roof, 90 = wall. Typical pitched roof: 30–45.</div>
+        </div>
+        <div class="field">
+          <label for="pv_azimuth_deg">Panels face (°)</label>
+          <select id="pv_azimuth_deg">
+            <option value="90">East (90)</option>
+            <option value="135">South-east (135)</option>
+            <option value="180" selected>South (180)</option>
+            <option value="225">South-west (225)</option>
+            <option value="270">West (270)</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="pv_forecast_source">Solar forecast</label>
+        <select id="pv_forecast_source">
+          <option value="auto">Automatic — weather forecast for your Home Assistant location (Open-Meteo)</option>
+          <option value="entity">Only my sensors below</option>
+        </select>
+        <div class="hint">Automatic needs internet access and the kWp above. If the forecast is unavailable, the sensors below are used.</div>
       </div>
       <div class="field optional">
         <label>PV surplus / net export sensor</label>
@@ -1070,6 +1098,13 @@ function collectCurrentStepValues() {
     if (el) CFG[id] = el.value;
   });
 
+  // PV forecast
+  ['house_base_load_w','pv_tilt_deg','pv_azimuth_deg'].forEach(id => {
+    const v = parseFloat(document.getElementById(id).value);
+    if (Number.isFinite(v)) CFG[id] = v;
+  });
+  CFG.pv_forecast_source = document.getElementById('pv_forecast_source').value;
+
   // Tariff (0 is a valid price, so do not fall back on falsy values)
   CFG.tariff_mode = document.getElementById('tariff_mode').value;
   TARIFF_NUMS.forEach(id => {
@@ -1330,8 +1365,9 @@ async function loadExistingConfig() {
       document.getElementById('has_battery').checked = true;
       document.getElementById('battery-fields').style.display = '';
     }
-    // Restore PV/battery numeric fields
-    ['pv_installed_power_kw','battery_capacity_kwh','battery_max_charge_kw'].forEach(id => {
+    // Restore PV/battery fields
+    ['pv_installed_power_kw','battery_capacity_kwh','battery_max_charge_kw',
+     'house_base_load_w','pv_tilt_deg','pv_azimuth_deg','pv_forecast_source'].forEach(id => {
       const el = document.getElementById(id);
       if (el && CFG[id] != null) el.value = CFG[id];
     });

@@ -101,6 +101,8 @@ class SmartBoilerController:
         self.pv_installed_power_kw = float(options.get("pv_installed_power_kw", 0.0))
         self.pv_power_entity_id = options.get("pv_power_entity_id") or None
         self.pv_forecast_entity_id = options.get("pv_forecast_entity_id") or None
+        self.house_base_load_kw = float(options.get("house_base_load_w", 300)) / 1000.0
+        self._pv_forecaster = None   # OpenMeteoPVForecast, built on first use
 
         # Battery
         self.has_battery = bool(options.get("has_battery", False))
@@ -406,7 +408,9 @@ class SmartBoilerController:
     def _get_pv_forecast_24h(self) -> List[float]:
         """Get PV surplus for next 24 hours.
 
-        Source priority (first non-zero wins):
+        Source priority (first available wins):
+          0. Open-Meteo forecast for HA's location (pv_forecast_source="auto",
+             kWp set) minus house_base_load_w — a real hour-by-hour curve
           1. pv_forecast_entity_id  — a dedicated forecast sensor (kWh/h, e.g. Solcast)
           2. pv_power_entity_id     — current PV production (W), applied as flat 24h proxy
           3. pv_surplus_entity_id   — legacy surplus sensor (W), same flat proxy
@@ -418,6 +422,11 @@ class SmartBoilerController:
         """
         if not self.has_pv:
             return [0.0] * 24
+
+        # 0. Open-Meteo hourly forecast
+        surplus = self._open_meteo_surplus()
+        if surplus is not None:
+            return surplus
 
         # 1. Forecast entity (kWh per hour value — no unit conversion needed)
         if self.pv_forecast_entity_id:
@@ -443,6 +452,28 @@ class SmartBoilerController:
                     return [surplus] * 24
 
         return [0.0] * 24
+
+    def _open_meteo_surplus(self) -> Optional[List[float]]:
+        """PV surplus from Open-Meteo, or None if not configured or failing.
+
+        The forecaster is built lazily because HA's location is read over
+        the API, which may not be up yet when the controller starts.
+        """
+        from smartboiler.pv_forecast import build_from_config
+
+        if self._pv_forecaster is None:
+            self._pv_forecaster = build_from_config(self._options, self.ha.get_config())
+            if self._pv_forecaster is None:
+                return None
+        try:
+            surplus = self._pv_forecaster.surplus_next_24h(
+                datetime.now().astimezone(), base_load_kw=self.house_base_load_kw
+            )
+            logger.debug("PV surplus from Open-Meteo: %s", surplus)
+            return surplus
+        except Exception as e:
+            logger.warning("Open-Meteo PV forecast failed, using entities: %s", e)
+            return None
 
     def _get_battery_soc_kwh(self) -> float:
         """Return current battery state of charge in kWh.
