@@ -233,6 +233,51 @@ def api_status() -> Response:
         abort(500)
 
 
+# ── Savings analysis ───────────────────────────────────────────────────────
+
+
+@app.route("/savings")
+def savings_page() -> str:
+    if _rate_limited():
+        abort(429)
+    return render_template("savings.html")
+
+
+@app.route("/api/savings/sensors")
+def api_savings_sensors() -> Response:
+    """Sensors with long-term statistics, plus form defaults from the config."""
+    from smartboiler import savings_job
+    from smartboiler.ha_statistics import HAStatistics
+
+    if _rate_limited():
+        abort(429)
+    try:
+        with HAStatistics() as ha:
+            sensors = ha.usable_sensors()
+    except Exception as e:
+        logger.warning("Could not list statistics: %s", e)
+        return jsonify({"error": f"Could not read Home Assistant statistics: {e}"}), 502
+    return jsonify({"sensors": sensors, "defaults": savings_job.default_params()})
+
+
+@app.route("/api/savings", methods=["GET"])
+def api_savings_status() -> Response:
+    from smartboiler import savings_job
+
+    return jsonify(savings_job.status())
+
+
+@app.route("/api/savings", methods=["POST"])
+def api_savings_start() -> Response:
+    from smartboiler import savings_job
+
+    if _rate_limited():
+        abort(429)
+    params = request.get_json(silent=True) or {}
+    result = savings_job.start(params)
+    return jsonify(result), (400 if result.get("status") == "error" else 202)
+
+
 @app.route("/api/ping")
 def api_ping() -> Response:
     return jsonify({"ok": True})

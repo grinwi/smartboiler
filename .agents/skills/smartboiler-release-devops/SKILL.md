@@ -11,8 +11,8 @@ Review SmartBoiler like a release and operations engineer. Focus on whether the 
 
 ## Inspect First
 
-- Read `README.md`, `Dockerfile`, `config.yml`, `deploy_docker.mk`, `setup.py`, and `requirements.txt`.
-- Inspect startup and runtime modules such as `src/smartboiler/main.py`, `src/smartboiler/controller.py`, `src/smartboiler/web_server.py`, and configuration-loading code when relevant.
+- Read `README.md`, `Dockerfile`, `deploy_docker.mk`, `setup.py`, and `requirements.txt`.
+- Inspect startup and runtime modules such as `src/smartboiler/controller.py`, `src/smartboiler/web_server.py`, and configuration-loading code when relevant.
 - Inspect tests that cover startup, setup, web routes, or persisted state when a release-risking behavior changes.
 
 ## Review Checklist

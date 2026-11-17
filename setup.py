@@ -46,12 +46,8 @@ setup(
         "pandas>=2.0",
         "pytz",
         "requests>=2.31",
+        "websocket-client>=1.6",   # HA long-term statistics for the savings analysis
     ],
-    # Optional
-    entry_points={  # Optional
-        "console_scripts": [
-            "smartboiler=smartboiler.command_line:main",
-        ],
-    },
-    package_data={"smartboiler": ["templates/*.html", "static/style.css"]},
+    # Run with: python3 -m smartboiler.controller
+    package_data={"smartboiler": ["templates/*.html"]},
 )

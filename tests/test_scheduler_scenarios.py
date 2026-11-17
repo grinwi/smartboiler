@@ -205,7 +205,7 @@ class TestSpotAndPV:
     def test_cheap_spot_fills_pv_gap(self):
         """PV only in the afternoon; morning consumption needs cheap spot fill."""
         sched = HeatingScheduler(_boiler())
-        pv = _pv_hours(1.0, 12, 13, 14)
+        pv = _pv_hours(2.0, 12, 13, 14)   # covers the 2 kW heater fully
         # Night cheap (20 EUR/MWh), day expensive (150 EUR/MWh)
         prices = {h: (20.0 if h < 6 else 150.0) for h in range(24)}
         plan, _ = sched.plan(30.0, _flat(0.3), pv, prices, _no_hdo(), BASE_DT)
@@ -215,6 +215,26 @@ class TestSpotAndPV:
         # At least one cheap night hour should also be selected (cold start needs reheat)
         cheap_heated = [h for h in range(6) if plan[h]]
         assert len(cheap_heated) >= 1, "Cheap night spot hours should be used for extra demand"
+
+    def test_partial_pv_in_expensive_hour_loses_to_cheap_night(self):
+        """1 kWh PV + 1 kWh grid at 150 EUR/MWh averages 75 EUR/MWh — worse
+        than 20 EUR/MWh at night, so the PV hour is not forced."""
+        sched = HeatingScheduler(_boiler())
+        pv = _pv_hours(1.0, 12)
+        prices = {h: (20.0 if h < 6 else 150.0) for h in range(24)}
+        # Warm boiler, little demand: nothing has to be bought, so the
+        # half-grid PV hour must not be forced either.
+        plan, slots = sched.plan(58.0, _flat(0.05), pv, prices, _no_hdo(), BASE_DT)
+        assert slots[12].effective_cost == pytest.approx(0.075)
+        assert plan[12] is False
+
+    def test_partial_pv_wins_when_grid_price_is_flat(self):
+        """With equal grid prices, any real PV share makes the hour cheapest."""
+        sched = HeatingScheduler(_boiler())
+        pv = _pv_hours(0.5, 12)
+        prices = {h: 80.0 for h in range(24)}
+        plan, _ = sched.plan(55.0, _flat(0.0), pv, prices, _no_hdo(), BASE_DT)
+        assert plan[12] is True
 
     def test_pv_blocked_by_hdo_uses_spot_instead(self):
         """If the PV window coincides with HDO, fallback to cheapest spot."""
@@ -372,8 +392,8 @@ class TestPVWithBattery:
         slots = sched.build_slots(_flat(), pv, {}, _no_hdo(), BASE_DT)
         for h in (10, 11, 12):
             assert slots[h].pv_surplus_kwh == pytest.approx(1.5)
-            assert slots[h].effective_cost == pytest.approx(-1.0), \
-                f"Hour {h} should be free solar (boiler_first)"
+            assert slots[h].pv_covered_kwh == pytest.approx(1.5), \
+                f"Hour {h} should use solar (boiler_first)"
 
     # ── sell_first ─────────────────────────────────────────────────────────
 

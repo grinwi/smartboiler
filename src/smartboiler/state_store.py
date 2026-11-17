@@ -6,7 +6,9 @@
 
 import json
 import logging
+import os
 import pickle
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -16,6 +18,28 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 CONSUMPTION_HISTORY_DAYS = 90
+
+
+def atomic_write(path: Path, data: bytes) -> None:
+    """Write ``data`` to ``path`` so readers never see a half-written file.
+
+    The bytes go to a temporary file in the same directory, are flushed to
+    disk, and then replace the target with ``os.replace`` (atomic on POSIX).
+    A crash or power loss mid-write leaves the previous file intact.
+    """
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 class StateStore:
@@ -41,8 +65,8 @@ class StateStore:
 
     def _save_json_state(self) -> None:
         try:
-            with self._state_path.open("w") as f:
-                json.dump(self._state, f, default=str, indent=2)
+            data = json.dumps(self._state, default=str, indent=2).encode("utf-8")
+            atomic_write(self._state_path, data)
         except Exception as e:
             logger.error("Could not save state.json: %s", e)
 
@@ -75,8 +99,7 @@ class StateStore:
 
     def save_consumption_history(self, df: pd.DataFrame) -> None:
         try:
-            with self._consumption_path.open("wb") as f:
-                pickle.dump(df, f)
+            atomic_write(self._consumption_path, pickle.dumps(df))
         except Exception as e:
             logger.error("Could not save consumption history: %s", e)
 
@@ -106,8 +129,7 @@ class StateStore:
     def save_pickle(self, name: str, obj: Any) -> None:
         path = self.data_dir / f"{name}.pkl"
         try:
-            with path.open("wb") as f:
-                pickle.dump(obj, f)
+            atomic_write(path, pickle.dumps(obj))
         except Exception as e:
             logger.error("Could not save %s.pkl: %s", name, e)
 

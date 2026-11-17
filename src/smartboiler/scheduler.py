@@ -3,8 +3,12 @@
 # Author: Adam Grünwald
 #
 # Greedy day-ahead heating scheduler.
-# Sorts hours by effective cost (PV free → cheap spot → expensive → HDO blocked)
-# and marks cheapest hours as heating=True until the min_tmp constraint is satisfied.
+# Every hour gets an effective cost = what one kWh of electricity for the heater
+# costs in that hour (see tariff.py): the export price for the part covered by
+# PV surplus, the import price for the rest, infinite when heating is blocked.
+# Hours where stored heat is cheaper than any grid hour (PV surplus, negative
+# prices) and calendar boosts are always used; then the cheapest remaining hours
+# are added until the min_tmp constraint is satisfied.
 #
 # Standby-loss-adjusted cost:
 #   heating early at a cheap price P₁ incurs extra standby losses while waiting for
@@ -16,6 +20,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
+from smartboiler.tariff import DEFAULT_SPOT_EUR_MWH, Tariff
+
 if TYPE_CHECKING:
     from smartboiler.calendar_manager import BoilerEvent
 
@@ -23,7 +29,8 @@ logger = logging.getLogger(__name__)
 
 WATER_SPECIFIC_HEAT_J_KG_K = 4186.0
 WATER_DENSITY_KG_L = 1.0
-DEFAULT_MEDIUM_PRICE = 75.0  # EUR/MWh used when no spot price available
+DEFAULT_MEDIUM_PRICE = DEFAULT_SPOT_EUR_MWH  # EUR/MWh used when no spot price available
+PV_NOISE_KWH = 0.1  # PV surplus at or below this per hour is treated as sensor noise
 
 
 @dataclass
@@ -49,28 +56,52 @@ class BoilerParams:
 
 @dataclass
 class HourSlot:
+    """One planning hour and what heating in it would cost.
+
+    Prices are in local currency per kWh (see tariff.py). When
+    ``import_price`` is not given it is derived from ``spot_price`` with the
+    default tariff (spot in EUR, no fees).
+
+    Derived fields:
+        blocked         — heating impossible (HDO cut or vacation_off)
+        forced          — calendar boost: heat regardless of cost
+        pv_covered_kwh  — part of one heater-hour supplied by PV surplus
+        effective_cost  — average price per kWh of one heater-hour;
+                          ``inf`` when blocked
+    """
     index: int              # 0 = current hour, 1 = next hour, ...
     dt: datetime
     consumption_kwh: float
-    pv_surplus_kwh: float   # free solar surplus available this hour (after battery allocation)
+    pv_surplus_kwh: float   # PV surplus available to the boiler this hour (after battery allocation)
     spot_price: Optional[float]   # EUR/MWh; None = unknown
     hdo_blocked: bool
     # Calendar override: vacation_min | vacation_off | boost_max | boost_temp | None
     calendar_mode: Optional[str] = None
     calendar_target_tmp: Optional[float] = None
+    import_price: Optional[float] = None   # local/kWh to buy; None → from spot_price
+    export_price: float = 0.0              # local/kWh earned by exporting instead
+    heater_kwh: float = 2.0                # electricity one heating hour draws
+    blocked: bool = field(init=False)
+    forced: bool = field(init=False)
+    pv_covered_kwh: float = field(init=False)
     effective_cost: float = field(init=False)
 
     def __post_init__(self):
-        if self.hdo_blocked or self.calendar_mode == "vacation_off":
+        if self.import_price is None:
+            self.import_price = Tariff().import_price(self.spot_price, low_tariff=False)
+        self.blocked = self.hdo_blocked or self.calendar_mode == "vacation_off"
+        self.forced = not self.blocked and self.calendar_mode in ("boost_max", "boost_temp")
+        heater = max(self.heater_kwh, 1e-6)
+        self.pv_covered_kwh = (
+            min(self.pv_surplus_kwh, heater) if self.pv_surplus_kwh > PV_NOISE_KWH else 0.0
+        )
+        if self.blocked:
             self.effective_cost = float("inf")
-        elif self.calendar_mode in ("boost_max", "boost_temp"):
-            self.effective_cost = -2.0   # forced heat — higher priority than PV
-        elif self.pv_surplus_kwh > 0.1:
-            self.effective_cost = -1.0   # free solar
-        elif self.spot_price is not None:
-            self.effective_cost = self.spot_price
         else:
-            self.effective_cost = DEFAULT_MEDIUM_PRICE
+            grid_kwh = heater - self.pv_covered_kwh
+            self.effective_cost = (
+                self.pv_covered_kwh * self.export_price + grid_kwh * self.import_price
+            ) / heater
 
 
 # ── Calendar helpers ──────────────────────────────────────────────────────────
@@ -100,9 +131,11 @@ def _slot_min_tmp(slot: HourSlot, normal_min_tmp: float, vacation_min_tmp: float
 class HeatingScheduler:
     """Plans heating windows for the next 24 hours using greedy cost minimization."""
 
-    def __init__(self, boiler: BoilerParams):
+    def __init__(self, boiler: BoilerParams, tariff: Optional[Tariff] = None):
         self.boiler = boiler
-        self._real_wattage_kw = (boiler.wattage_w * boiler.efficiency) / 1000.0
+        self.tariff = tariff or Tariff()
+        self._heater_kwh = boiler.wattage_w / 1000.0          # electricity per heating hour
+        self._real_wattage_kw = self._heater_kwh * boiler.efficiency  # heat into the water
 
     # ── Thermodynamic helpers ─────────────────────────────────────────────
 
@@ -183,6 +216,11 @@ class HeatingScheduler:
 
         PV surplus is adjusted for battery priority before slot construction,
         so HourSlot.pv_surplus_kwh always reflects what the boiler can actually use.
+
+        Prices come from ``self.tariff``. In "dual" tariff mode an hour is a
+        low-tariff hour when it is in the tariff's ``low_tariff_hours``, or —
+        if no schedule is configured — when HDO does not block it (in the
+        Czech HDO system the boiler circuit is powered only in low tariff).
         """
         if from_dt is None:
             from_dt = datetime.now().astimezone().replace(minute=0, second=0, microsecond=0)
@@ -191,16 +229,23 @@ class HeatingScheduler:
         for i in range(24):
             dt_i = from_dt + timedelta(hours=i)
             cal_mode, cal_target = _calendar_mode_for_hour(dt_i, calendar_events)
+            spot = spot_prices.get(i)
+            blocked_i = hdo_blocked[i] if i < len(hdo_blocked) else False
+            low_hours = self.tariff.low_tariff_hours
+            low = (dt_i.hour in low_hours) if low_hours is not None else not blocked_i
             slots.append(
                 HourSlot(
                     index=i,
                     dt=dt_i,
                     consumption_kwh=consumption_forecast[i] if i < len(consumption_forecast) else 0.0,
                     pv_surplus_kwh=net_pv[i] if i < len(net_pv) else 0.0,
-                    spot_price=spot_prices.get(i),
-                    hdo_blocked=hdo_blocked[i] if i < len(hdo_blocked) else False,
+                    spot_price=spot,
+                    hdo_blocked=blocked_i,
                     calendar_mode=cal_mode,
                     calendar_target_tmp=cal_target,
+                    import_price=self.tariff.import_price(spot, low_tariff=low),
+                    export_price=self.tariff.export_price_for(spot),
+                    heater_kwh=self._heater_kwh,
                 )
             )
         return slots
@@ -218,8 +263,13 @@ class HeatingScheduler:
     ) -> Tuple[List[bool], List[HourSlot]]:
         """Compute optimal heating plan for next 24 hours.
 
-        Candidate selection uses standby-loss-adjusted cost:
-            adjusted(slot) = heating_cost_eur + standby_penalty_eur_per_hour * hours_early
+        Step 1 always heats in forced (calendar boost) hours and in hours whose
+        effective cost is negative or below the cheapest grid import price of
+        the horizon — energy there (PV surplus, paid-to-consume prices) is
+        cheaper than anything that could be bought later.
+
+        Step 2 candidate selection uses standby-loss-adjusted cost:
+            adjusted(slot) = heating_cost + standby_penalty_per_hour * hours_early
         where hours_early = first_violation_index - slot.index.
 
         This means a cheap early slot is only preferred over a slightly pricier later
@@ -238,22 +288,28 @@ class HeatingScheduler:
         n = len(slots)
         heating_plan = [False] * n
 
-        # Step 1: always heat during PV surplus and boost events (free / forced energy)
-        for slot in slots:
-            if slot.effective_cost < 0:   # -2 (boost) or -1 (PV)
+        open_slots = [s for s in slots if not s.blocked]
+
+        # Step 1: forced (boost) hours and hours cheaper than any grid hour
+        cheapest_import = min((s.import_price for s in open_slots), default=float("inf"))
+        for slot in open_slots:
+            if (
+                slot.forced
+                or slot.effective_cost < 0
+                or slot.effective_cost < cheapest_import
+            ):
                 heating_plan[slot.index] = True
 
         # Pre-compute standby penalty per hour of early heating.
-        # Reference price = average of known spot prices (or DEFAULT_MEDIUM_PRICE).
+        # Reference price = average import price of the horizon.
         # Temperature proxy = midpoint between min_tmp and set_tmp.
-        known_prices = [s.spot_price for s in slots if s.spot_price is not None]
-        ref_price_eur_kwh = (
-            sum(known_prices) / len(known_prices) / 1000.0
-            if known_prices
-            else DEFAULT_MEDIUM_PRICE / 1000.0
+        ref_price = (
+            sum(s.import_price for s in open_slots) / len(open_slots)
+            if open_slots
+            else self.tariff.import_price(None, low_tariff=False)
         )
         mid_tmp = (self.boiler.set_tmp + self.boiler.min_tmp) / 2.0
-        standby_eur_per_hour = self._standby_kwh_per_hour(mid_tmp) * ref_price_eur_kwh
+        standby_cost_per_hour = self._standby_kwh_per_hour(mid_tmp) * ref_price
 
         # Step 2: greedy fill — add cheapest hours until per-slot min_tmp constraint satisfied
         max_iterations = n
@@ -269,16 +325,13 @@ class HeatingScheduler:
             first_viol = min(violations)
             candidates = [
                 s
-                for s in slots
-                if s.index <= first_viol
-                and not heating_plan[s.index]
-                and s.effective_cost < float("inf")
+                for s in open_slots
+                if s.index <= first_viol and not heating_plan[s.index]
             ]
             if not candidates:
                 # No slots left — force-enable all non-blocked hours
-                for s in slots:
-                    if s.effective_cost < float("inf"):
-                        heating_plan[s.index] = True
+                for s in open_slots:
+                    heating_plan[s.index] = True
                 break
 
             # Standby-loss-adjusted cost: prefer later slots when the price advantage
@@ -286,8 +339,8 @@ class HeatingScheduler:
             cheapest = min(
                 candidates,
                 key=lambda s: (
-                    s.effective_cost / 1000.0 * self._real_wattage_kw
-                    + standby_eur_per_hour * max(0, first_viol - s.index),
+                    s.effective_cost * self._heater_kwh
+                    + standby_cost_per_hour * max(0, first_viol - s.index),
                     -s.index,   # tiebreaker: latest slot wins for truly equal costs
                 ),
             )
@@ -351,9 +404,11 @@ class HeatingScheduler:
                     "hour": s.dt.strftime("%H:%M"),
                     "heating": heating_plan[s.index],
                     "hdo_blocked": s.hdo_blocked,
-                    "pv_free": s.pv_surplus_kwh > 0.1,
+                    "pv_free": s.pv_covered_kwh > 0,
                     "consumption_kwh": round(s.consumption_kwh, 4),
                     "spot_price": s.spot_price,
+                    "import_price": round(s.import_price, 4),
+                    "export_price": round(s.export_price, 4),
                     "label": s.dt.strftime("%H:00"),
                     "calendar_mode": s.calendar_mode,
                     "calendar_target_tmp": s.calendar_target_tmp,

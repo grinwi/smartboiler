@@ -382,11 +382,41 @@
           <input type="number" id="pv_installed_power_kw" value="5.0" min="0.1" max="200" step="0.1">
           <div class="hint">Total nameplate peak power</div>
         </div>
+        <div class="field">
+          <label for="house_base_load_w">Typical house consumption (W)</label>
+          <input type="number" id="house_base_load_w" value="300" min="0" max="20000" step="50">
+          <div class="hint">Fridge, router, standby… Subtracted from the solar forecast to get the surplus.</div>
+        </div>
+        <div class="field">
+          <label for="pv_tilt_deg">Panel tilt (°)</label>
+          <input type="number" id="pv_tilt_deg" value="35" min="0" max="90">
+          <div class="hint">0 = flat roof, 90 = wall. Typical pitched roof: 30–45.</div>
+        </div>
+        <div class="field">
+          <label for="pv_azimuth_deg">Panels face (°)</label>
+          <select id="pv_azimuth_deg">
+            <option value="90">East (90)</option>
+            <option value="135">South-east (135)</option>
+            <option value="180" selected>South (180)</option>
+            <option value="225">South-west (225)</option>
+            <option value="270">West (270)</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="pv_forecast_source">Solar forecast</label>
+        <select id="pv_forecast_source">
+          <option value="auto">Automatic — weather forecast for your Home Assistant location (Open-Meteo)</option>
+          <option value="entity">Only my sensors below</option>
+        </select>
+        <div class="hint">Automatic needs internet access and the kWp above. If the forecast is unavailable, the sensors below are used.</div>
       </div>
       <div class="field optional">
         <label>PV surplus / net export sensor</label>
         <div class="picker-wrap" id="picker-pv_surplus_entity_id"></div>
-        <div class="hint">Sensor in watts — positive = export. Used for real-time free-energy detection.</div>
+        <div class="hint">Grid power in watts. Lets the boiler follow the real sun minute by minute: it switches on when the surplus covers most of the heater and off when a cloud makes it draw from the grid.</div>
+        <label style="font-weight:400;margin-top:.5rem"><input type="checkbox" id="pv_surplus_inverted"> This sensor shows <em>import</em> as positive (export negative)</label>
+        <label style="font-weight:400"><input type="checkbox" id="surplus_dispatch" checked> Heat the boiler from real-time surplus</label>
       </div>
       <div class="field optional">
         <label>PV production sensor</label>
@@ -603,6 +633,57 @@
           <option value="IT">Italy (IT)</option>
           <option value="ES">Spain (ES)</option>
         </select>
+      </div>
+    </div>
+
+    <hr class="section-sep">
+
+    <!-- Tariff -->
+    <div class="field">
+      <label for="tariff_mode">Electricity tariff</label>
+      <select id="tariff_mode" onchange="toggleTariff()">
+        <option value="spot">Spot price (+ fees)</option>
+        <option value="fixed">One fixed price</option>
+        <option value="dual">Low / high tariff (e.g. D25d, D45d)</option>
+      </select>
+      <div class="hint">All prices below are per kWh in your currency, including VAT. Leave fees at 0 to compare hours by spot price only.</div>
+    </div>
+    <div class="field-grid">
+      <div class="field" id="tariff-currency">
+        <label for="currency_per_eur">Exchange rate (your currency per 1 EUR)</label>
+        <input type="number" id="currency_per_eur" value="1" min="0.01" step="0.01">
+        <div class="hint">1 if you pay in EUR; about 25 for CZK. Converts spot prices.</div>
+      </div>
+      <div class="field">
+        <label for="grid_fee_per_kwh">Distribution and fees per kWh</label>
+        <input type="number" id="grid_fee_per_kwh" value="0" min="0" step="0.01">
+        <div class="hint">Added to every kWh you buy.</div>
+      </div>
+      <div class="field" id="tariff-fixed" style="display:none">
+        <label for="fixed_price_per_kwh">Energy price per kWh</label>
+        <input type="number" id="fixed_price_per_kwh" value="0" min="0" step="0.01">
+      </div>
+      <div class="field" id="tariff-low" style="display:none">
+        <label for="low_price_per_kwh">Low-tariff energy price per kWh</label>
+        <input type="number" id="low_price_per_kwh" value="0" min="0" step="0.01">
+      </div>
+      <div class="field" id="tariff-high" style="display:none">
+        <label for="high_price_per_kwh">High-tariff energy price per kWh</label>
+        <input type="number" id="high_price_per_kwh" value="0" min="0" step="0.01">
+      </div>
+      <div class="field optional" id="tariff-schedule" style="display:none">
+        <label for="low_tariff_schedule">Low-tariff hours</label>
+        <input type="text" id="low_tariff_schedule" placeholder="e.g. 22:00-06:00,13:00-15:00">
+        <div class="hint">Leave empty if the boiler is on an HDO circuit: hours when HDO allows heating count as low tariff.</div>
+      </div>
+      <div class="field">
+        <label for="export_price_per_kwh">Price you get for exported solar per kWh</label>
+        <input type="number" id="export_price_per_kwh" value="0" step="0.01">
+        <div class="hint">0 if you are not paid for feed-in. The boiler then prefers your own solar.</div>
+      </div>
+      <div class="field" id="tariff-export-spot">
+        <label><input type="checkbox" id="export_at_spot"> Export is paid at the spot price</label>
+        <div class="hint">Needs spot prices turned on above.</div>
       </div>
     </div>
 
@@ -1019,6 +1100,24 @@ function collectCurrentStepValues() {
     if (el) CFG[id] = el.value;
   });
 
+  // PV forecast
+  ['house_base_load_w','pv_tilt_deg','pv_azimuth_deg'].forEach(id => {
+    const v = parseFloat(document.getElementById(id).value);
+    if (Number.isFinite(v)) CFG[id] = v;
+  });
+  CFG.pv_forecast_source = document.getElementById('pv_forecast_source').value;
+  CFG.pv_surplus_inverted = document.getElementById('pv_surplus_inverted').checked;
+  CFG.surplus_dispatch = document.getElementById('surplus_dispatch').checked;
+
+  // Tariff (0 is a valid price, so do not fall back on falsy values)
+  CFG.tariff_mode = document.getElementById('tariff_mode').value;
+  TARIFF_NUMS.forEach(id => {
+    const v = parseFloat(document.getElementById(id).value);
+    if (Number.isFinite(v)) CFG[id] = v;
+  });
+  CFG.low_tariff_schedule = document.getElementById('low_tariff_schedule').value.trim();
+  CFG.export_at_spot = document.getElementById('export_at_spot').checked;
+
   // Text fields
   ['hdo_explicit_schedule','influxdb_host','influxdb_db',
    'influxdb_username','influxdb_password'].forEach(id => {
@@ -1036,6 +1135,29 @@ function toggleSpot() {
   const on = document.getElementById('has_spot_price').checked;
   CFG.has_spot_price = on;
   document.getElementById('spot-region').style.display = on ? '' : 'none';
+}
+
+const TARIFF_NUMS = ['currency_per_eur','grid_fee_per_kwh','fixed_price_per_kwh',
+                     'low_price_per_kwh','high_price_per_kwh','export_price_per_kwh'];
+
+// Show only the price fields the selected tariff uses.
+function toggleTariff() {
+  const mode = document.getElementById('tariff_mode').value;
+  const show = (id, on) => { document.getElementById(id).style.display = on ? '' : 'none'; };
+  show('tariff-fixed', mode === 'fixed');
+  show('tariff-low', mode === 'dual');
+  show('tariff-high', mode === 'dual');
+  show('tariff-schedule', mode === 'dual');
+}
+
+function loadTariffFields() {
+  document.getElementById('tariff_mode').value = CFG.tariff_mode || 'spot';
+  TARIFF_NUMS.forEach(id => {
+    if (CFG[id] != null) document.getElementById(id).value = CFG[id];
+  });
+  document.getElementById('low_tariff_schedule').value = CFG.low_tariff_schedule || '';
+  document.getElementById('export_at_spot').checked = !!CFG.export_at_spot;
+  toggleTariff();
 }
 
 function toggleInflux() {
@@ -1238,6 +1360,7 @@ async function loadExistingConfig() {
       document.getElementById('has_spot_price').checked = true;
       document.getElementById('spot-region').style.display = '';
     }
+    loadTariffFields();
     if (CFG.has_pv) {
       document.getElementById('has_pv').checked = true;
       document.getElementById('pv-fields').style.display = '';
@@ -1246,11 +1369,14 @@ async function loadExistingConfig() {
       document.getElementById('has_battery').checked = true;
       document.getElementById('battery-fields').style.display = '';
     }
-    // Restore PV/battery numeric fields
-    ['pv_installed_power_kw','battery_capacity_kwh','battery_max_charge_kw'].forEach(id => {
+    // Restore PV/battery fields
+    ['pv_installed_power_kw','battery_capacity_kwh','battery_max_charge_kw',
+     'house_base_load_w','pv_tilt_deg','pv_azimuth_deg','pv_forecast_source'].forEach(id => {
       const el = document.getElementById(id);
       if (el && CFG[id] != null) el.value = CFG[id];
     });
+    document.getElementById('pv_surplus_inverted').checked = !!CFG.pv_surplus_inverted;
+    document.getElementById('surplus_dispatch').checked = CFG.surplus_dispatch !== false;
     const socUnit = document.getElementById('battery_soc_unit');
     if (socUnit && CFG.battery_soc_unit) socUnit.value = CFG.battery_soc_unit;
     // Restore priority order

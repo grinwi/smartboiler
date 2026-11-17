@@ -54,15 +54,17 @@ class RollingHistogramPredictor:
         self._global_fallback: float = 0.0
         self._total_samples: int = 0
 
-    def update(self, df: pd.DataFrame) -> None:
+    def update(self, df: pd.DataFrame, now: Optional[pd.Timestamp] = None) -> None:
         """Rebuild histogram from DataFrame with DatetimeIndex and 'consumed_kwh' column.
 
-        Keeps only the last HISTORY_WEEKS weeks of data.
+        Keeps only the last HISTORY_WEEKS weeks of data before ``now``
+        (default: the current time; pass a past time to replay history).
         """
         if df is None or df.empty or "consumed_kwh" not in df.columns:
             return
 
-        cutoff = pd.Timestamp.now() - pd.Timedelta(weeks=HISTORY_WEEKS)
+        now = pd.Timestamp.now() if now is None else pd.Timestamp(now)
+        cutoff = now - pd.Timedelta(weeks=HISTORY_WEEKS)
         df_recent = df[df.index >= cutoff].copy()
         # Only include hours with meaningful consumption (filter sensor noise)
         df_nonzero = df_recent[df_recent["consumed_kwh"] > 0.005]

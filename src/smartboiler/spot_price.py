@@ -82,6 +82,34 @@ class SpotPriceFetcher:
 
         return prices
 
+    def fetch_series(self, start: datetime, end: datetime, chunk_days: int = 30):
+        """Hourly prices (EUR/MWh) between two aware datetimes as a pandas Series
+        with a UTC index — for replaying history. 15-minute prices are averaged
+        to hours. Chunks that fail are skipped (logged), so gaps stay NaN."""
+        import pandas as pd
+
+        times, values = [], []
+        t = start
+        while t < end:
+            t_next = min(end, t + timedelta(days=chunk_days))
+            try:
+                resp = requests.get(
+                    BASE_URL,
+                    params={"bzn": self.bzn, "start": t.isoformat(), "end": t_next.isoformat()},
+                    timeout=self.timeout,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                for ts, price in zip(data.get("unix_seconds", []), data.get("price", [])):
+                    if price is not None:
+                        times.append(ts)
+                        values.append(float(price))
+            except Exception as e:
+                logger.warning("Could not fetch spot prices %s–%s: %s", t, t_next, e)
+            t = t_next
+        s = pd.Series(values, index=pd.to_datetime(times, unit="s", utc=True), dtype=float)
+        return s.sort_index().resample("1h").mean() if len(s) else s
+
     def fetch_today_tomorrow(self) -> Dict[str, Dict[int, float]]:
         """Fetch prices for today and tomorrow (tomorrow may not be available yet)."""
         return {

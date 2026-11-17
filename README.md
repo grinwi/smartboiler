@@ -48,15 +48,16 @@ Instead of an LSTM network, SmartBoiler uses a **per-(weekday, hour) quantile hi
 
 ### Scheduling — Greedy Cost Minimisation
 
-The scheduler assigns 24 hour-slots an effective cost and fills from cheapest until the minimum water temperature constraint is always satisfied:
+Every hour gets an **effective cost**: the real price of one kWh for the heater in that hour, from your tariff (spot + fees, one fixed price, or low/high tariff; see `tariff.py`). The part covered by PV surplus costs what exporting it would have earned (0 without a feed-in payment).
 
-| Priority | Condition | Effective cost |
-|----------|-----------|---------------|
-| 1 (highest) | Calendar boost event | −2.0 (forced) |
-| 2 | PV surplus > 0.1 kWh | −1.0 (free solar) |
-| 3 | Known day-ahead spot price | spot EUR/MWh |
-| 4 | No price data | 75 EUR/MWh (medium) |
-| ✗ blocked | HDO relay cut / vacation_off | ∞ (never) |
+| Step | Hours | Rule |
+|------|-------|------|
+| 1 | Calendar boost | always heat |
+| 1 | Cost below the cheapest grid hour, or negative (PV surplus, negative prices) | always heat — cheaper than anything that could be bought later |
+| 2 | All other open hours | add the cheapest until the minimum temperature holds |
+| ✗ | HDO relay cut / vacation_off | never (cost ∞) |
+
+Defaults (spot in EUR, no fees, export earns 0) give the same plan as before tariffs existed.
 
 A **standby-loss penalty** adjusts the cost of heating early: a slot cheaper by 5 EUR/MWh is only preferred over a later one if that price advantage exceeds the extra energy lost to standing-by while waiting.
 
@@ -72,6 +73,18 @@ L3  Thermal model: Newton's law cooling from case sensor
  │  (if no calibration data yet)
 L4  Last known value  (stale — logged as warning)
 ```
+
+### Real-time solar surplus
+
+With a live grid-export sensor configured, the boiler also follows the real sun: it switches on
+when the measured export covers at least 80 % of the heater for two minutes, and off when a cloud
+makes it draw more than half its power from the grid. The day-ahead plan, legionella cycle and
+calendar events keep priority.
+
+### How much would it save?
+
+`python -m smartboiler.savings` replays your own exported history (hot water, PV, prices) through a
+plain thermostat and the smart scheduler and reports the difference. See [docs/SAVINGS.md](docs/SAVINGS.md).
 
 ### HDO Ripple-Control Learning
 

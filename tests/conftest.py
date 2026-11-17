@@ -1,44 +1,15 @@
-"""
-Stub out heavy / network-bound libraries before any smartboiler module is imported.
-Only stubs for libraries still referenced by old modules (boiler.py, event_checker.py)
-that may be imported transitively during test collection.
+"""Shared pytest configuration.
+
+Tests import ``smartboiler`` from ``src/`` (see pytest.ini) and need only the
+runtime dependencies from requirements.txt.
+
+``influxdb`` is an optional dependency (used only by the one-off InfluxDB
+history import in the setup wizard; the add-on image installs it). It is
+stubbed so the suite runs without it; tests that exercise it patch
+``influxdb.InfluxDBClient`` themselves.
 """
 import sys
 from unittest.mock import MagicMock
 
-_STUBS = [
-    # Legacy — kept because boiler.py / event_checker.py still exist
-    "influxdb",
-    "keras",
-    "keras.models",
-    "keras.layers",
-    "keras.callbacks",
-    "keras.optimizers",
-    "keras.backend",
-    "sklearn",
-    "sklearn.preprocessing",
-    "skforecast",
-    "skforecast.ForecasterAutoreg",
-    "geopy",
-    "geopy.distance",
-    "haversine",
-    "h5py",
-    "googleapiclient",
-    "googleapiclient.discovery",
-    "google",
-    "google.auth",
-    "google.auth.transport",
-    "google.auth.transport.requests",
-    "google.oauth2",
-    "google.oauth2.credentials",
-    "google_auth_oauthlib",
-    "google_auth_oauthlib.flow",
-    "statsmodels",
-    "statsmodels.tsa",
-    "statsmodels.tsa.statespace",
-    "statsmodels.tsa.statespace.sarimax",
-]
-
-for _mod in _STUBS:
-    if _mod not in sys.modules:
-        sys.modules[_mod] = MagicMock()
+if "influxdb" not in sys.modules:
+    sys.modules["influxdb"] = MagicMock()

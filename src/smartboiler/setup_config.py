@@ -9,7 +9,6 @@ all entity/integration options.
 import json
 import logging
 import os
-import re
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -51,7 +50,9 @@ DEFAULTS: dict = {
     "boiler_area_tmp_entity_id": "",
     "boiler_water_flow_entity_id": "",
     "boiler_water_temp_entity_id": "",
-    "pv_surplus_entity_id": "",
+    "pv_surplus_entity_id": "",         # live grid export in W (positive = export)
+    "pv_surplus_inverted": False,       # True if that sensor shows import as positive
+    "surplus_dispatch": True,           # heat from measured surplus in real time
     "person_entity_ids": "",
     "calendar_entity_id": "",
 
@@ -75,6 +76,12 @@ DEFAULTS: dict = {
     "pv_installed_power_kw": 0.0,       # peak installed capacity (kWp)
     "pv_power_entity_id": "",           # current PV production sensor (W or kW)
     "pv_forecast_entity_id": "",        # hourly forecast entity (kWh — e.g. Solcast)
+    # Forecast source: "auto" = Open-Meteo for HA's location when kWp is set,
+    # falling back to the entities above; "entity" = entities only.
+    "pv_forecast_source": "auto",
+    "pv_tilt_deg": 35,                  # panel tilt: 0 = flat, 90 = vertical
+    "pv_azimuth_deg": 180,              # direction panels face: 90 E, 180 S, 270 W
+    "house_base_load_w": 300,           # typical house consumption subtracted from PV
 
     # ── Battery ───────────────────────────────────────────────────────────
     "has_battery": False,
@@ -92,6 +99,19 @@ DEFAULTS: dict = {
     # ── Spot price ────────────────────────────────────────────────────────
     "has_spot_price": False,
     "spot_price_region": "CZ",
+
+    # ── Tariff (see tariff.py) — all prices in local currency per kWh ────
+    # Defaults reproduce the behaviour before tariffs existed: spot in EUR,
+    # no fees, export earns nothing.
+    "tariff_mode": "spot",              # spot | fixed | dual
+    "currency_per_eur": 1.0,            # local currency per 1 EUR (e.g. 25 for CZK)
+    "grid_fee_per_kwh": 0.0,            # distribution + taxes added to every bought kWh
+    "fixed_price_per_kwh": 0.0,         # tariff_mode=fixed: energy price
+    "low_price_per_kwh": 0.0,           # tariff_mode=dual: low-tariff energy price
+    "high_price_per_kwh": 0.0,          # tariff_mode=dual: high-tariff energy price
+    "low_tariff_schedule": "",          # tariff_mode=dual: "22:00-06:00,13:00-15:00"; empty = HDO-free hours
+    "export_price_per_kwh": 0.0,        # earned per exported kWh (feed-in)
+    "export_at_spot": False,            # True: export earns the spot price (needs spot prices)
 
     # ── HDO ───────────────────────────────────────────────────────────────
     "hdo_explicit_schedule": "",
@@ -141,7 +161,6 @@ DEFAULTS: dict = {
     "logging_level": "INFO",
 }
 
-_HDO_PATTERN = re.compile(r"^\d{1,2}:\d{2}-\d{1,2}:\d{2}$")
 
 _MODE_SPECIFIC_INFLUX_FALLBACKS = {
     "influxdb_standard_relay_entity_id": ("influxdb_relay_entity_id",),
@@ -235,6 +254,8 @@ def validate_config(config: dict) -> list[str]:
         if config.get("battery_priority") not in ("battery_first", "boiler_first", "sell_first"):
             errors.append("battery_priority must be 'battery_first', 'boiler_first', or 'sell_first'")
 
+    _validate_tariff(errors, config)
+
     if config.get("logging_level") not in ("DEBUG", "INFO", "WARNING", "ERROR"):
         errors.append("logging_level must be one of: DEBUG, INFO, WARNING, ERROR")
 
@@ -262,6 +283,11 @@ def validate_config(config: dict) -> list[str]:
     # ── PV / Battery ranges ──────────────────────────────────────────────
     if config.get("has_pv"):
         _check_range(errors, config, "pv_installed_power_kw", 0.1, 200.0, "kWp")
+        if config.get("pv_forecast_source") not in ("auto", "entity"):
+            errors.append("pv_forecast_source must be 'auto' or 'entity'")
+        _check_range(errors, config, "pv_tilt_deg", 0, 90, "°")
+        _check_range(errors, config, "pv_azimuth_deg", 0, 360, "°")
+        _check_range(errors, config, "house_base_load_w", 0, 20000, "W")
     if config.get("has_battery"):
         _check_range(errors, config, "battery_capacity_kwh", 0.1, 500.0, "kWh")
         _check_range(errors, config, "battery_max_charge_kw", 0.0, 200.0, "kW")
@@ -273,12 +299,42 @@ def validate_config(config: dict) -> list[str]:
     except (ValueError, TypeError):
         pass  # already caught by range checks above
 
-    # ── HDO format ──────────────────────────────────────────────────────
+    # ── HDO format: one or more comma-separated HH:MM-HH:MM windows ─────
+    from smartboiler.tariff import parse_time_windows
+
     hdo = str(config.get("hdo_explicit_schedule", "")).strip()
-    if hdo and not _HDO_PATTERN.match(hdo):
-        errors.append("hdo_explicit_schedule must be empty or in format HH:MM-HH:MM (e.g. 22:00-06:00)")
+    try:
+        parse_time_windows(hdo)
+    except ValueError:
+        errors.append(
+            "hdo_explicit_schedule must be empty or HH:MM-HH:MM windows separated by commas "
+            "(e.g. 22:00-06:00,12:05-13:35)"
+        )
 
     return errors
+
+
+def _validate_tariff(errors: list[str], config: dict) -> None:
+    """Tariff fields: mode enum, price ranges, and what each mode needs."""
+    from smartboiler.tariff import TARIFF_MODES, parse_time_windows
+
+    mode = config.get("tariff_mode")
+    if mode not in TARIFF_MODES:
+        errors.append("tariff_mode must be one of: " + ", ".join(TARIFF_MODES))
+    _check_range(errors, config, "currency_per_eur", 0.01, 10000)
+    _check_range(errors, config, "grid_fee_per_kwh", 0.0, 1000)
+    _check_range(errors, config, "export_price_per_kwh", -1000, 1000)
+    if mode == "fixed":
+        _check_range(errors, config, "fixed_price_per_kwh", 0.0001, 1000)
+    if mode == "dual":
+        _check_range(errors, config, "low_price_per_kwh", 0.0001, 1000)
+        _check_range(errors, config, "high_price_per_kwh", 0.0001, 1000)
+        try:
+            parse_time_windows(str(config.get("low_tariff_schedule", "")))
+        except ValueError as e:
+            errors.append(f"low_tariff_schedule: {e}")
+    if config.get("export_at_spot") and not config.get("has_spot_price"):
+        errors.append("export_at_spot needs spot prices enabled (has_spot_price)")
 
 
 def _check_range(
@@ -344,7 +400,8 @@ def save_setup_config(data: dict) -> None:
                     "min_training_days", "predictor_retrain_weeks",
                     "hdo_history_weeks", "hdo_decay_weeks", "hdo_retrain_weeks",
                     "thermal_model_window_days", "influxdb_port",
-                    "influxdb_history_years", "vacation_min_temp"):
+                    "influxdb_history_years", "vacation_min_temp",
+                    "pv_tilt_deg", "pv_azimuth_deg", "house_base_load_w"):
         try:
             merged[int_key] = int(merged[int_key])
         except (ValueError, TypeError):
@@ -352,7 +409,9 @@ def save_setup_config(data: dict) -> None:
 
     for float_key in ("thermal_coupling_ratio", "draw_detection_threshold_c",
                       "thermal_mass_ratio", "pv_installed_power_kw",
-                      "battery_capacity_kwh", "battery_max_charge_kw"):
+                      "battery_capacity_kwh", "battery_max_charge_kw",
+                      "currency_per_eur", "grid_fee_per_kwh", "fixed_price_per_kwh",
+                      "low_price_per_kwh", "high_price_per_kwh", "export_price_per_kwh"):
         try:
             merged[float_key] = float(merged[float_key])
         except (ValueError, TypeError):
@@ -361,6 +420,9 @@ def save_setup_config(data: dict) -> None:
     merged["has_spot_price"] = bool(merged.get("has_spot_price", False))
     merged["has_pv"] = bool(merged.get("has_pv", False))
     merged["has_battery"] = bool(merged.get("has_battery", False))
+    merged["export_at_spot"] = bool(merged.get("export_at_spot", False))
+    merged["pv_surplus_inverted"] = bool(merged.get("pv_surplus_inverted", False))
+    merged["surplus_dispatch"] = bool(merged.get("surplus_dispatch", True))
     _normalize_influx_fields(merged)
 
     errors = validate_config(merged)

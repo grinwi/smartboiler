@@ -11,11 +11,25 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 logger = logging.getLogger(__name__)
 
 HA_BASE_URL = os.getenv("HA_BASE_URL", "http://supervisor/core/api")
 SUPERVISOR_TOKEN = os.getenv("SUPERVISOR_TOKEN", "")
+
+# Transient HA / Supervisor errors (restart in progress, proxy hiccup) are
+# retried with exponential backoff: 0.5 s, 1 s, 2 s. Only GET is retried —
+# service calls are left to the next control cycle so a relay command is
+# never sent twice from here.
+RETRY_POLICY = Retry(
+    total=3,
+    backoff_factor=0.5,
+    status_forcelist=(429, 500, 502, 503, 504),
+    allowed_methods=frozenset({"GET"}),
+    raise_on_status=False,
+)
 
 
 class HAClient:
@@ -30,6 +44,9 @@ class HAClient:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self._session = requests.Session()
+        adapter = HTTPAdapter(max_retries=RETRY_POLICY)
+        self._session.mount("http://", adapter)
+        self._session.mount("https://", adapter)
         self._session.headers.update(
             {
                 "Authorization": f"Bearer {token}",
@@ -84,6 +101,15 @@ class HAClient:
         except Exception as e:
             logger.warning("get_all_states failed: %s", e)
             return []
+
+    def get_config(self) -> Optional[Dict]:
+        """Return Home Assistant's core config (latitude, longitude, time_zone…),
+        or None on error."""
+        try:
+            return self._get("/config")
+        except Exception as e:
+            logger.warning("get_config failed: %s", e)
+            return None
 
     # ── History ───────────────────────────────────────────────────────────
 
