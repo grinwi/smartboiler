@@ -467,6 +467,40 @@
         </select>
       </div>
     </div>
+
+    <hr class="section-sep">
+
+    <!-- SolaX Cloud -->
+    <div class="field optional">
+      <label>SolaX Cloud (instead of HA sensors)</label>
+      <div class="hint">Reads battery SoC, solar power and grid power straight from SolaX Cloud when the
+        matching sensor above is left empty. Create an app at developer.solaxcloud.com to get the
+        Client ID and Secret. The inverter updates the cloud about every 5 minutes.</div>
+    </div>
+    <div class="field-grid">
+      <div class="field">
+        <label for="solax_client_id">Client ID</label>
+        <input type="text" id="solax_client_id" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="solax_client_secret">Client Secret</label>
+        <input type="password" id="solax_client_secret" autocomplete="new-password">
+      </div>
+      <div class="field">
+        <label for="solax_inverter_sn">Inverter serial number</label>
+        <input type="text" id="solax_inverter_sn" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="solax_region">Region</label>
+        <select id="solax_region">
+          <option value="eu">Europe</option>
+          <option value="cn">China</option>
+          <option value="in">India</option>
+        </select>
+      </div>
+    </div>
+    <button type="button" class="btn btn-secondary" id="btn-solax-test" onclick="testSolax()">Test SolaX connection</button>
+    <div id="solax-status" class="hint" role="status" style="margin-top:.5rem;white-space:pre-line"></div>
   </div>
 
   <!-- Priority card -->
@@ -1109,6 +1143,9 @@ function collectCurrentStepValues() {
   CFG.pv_surplus_inverted = document.getElementById('pv_surplus_inverted').checked;
   CFG.surplus_dispatch = document.getElementById('surplus_dispatch').checked;
 
+  // SolaX Cloud
+  SOLAX_FIELDS.forEach(id => { CFG[id] = document.getElementById(id).value.trim(); });
+
   // Tariff (0 is a valid price, so do not fall back on falsy values)
   CFG.tariff_mode = document.getElementById('tariff_mode').value;
   TARIFF_NUMS.forEach(id => {
@@ -1148,6 +1185,27 @@ function toggleTariff() {
   show('tariff-low', mode === 'dual');
   show('tariff-high', mode === 'dual');
   show('tariff-schedule', mode === 'dual');
+}
+
+const SOLAX_FIELDS = ['solax_client_id','solax_client_secret','solax_inverter_sn','solax_region'];
+
+// Ask the add-on to call SolaX Cloud with the values typed in the form.
+async function testSolax() {
+  const status = document.getElementById('solax-status');
+  const body = {};
+  SOLAX_FIELDS.forEach(id => { body[id] = document.getElementById(id).value.trim(); });
+  status.textContent = 'Testing…';
+  try {
+    const r = await fetch('api/test/solax', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                             body: JSON.stringify(body)}).then(x => x.json());
+    if (!r.ok) { status.textContent = 'Failed: ' + r.error; return; }
+    const v = r.values;
+    status.textContent = `Connected. Battery: ${v.battery_soc ?? '—'} % · Solar: ${v.pv_power_w ?? '—'} W · ` +
+      `Grid: ${v.grid_power_w ?? '—'} W\nIf grid power is positive while you import from the grid, ` +
+      `tick "shows import as positive" at the surplus sensor.\nFields: ${r.fields.join(', ')}`;
+  } catch (e) {
+    status.textContent = 'Test request failed.';
+  }
 }
 
 function loadTariffFields() {
@@ -1361,6 +1419,7 @@ async function loadExistingConfig() {
       document.getElementById('spot-region').style.display = '';
     }
     loadTariffFields();
+    SOLAX_FIELDS.forEach(id => { if (CFG[id] != null) document.getElementById(id).value = CFG[id]; });
     if (CFG.has_pv) {
       document.getElementById('has_pv').checked = true;
       document.getElementById('pv-fields').style.display = '';

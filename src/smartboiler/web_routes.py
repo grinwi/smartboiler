@@ -180,6 +180,35 @@ def api_test_influxdb() -> Response:
         return jsonify({"ok": False, "error": str(e)})
 
 
+@app.route("/api/test/solax", methods=["POST"])
+def api_test_solax() -> Response:
+    """Call SolaX Cloud with the credentials from the form and show what it returns."""
+    from smartboiler.solax_cloud import SolaxError, from_config
+
+    if _rate_limited():
+        abort(429)
+    body = request.get_json(silent=True) or {}
+    try:
+        client = from_config(body)
+        if client is None:
+            return jsonify({"ok": False, "error": "Fill in Client ID, Client Secret and serial number."}), 400
+        data = client.realtime(max_age_s=0)
+    except (SolaxError, ValueError) as e:
+        return jsonify({"ok": False, "error": str(e)})
+    except Exception as e:
+        logger.warning("SolaX test failed: %s", e)
+        return jsonify({"ok": False, "error": f"Connection failed: {e}"})
+    return jsonify({
+        "ok": True,
+        "values": {
+            "battery_soc": data.get("batterySOC"),
+            "pv_power_w": data.get("MPPTTotalInputPower"),
+            "grid_power_w": data.get("gridPower"),
+        },
+        "fields": sorted(k for k, v in data.items() if v is not None),
+    })
+
+
 @app.route("/api/bootstrap/influxdb", methods=["GET"])
 def api_get_influx_bootstrap_status() -> Response:
     """Return current manual/automatic InfluxDB bootstrap status."""
