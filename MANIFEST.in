@@ -1,0 +1,4 @@
+# Files the source distribution needs beyond the Python packages.
+include VERSION
+include README.md
+recursive-include src/smartboiler/templates *.html

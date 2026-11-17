@@ -14,12 +14,16 @@ here = pathlib.Path(__file__).parent.resolve()
 # Get the long description from the README file
 long_description = (here / "README.md").read_text(encoding="utf-8")
 
+# Single source of the version: the VERSION file. Installing straight from a
+# git tag (as the Home Assistant add-on does) then gets a valid version too.
+version = (here / "VERSION").read_text(encoding="utf-8").strip()
+
 # Arguments marked as "Required" below must be included for upload to PyPI.
 # Fields marked as "Optional" may be commented out.
 
 setup(
     name="smartboiler",  # Required
-    version="{{VERSION_PLACEHOLDER}}",  # Required
+    version=version,  # Required
     description="Smart boiling of household",  # Optional
     long_description=long_description,  # Optional
     long_description_content_type="text/markdown",  # Optional (see note above)
