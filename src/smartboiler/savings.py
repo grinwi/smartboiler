@@ -25,15 +25,22 @@
 # feed-in income given up by using the PV at home). Prices come from the
 # tariff (tariff.py) and, for spot tariffs, an optional hourly spot series.
 #
+# Data comes from CSV exports or straight from Home Assistant's REST API
+# (--ha-url, token in the HA_TOKEN environment variable). The REST history
+# only reaches back as far as the recorder keeps states (10 days by default).
+#
 # Run as:  python -m smartboiler.savings --help
 
 import argparse
 import json
 import logging
+import os
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
+import requests
 
 from smartboiler.predictor import RollingHistogramPredictor
 from smartboiler.scheduler import BoilerParams, HeatingScheduler
@@ -94,6 +101,81 @@ def to_hourly(raw: pd.Series, kind: str) -> pd.Series:
     per_min = raw.resample("1min").last().ffill()
     mean = per_min.resample("1h").mean()
     return mean / 1000.0 if kind == "power_w" else mean * 60.0
+
+
+# ── Loading from Home Assistant (REST API) ───────────────────────────────────
+
+# unit_of_measurement → (input kind, factor to litres / kWh / W)
+HA_UNITS: Dict[str, Tuple[str, float]] = {
+    "L": ("counter", 1.0), "l": ("counter", 1.0), "m³": ("counter", 1000.0), "m3": ("counter", 1000.0),
+    "kWh": ("counter", 1.0), "Wh": ("counter", 0.001), "MWh": ("counter", 1000.0),
+    "W": ("power_w", 1.0), "kW": ("power_w", 1000.0),
+    "L/min": ("per_minute", 1.0), "l/min": ("per_minute", 1.0),
+}
+HISTORY_CHUNK_DAYS = 3   # keep each REST response small
+
+
+class HAApi:
+    """Minimal read-only Home Assistant REST client for the analysis."""
+
+    def __init__(self, base_url: str, token: str, timeout: int = 60):
+        self.base_url = base_url.rstrip("/")
+        self.session = requests.Session()
+        self.session.headers["Authorization"] = f"Bearer {token}"
+        self.timeout = timeout
+
+    def get(self, path: str, params: Optional[dict] = None):
+        resp = self.session.get(f"{self.base_url}/api{path}", params=params, timeout=self.timeout)
+        resp.raise_for_status()
+        return resp.json()
+
+    def candidate_sensors(self) -> List[dict]:
+        """Numeric sensors whose unit the analysis understands (water, energy, power)."""
+        out = []
+        for st in self.get("/states"):
+            unit = st.get("attributes", {}).get("unit_of_measurement")
+            if st["entity_id"].startswith("sensor.") and unit in HA_UNITS:
+                out.append({"entity_id": st["entity_id"], "unit": unit, "state": st["state"],
+                            "name": st["attributes"].get("friendly_name", "")})
+        return out
+
+    def unit_of(self, entity_id: str) -> Optional[str]:
+        return self.get(f"/states/{entity_id}").get("attributes", {}).get("unit_of_measurement")
+
+    def history(self, entity_id: str, days: int, now: Optional[datetime] = None) -> pd.Series:
+        """Raw state history of one entity for the last ``days`` days (UTC index)."""
+        end = now or datetime.now(timezone.utc)
+        start = end - timedelta(days=days)
+        times: List[str] = []
+        values: List[str] = []
+        t = start
+        while t < end:
+            t_next = min(end, t + timedelta(days=HISTORY_CHUNK_DAYS))
+            data = self.get(f"/history/period/{t.isoformat()}", {
+                "filter_entity_id": entity_id, "end_time": t_next.isoformat(),
+                "minimal_response": "", "no_attributes": "",
+            })
+            for item in (data[0] if data else []):
+                times.append(item["last_changed"])
+                values.append(item["state"])
+            t = t_next
+        s = pd.Series(pd.to_numeric(pd.Series(values), errors="coerce").to_numpy(),
+                      index=pd.to_datetime(pd.Series(times), utc=True, format="mixed"))
+        s = s.dropna().sort_index()
+        return s[~s.index.duplicated(keep="last")]
+
+
+def hourly_from_ha(api: HAApi, entity_id: str, days: int,
+                   now: Optional[datetime] = None) -> Tuple[pd.Series, str]:
+    """Hourly amounts of one entity, converted by its unit to litres, kWh or W·h.
+
+    Returns (hourly series, unit). Raises ValueError for unknown units.
+    """
+    unit = api.unit_of(entity_id)
+    if unit not in HA_UNITS:
+        raise ValueError(f"{entity_id}: unsupported unit {unit!r} (known: {', '.join(HA_UNITS)})")
+    kind, factor = HA_UNITS[unit]
+    return to_hourly(api.history(entity_id, days, now=now) * factor, kind), unit
 
 
 def water_to_heat_kwh(litres: pd.Series, hot_c: float, cold_c: float) -> pd.Series:
@@ -333,15 +415,19 @@ def main(argv: Optional[List[str]] = None) -> None:
         description="Estimate how much smart boiler heating would have saved on your history.",
     )
     p.add_argument("--config", help="smartboiler_setup.json (boiler, tariff, PV settings)")
-    p.add_argument("--water", required=True, help="CSV with hot-water use")
-    p.add_argument("--water-entity", help="entity_id inside a multi-entity HA export")
+    p.add_argument("--water", help="CSV with hot-water use (or use --ha-url)")
+    p.add_argument("--water-entity", help="entity_id in a multi-entity export, or to fetch from HA")
     p.add_argument("--water-kind", default="counter", choices=INPUT_KINDS)
     p.add_argument("--water-unit", default="litres", choices=("litres", "kwh"),
                    help="litres are converted to heat with --hot-temp/--cold-temp")
     p.add_argument("--hot-temp", type=float, default=50.0, help="°C of the hot water drawn")
     p.add_argument("--cold-temp", type=float, help="°C of the cold inlet (default: config or 10)")
     p.add_argument("--pv", help="CSV with PV production")
-    p.add_argument("--pv-entity", help="entity_id inside a multi-entity HA export")
+    p.add_argument("--pv-entity", help="entity_id in a multi-entity export, or to fetch from HA")
+    p.add_argument("--ha-url", help="Home Assistant URL, e.g. https://ha.example.com; token in HA_TOKEN")
+    p.add_argument("--days", type=int, default=30, help="history to fetch from HA (days)")
+    p.add_argument("--list-sensors", action="store_true",
+                   help="with --ha-url: list sensors usable as --water-entity / --pv-entity and exit")
     p.add_argument("--pv-kind", default="counter", choices=INPUT_KINDS)
     p.add_argument("--spot", help="CSV with hourly spot prices in EUR/MWh (time,value)")
     p.add_argument("--timezone", default="Europe/Prague")
@@ -354,13 +440,30 @@ def main(argv: Optional[List[str]] = None) -> None:
         with open(args.config) as f:
             cfg = json.load(f)
 
-    water = to_hourly(load_csv(args.water, args.water_entity), args.water_kind)
+    api = HAApi(args.ha_url, os.environ.get("HA_TOKEN", "")) if args.ha_url else None
+    if api and args.list_sensors:
+        for c in api.candidate_sensors():
+            print(f"{c['entity_id']:55} {c['unit']:6} {c['state']:>12}  {c['name']}")
+        return
+
+    if api:
+        if not args.water_entity:
+            p.error("--ha-url needs --water-entity (see --list-sensors)")
+        water, unit = hourly_from_ha(api, args.water_entity, args.days)
+        if unit in ("kWh", "Wh", "MWh"):
+            args.water_unit = "kwh"   # the sensor already measures heat
+        pv = hourly_from_ha(api, args.pv_entity, args.days)[0] if args.pv_entity else None
+    elif args.water:
+        water = to_hourly(load_csv(args.water, args.water_entity), args.water_kind)
+        pv = to_hourly(load_csv(args.pv, args.pv_entity), args.pv_kind) if args.pv else None
+    else:
+        p.error("give --water CSV or --ha-url with --water-entity")
+
     if args.water_unit == "litres":
         cold = args.cold_temp if args.cold_temp is not None else float(cfg.get("cold_water_temp", 10))
         demand = water_to_heat_kwh(water, args.hot_temp, cold)
     else:
         demand = water
-    pv = to_hourly(load_csv(args.pv, args.pv_entity), args.pv_kind) if args.pv else None
     spot = to_hourly(load_csv(args.spot), "per_hour") if args.spot else None
 
     inputs = build_inputs(

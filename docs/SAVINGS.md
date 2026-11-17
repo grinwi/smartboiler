@@ -25,6 +25,23 @@ A plain CSV with two columns `time,value` works as well.
 Copy `/data/smartboiler_setup.json` from the add-on (boiler size, tariff, base load, HDO
 schedule) — or write a small JSON with just the keys you want to change; missing keys use defaults.
 
+### …or fetch straight from Home Assistant
+
+Create a long-lived access token (your HA profile → **Security** → *Long-lived access tokens*)
+and keep it in an environment variable, never on the command line:
+
+```bash
+export HA_TOKEN=...   # paste the token here, in your own terminal
+python -m smartboiler.savings --ha-url https://ha.example.com --list-sensors
+python -m smartboiler.savings --ha-url https://ha.example.com --days 30 \
+  --water-entity sensor.total_water_usage --pv-entity sensor.pv_energy_total \
+  --config smartboiler_setup.json --currency Kč
+```
+
+Units are read from the sensors (L, m³, kWh, Wh, W, kW, L/min) and converted automatically.
+The REST API only returns what the recorder still keeps — **10 days by default**
+(`recorder: purge_keep_days`). For longer periods export CSVs or raise the retention.
+
 ## 2. Run it
 
 ```bash

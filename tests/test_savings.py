@@ -1,5 +1,6 @@
 """Tests for the savings analysis: loading, hourly conversion, physics and report."""
 import json
+from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
@@ -164,3 +165,63 @@ def test_cli_end_to_end(tmp_path):
              "--pv", str(tmp_path / "pv.csv"), "--out", str(out), "--currency", "Kč"])
     text = out.read_text()
     assert "# SmartBoiler savings analysis" in text and "2025-06" in text
+
+
+# ── Loading from Home Assistant (REST, mocked) ───────────────────────────────
+
+class FakeHA(sv.HAApi):
+    """HAApi with canned responses instead of HTTP."""
+
+    def __init__(self, states, history):
+        super().__init__("https://ha.test", "token")
+        self.states, self.hist, self.calls = states, history, []
+
+    def get(self, path, params=None):
+        self.calls.append((path, params))
+        if path == "/states":
+            return self.states
+        if path.startswith("/states/"):
+            return next(s for s in self.states if s["entity_id"] == path.split("/")[-1])
+        start = pd.Timestamp(path.split("/")[-1])
+        end = pd.Timestamp(params["end_time"])
+        rows = [r for r in self.hist[params["filter_entity_id"]]
+                if start <= pd.Timestamp(r["last_changed"]) < end]
+        return [rows]
+
+
+def _state(eid, unit, value="1"):
+    return {"entity_id": eid, "state": value,
+            "attributes": {"unit_of_measurement": unit, "friendly_name": eid}}
+
+
+def test_candidate_sensors_filters_by_unit():
+    ha = FakeHA([_state("sensor.water_total", "m³"), _state("sensor.pv_energy", "kWh"),
+                 _state("sensor.room_temp", "°C"), _state("switch.boiler", "W")], {})
+    assert [c["entity_id"] for c in ha.candidate_sensors()] == ["sensor.water_total", "sensor.pv_energy"]
+
+
+def test_history_is_chunked_and_deduplicated():
+    now = datetime(2025, 6, 10, tzinfo=timezone.utc)
+    rows = [{"state": str(i), "last_changed": (now - pd.Timedelta(hours=h)).isoformat()}
+            for i, h in enumerate([200, 100, 50, 1])]
+    ha = FakeHA([], {"sensor.x": rows})
+    s = ha.history("sensor.x", days=10, now=now)
+    assert len(ha.calls) == 4               # 10 days in 3-day chunks
+    assert list(s) == [0.0, 1.0, 2.0, 3.0]
+    assert s.index.is_monotonic_increasing
+
+
+def test_hourly_from_ha_converts_cubic_metres_to_litres():
+    t0 = datetime(2025, 6, 1, tzinfo=timezone.utc)
+    rows = [{"state": v, "last_changed": (t0 + pd.Timedelta(hours=h)).isoformat()}
+            for h, v in [(0, "10.000"), (1, "10.050"), (2, "10.120")]]
+    ha = FakeHA([_state("sensor.water", "m³")], {"sensor.water": rows})
+    hourly, unit = sv.hourly_from_ha(ha, "sensor.water", days=2, now=t0 + pd.Timedelta(days=1))
+    assert unit == "m³"
+    assert list(hourly.round(3))[:3] == [0.0, 50.0, 70.0]
+
+
+def test_hourly_from_ha_rejects_unknown_unit():
+    ha = FakeHA([_state("sensor.t", "°C")], {})
+    with pytest.raises(ValueError):
+        sv.hourly_from_ha(ha, "sensor.t", days=1)
