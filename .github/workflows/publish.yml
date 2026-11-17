@@ -48,10 +48,6 @@ jobs:
       - name: Install build tools
         run: pip install build wheel
 
-      - name: Substitute version in setup.py
-        run: |
-          sed -i "s/{{VERSION_PLACEHOLDER}}/${{ needs.check-version.outputs.version }}/g" setup.py
-
       - name: Build distribution
         run: python -m build
 
