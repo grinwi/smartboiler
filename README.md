@@ -81,6 +81,11 @@ when the measured export covers at least 80 % of the heater for two minutes, and
 makes it draw more than half its power from the grid. The day-ahead plan, legionella cycle and
 calendar events keep priority.
 
+### How much would it save?
+
+`python -m smartboiler.savings` replays your own exported history (hot water, PV, prices) through a
+plain thermostat and the smart scheduler and reports the difference. See [docs/SAVINGS.md](docs/SAVINGS.md).
+
 ### HDO Ripple-Control Learning
 
 Czech/Slovak low-tariff electricity uses an HDO relay that physically disconnects the boiler switch.
