@@ -50,6 +50,7 @@ def ctrl():
     c.pv_surplus_entity_id = None
     c.pv_surplus_inverted = False
     c.surplus_dispatcher = None
+    c.solax = None
     c.boiler_inlet_tmp_entity_id = None
     c.boiler_outlet_tmp_entity_id = None
     c.operation_mode = "standard"

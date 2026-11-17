@@ -197,11 +197,17 @@ class SmartBoilerController:
 
         self.spot_fetcher = SpotPriceFetcher(country=self.spot_price_region) if self.has_spot_price else None
 
-        # Real-time PV surplus heating (needs a live export sensor)
+        # SolaX Cloud (optional): battery SoC, PV power and grid power when no
+        # HA sensor is configured for them.
+        from smartboiler.solax_cloud import from_config as solax_from_config
+        self.solax = solax_from_config(options)
+
+        # Real-time PV surplus heating (needs a live export reading)
         from smartboiler.surplus_dispatcher import SurplusDispatcher
         self.surplus_dispatcher: Optional[SurplusDispatcher] = (
             SurplusDispatcher(heater_w=self.boiler_watt)
-            if self.has_pv and self.pv_surplus_entity_id and options.get("surplus_dispatch", True)
+            if self.has_pv and (self.pv_surplus_entity_id or self.solax)
+            and options.get("surplus_dispatch", True)
             else None
         )
 
@@ -358,7 +364,7 @@ class SmartBoilerController:
 
             # 5. Refresh battery SoC from live HA entity so the scheduler uses
             #    the current charge level, not the stale value from __init__.
-            if self.has_battery and self.battery_soc_entity_id:
+            if self.has_battery and (self.battery_soc_entity_id or self.solax):
                 self.scheduler.boiler.battery_soc_kwh = self._get_battery_soc_kwh()
 
             # 6. Get HDO blocked hours
@@ -459,6 +465,11 @@ class SmartBoilerController:
                 surplus = max(0.0, float(val) / 1000.0)
                 logger.debug("PV forecast from pv_power: %.3f kWh/h", surplus)
                 return [surplus] * 24
+        elif self.solax is not None:
+            pv_w = self.solax.pv_power_w()
+            if pv_w is not None:
+                logger.debug("PV forecast from SolaX: %.0f W", pv_w)
+                return [max(0.0, pv_w / 1000.0)] * 24
 
         # 3. Live export sensor
         export_w = self._read_export_w()
@@ -472,12 +483,16 @@ class SmartBoilerController:
     def _read_export_w(self) -> Optional[float]:
         """Current grid export in W (negative = import), or None if unknown.
 
-        Reads pv_surplus_entity_id and flips the sign when the sensor
-        reports import as positive (pv_surplus_inverted).
+        Reads pv_surplus_entity_id, or SolaX Cloud gridPower when no entity
+        is set, and flips the sign when the source reports import as
+        positive (pv_surplus_inverted).
         """
-        if not self.pv_surplus_entity_id:
+        if self.pv_surplus_entity_id:
+            val = self.ha.get_state_value(self.pv_surplus_entity_id, default=None)
+        elif self.solax is not None:
+            val = self.solax.grid_power_w()
+        else:
             return None
-        val = self.ha.get_state_value(self.pv_surplus_entity_id, default=None)
         try:
             w = float(val)
         except (TypeError, ValueError):
@@ -533,20 +548,24 @@ class SmartBoilerController:
           percent: soc_kwh = battery_capacity_kwh * value / 100
           kwh:     soc_kwh = value  (direct reading)
         """
-        if not self.battery_soc_entity_id:
+        unit = self.battery_soc_unit
+        if self.battery_soc_entity_id:
+            val = self.ha.get_state_value(self.battery_soc_entity_id, default=None)
+        elif self.solax is not None:
+            val, unit = self.solax.battery_soc(), "percent"
+        else:
             return 0.0
-        val = self.ha.get_state_value(self.battery_soc_entity_id, default=None)
         if val is None:
             return 0.0
         try:
             v = float(val)
         except (ValueError, TypeError):
             return 0.0
-        if self.battery_soc_unit == "percent":
+        if unit == "percent":
             soc = self.battery_capacity_kwh * max(0.0, min(100.0, v)) / 100.0
         else:
             soc = max(0.0, v)
-        logger.debug("Battery SoC: %.2f kWh (raw=%.1f %s)", soc, v, self.battery_soc_unit)
+        logger.debug("Battery SoC: %.2f kWh (raw=%.1f %s)", soc, v, unit)
         return soc
 
     # ── Control workflow (every 60s) ──────────────────────────────────────

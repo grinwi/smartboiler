@@ -81,6 +81,14 @@ when the measured export covers at least 80 % of the heater for two minutes, and
 makes it draw more than half its power from the grid. The day-ahead plan, legionella cycle and
 calendar events keep priority.
 
+### SolaX Cloud
+
+Without a SolaX integration in Home Assistant, SmartBoiler can read battery SoC, solar power and
+grid power straight from the SolaX Cloud Developer API (Settings → Battery → SolaX Cloud: Client ID
+and Secret from developer.solaxcloud.com, inverter serial number). HA sensors, when set, take
+priority. The inverter updates the cloud about every 5 minutes, so a local Modbus integration in HA
+reacts faster for real-time surplus heating.
+
 ### How much would it save?
 
 `python -m smartboiler.savings` replays your own exported history (hot water, PV, prices) through a

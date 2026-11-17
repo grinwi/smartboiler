@@ -53,6 +53,12 @@ DEFAULTS: dict = {
     "pv_surplus_entity_id": "",         # live grid export in W (positive = export)
     "pv_surplus_inverted": False,       # True if that sensor shows import as positive
     "surplus_dispatch": True,           # heat from measured surplus in real time
+    # SolaX Cloud Developer API (developer.solaxcloud.com) — used for battery
+    # SoC, PV power and grid power when no HA sensor is set for them.
+    "solax_client_id": "",
+    "solax_client_secret": "",
+    "solax_inverter_sn": "",
+    "solax_region": "eu",               # eu | cn | in
     "person_entity_ids": "",
     "calendar_entity_id": "",
 
@@ -255,6 +261,13 @@ def validate_config(config: dict) -> list[str]:
             errors.append("battery_priority must be 'battery_first', 'boiler_first', or 'sell_first'")
 
     _validate_tariff(errors, config)
+
+    if config.get("solax_region") not in ("eu", "cn", "in"):
+        errors.append("solax_region must be 'eu', 'cn' or 'in'")
+    solax_keys = ("solax_client_id", "solax_client_secret", "solax_inverter_sn")
+    filled = [k for k in solax_keys if str(config.get(k, "") or "").strip()]
+    if filled and len(filled) != len(solax_keys):
+        errors.append("SolaX Cloud needs Client ID, Client Secret and inverter serial number together")
 
     if config.get("logging_level") not in ("DEBUG", "INFO", "WARNING", "ERROR"):
         errors.append("logging_level must be one of: DEBUG, INFO, WARNING, ERROR")

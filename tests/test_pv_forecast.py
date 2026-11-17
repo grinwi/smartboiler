@@ -152,6 +152,7 @@ def ctrl():
     c.pv_surplus_entity_id = None
     c.house_base_load_kw = 0.3
     c._pv_forecaster = None
+    c.solax = None
     c._options = dict(DEFAULTS, has_pv=True, pv_installed_power_kw=5.0)
     return c
 
