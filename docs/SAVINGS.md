@@ -7,10 +7,20 @@ would have cost:
 | Strategy | Meaning |
 |---|---|
 | Thermostat (today) | Heats whenever the water drops 5 °C below the set temperature. |
-| Smart, perfect forecast | The scheduler re-plans every hour knowing the real future use. Upper bound. |
+| Smart, perfect forecast | The scheduler re-plans every hour knowing the real future use. Usually the best case; the scheduler is greedy, so the realistic run can occasionally match it. |
 | Smart, learned forecast | The scheduler re-plans every hour with the predictor trained only on the past. Realistic. |
 
-It runs anywhere with Python and the package installed; no Home Assistant connection is needed.
+## Easiest: in the add-on
+
+Open the add-on's web UI and click **Savings** in the top bar. Pick the hot-water sensor
+(and optionally the solar sensor), the period, and **Run analysis**. The add-on reads Home
+Assistant's long-term statistics directly — up to two years back, no export, no token. Sensors
+appear in the list only if they have statistics (a `state_class`) in a supported unit
+(L, m³, kWh, Wh, W, kW, L/min, L/h, m³/h).
+
+## Command line
+
+The same analysis runs anywhere with Python and the package installed.
 
 ## 1. Export your data from Home Assistant
 

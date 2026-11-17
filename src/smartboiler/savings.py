@@ -8,7 +8,9 @@
 #   thermostat  — today's behaviour: heats whenever water drops 5 °C below
 #                 set_tmp, whatever the price or the sun.
 #   smart_ideal — the scheduler re-plans every hour knowing the real future
-#                 consumption: the theoretical upper bound of savings.
+#                 consumption: usually the best case (the greedy scheduler is
+#                 not a global optimum, so smart_real can occasionally match
+#                 or beat it).
 #   smart_real  — the scheduler re-plans every hour with the rolling
 #                 histogram predictor trained only on the past (retrained
 #                 daily): what the add-on would realistically achieve.
@@ -319,7 +321,7 @@ def analyse(inputs: Inputs, boiler: BoilerParams, tariff: Tariff) -> List[Strate
 
 LABELS = {
     "thermostat": "Thermostat (today)",
-    "smart_ideal": "Smart, perfect forecast (upper bound)",
+    "smart_ideal": "Smart, perfect forecast",
     "smart_real": "Smart, learned forecast (realistic)",
 }
 
@@ -377,6 +379,43 @@ def format_report(results: List[StrategyResult], inputs: Inputs, currency: str =
     return "\n".join(lines) + "\n"
 
 
+def results_to_dict(results: List[StrategyResult], inputs: Inputs) -> dict:
+    """JSON-friendly summary for the dashboard (first result = baseline)."""
+    base = results[0]
+    idx = inputs.demand_kwh.index
+    days = len(idx) / 24.0
+    real = next(r for r in results if r.name == "smart_real")
+    return {
+        "period_start": f"{idx[0]:%Y-%m-%d}",
+        "period_end": f"{idx[-1]:%Y-%m-%d}",
+        "days": round(days, 1),
+        "hot_water_kwh": round(float(inputs.demand_kwh.sum()), 1),
+        "pv_surplus_kwh": round(float(inputs.surplus_kwh.sum()), 1),
+        "yearly_saving": round((base.cost - real.cost) / days * 365, 0) if days else 0.0,
+        "strategies": [
+            {
+                "name": r.name,
+                "label": LABELS[r.name],
+                "electricity_kwh": round(r.electricity_kwh, 1),
+                "pv_kwh": round(r.pv_kwh, 1),
+                "grid_kwh": round(r.grid_kwh, 1),
+                "standby_kwh": round(r.standby_kwh, 1),
+                "cost": round(r.cost, 1),
+                "saving": round(base.cost - r.cost, 1),
+                "saving_pct": round((base.cost - r.cost) / base.cost * 100, 1) if base.cost else 0.0,
+                "hours_below_min": int(r.hours_below_min),
+                "mean_tmp": round(r.mean_tmp, 1),
+            }
+            for r in results
+        ],
+        "months": [
+            {"month": m, "costs": {r.name: round(r.monthly_cost.get(m, 0.0), 1) for r in results}}
+            for m in base.monthly_cost
+        ],
+        "report_md": format_report(results, inputs),
+    }
+
+
 # ── Command line ─────────────────────────────────────────────────────────────
 
 def boiler_from_config(cfg: dict) -> BoilerParams:
@@ -396,7 +435,9 @@ def build_inputs(demand_kwh: pd.Series, pv_kwh: Optional[pd.Series], base_load_k
                  hdo_schedule: str = "") -> Inputs:
     """Align all series on one local-time hourly index covering the water data."""
     demand = demand_kwh.tz_convert(tz)
-    idx = demand.index
+    # Continuous hourly index: hours without data count as no hot-water use
+    idx = pd.date_range(demand.index.min(), demand.index.max(), freq="h")
+    demand = demand.reindex(idx)
     if pv_kwh is not None:
         pv = pv_kwh.tz_convert(tz).reindex(idx).fillna(0.0)
     else:

@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SmartBoiler — Savings</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    :root{--blue:#2b6cb0;--gray:#4a5568;--muted:#718096;--bg:#f0f4f8;--card:#fff;--border:#e2e8f0;
+          --red:#9b2c2c;--c0:#a0aec0;--c1:#dd6b20;--c2:#2b6cb0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:#2d3748;line-height:1.45}
+    header{background:var(--blue);color:#fff;padding:.75rem 1.5rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
+    header h1{font-size:1.2rem}
+    header a{color:rgba(255,255,255,.85);text-decoration:none;font-size:.88rem;margin-left:auto;padding:.5rem 0}
+    main{max-width:1100px;margin:1.25rem auto;padding:0 1rem;display:flex;flex-direction:column;gap:1.25rem}
+    .card{background:var(--card);border-radius:12px;padding:1.25rem;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+    .card h2{font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.9rem}
+    p.desc{color:var(--gray);font-size:.9rem;margin-bottom:1rem}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem}
+    label{display:block;font-size:.82rem;font-weight:600;color:var(--gray);margin-bottom:.35rem}
+    select,input{width:100%;height:44px;padding:0 .6rem;border:1px solid var(--border);border-radius:8px;font-size:.9rem;background:#fff}
+    .hint{font-size:.78rem;color:var(--muted);margin-top:.25rem}
+    button{height:44px;padding:0 1.4rem;border:0;border-radius:8px;background:var(--blue);color:#fff;font-size:.95rem;font-weight:600;cursor:pointer;margin-top:1rem}
+    button:disabled{opacity:.6;cursor:default}
+    .status{font-size:.9rem;color:var(--gray)}
+    .status.error{color:var(--red)}
+    .big{font-size:2.2rem;font-weight:700;color:var(--blue);line-height:1.1}
+    .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem}
+    .kpi .label{font-size:.8rem;color:var(--muted)}
+    .kpi .value{font-size:1.5rem;font-weight:700}
+    .table-wrap{overflow-x:auto}
+    table{width:100%;border-collapse:collapse;font-size:.88rem;min-width:720px}
+    th,td{padding:.55rem .6rem;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap}
+    th:first-child,td:first-child{text-align:left}
+    th{font-size:.75rem;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+    .legend{display:flex;flex-wrap:wrap;gap:1rem;font-size:.8rem;color:var(--gray);margin-bottom:.75rem}
+    .legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;background:var(--c)}
+    .bars{display:flex;align-items:flex-end;gap:10px;height:200px;overflow-x:auto;padding-bottom:4px}
+    .month{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:42px}
+    .month .cols{display:flex;align-items:flex-end;gap:2px;height:170px}
+    .month .col{width:10px;border-radius:3px 3px 0 0;transform-origin:bottom;animation:grow .6s ease-out both}
+    .month .lbl{font-size:.7rem;color:var(--muted)}
+    @keyframes grow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+    @media (prefers-reduced-motion:reduce){.month .col{animation:none}}
+    ul.notes{padding-left:1.1rem;font-size:.85rem;color:var(--gray)}
+    .hidden{display:none}
+  </style>
+</head>
+<body>
+<header>
+  <h1>SmartBoiler · Savings</h1>
+  <a href="./">← Dashboard</a>
+</header>
+<main>
+  <section class="card">
+    <h2>What would smart heating have saved?</h2>
+    <p class="desc">Replays your real hot-water use and solar production from Home Assistant's long-term
+      statistics through a plain thermostat and the SmartBoiler scheduler, with your boiler and tariff settings.</p>
+    <div class="grid">
+      <div>
+        <label for="water">Hot-water sensor</label>
+        <select id="water"></select>
+        <div class="hint">Water meter (L, m³), flow (L/min) or heat (kWh).</div>
+      </div>
+      <div>
+        <label for="pv">Solar production sensor</label>
+        <select id="pv"></select>
+        <div class="hint">Energy (kWh) or power (W). Optional.</div>
+      </div>
+      <div>
+        <label for="days">Period</label>
+        <select id="days">
+          <option value="30">Last 30 days</option>
+          <option value="90">Last 3 months</option>
+          <option value="180">Last 6 months</option>
+          <option value="365" selected>Last year</option>
+          <option value="730">Last 2 years</option>
+        </select>
+      </div>
+      <div>
+        <label for="hot_temp">Hot water temperature (°C)</label>
+        <input type="number" id="hot_temp" value="50" min="30" max="80">
+        <div class="hint">Used to turn litres into heat.</div>
+      </div>
+    </div>
+    <button id="run" type="button">Run analysis</button>
+    <p id="status" class="status" role="status" style="margin-top:.75rem"></p>
+  </section>
+
+  <section id="results" class="hidden" aria-live="polite">
+    <div class="card">
+      <h2 id="period"></h2>
+      <div class="kpis">
+        <div class="kpi"><div class="label">Realistic saving per year</div><div class="big" id="yearly"></div></div>
+        <div class="kpi"><div class="label">With a perfect forecast</div><div class="value" id="ideal"></div></div>
+        <div class="kpi"><div class="label">Hot water used</div><div class="value" id="water_kwh"></div></div>
+        <div class="kpi"><div class="label">Solar surplus available</div><div class="value" id="pv_kwh"></div></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:1.25rem">
+      <h2>Strategies</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Strategy</th><th>Electricity kWh</th><th>From solar</th><th>From grid</th>
+            <th>Standby loss kWh</th><th>Cost</th><th>Saving</th><th>Hours below min</th><th>Mean °C</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:1.25rem">
+      <h2>Cost per month</h2>
+      <div class="legend" id="legend"></div>
+      <div class="bars" id="bars"></div>
+    </div>
+
+    <div class="card" style="margin-top:1.25rem">
+      <h2>Assumptions</h2>
+      <ul class="notes">
+        <li>All strategies use the same boiler physics and deliver the same hot water.</li>
+        <li>Solar surplus = production − typical house consumption from Settings.</li>
+        <li>Smart strategies know the solar of the next 24 hours; the thermostat uses it only by coincidence.</li>
+        <li>Solar used at home is counted at the export price (income given up).</li>
+      </ul>
+      <button id="download" type="button">Download report (Markdown)</button>
+    </div>
+  </section>
+</main>
+
+<script>
+const COLORS = {thermostat: 'var(--c0)', smart_ideal: 'var(--c1)', smart_real: 'var(--c2)'};
+const $ = id => document.getElementById(id);
+let pollTimer = null, lastResult = null;
+
+function fmt(v, digits = 0) {
+  return Number(v).toLocaleString(undefined, {maximumFractionDigits: digits});
+}
+
+function fillSelect(sel, sensors, chosen, optional) {
+  sel.innerHTML = '';
+  if (optional) sel.add(new Option('— none —', ''));
+  sensors.forEach(s => sel.add(new Option(`${s.name} (${s.entity_id}, ${s.unit})`, s.entity_id)));
+  if (chosen && [...sel.options].some(o => o.value === chosen)) sel.value = chosen;
+}
+
+function setStatus(text, isError = false) {
+  $('status').textContent = text;
+  $('status').className = 'status' + (isError ? ' error' : '');
+}
+
+async function loadSensors() {
+  setStatus('Loading sensors…');
+  try {
+    const data = await fetch('api/savings/sensors').then(r => r.json());
+    if (data.error) return setStatus(data.error, true);
+    const d = data.defaults || {};
+    fillSelect($('water'), data.sensors, d.water_entity, false);
+    fillSelect($('pv'), data.sensors, d.pv_entity, true);
+    setStatus(data.sensors.length ? '' : 'No sensors with long-term statistics found.', !data.sensors.length);
+  } catch (e) {
+    setStatus('Could not load sensors.', true);
+  }
+}
+
+async function run() {
+  $('run').disabled = true;
+  setStatus('Running… a year of data takes about half a minute.');
+  const body = {water_entity: $('water').value, pv_entity: $('pv').value,
+                days: Number($('days').value), hot_temp: Number($('hot_temp').value)};
+  const resp = await fetch('api/savings', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                           body: JSON.stringify(body)}).then(r => r.json());
+  handle(resp);
+}
+
+function handle(st) {
+  clearTimeout(pollTimer);
+  if (st.status === 'running') {
+    $('run').disabled = true;
+    pollTimer = setTimeout(poll, 2000);
+    return;
+  }
+  $('run').disabled = false;
+  if (st.status === 'error') return setStatus(st.error || 'Analysis failed.', true);
+  if (st.status === 'done') { setStatus(''); render(st.result); }
+}
+
+async function poll() {
+  try { handle(await fetch('api/savings').then(r => r.json())); }
+  catch (e) { pollTimer = setTimeout(poll, 4000); }
+}
+
+function cell(tr, text) { const td = document.createElement('td'); td.textContent = text; tr.appendChild(td); }
+
+function render(r) {
+  lastResult = r;
+  const byName = Object.fromEntries(r.strategies.map(s => [s.name, s]));
+  $('period').textContent = `${r.period_start} – ${r.period_end} (${fmt(r.days)} days)`;
+  $('yearly').textContent = fmt(r.yearly_saving);
+  $('ideal').textContent = `${fmt(byName.smart_ideal.saving)} (${fmt(byName.smart_ideal.saving_pct, 1)} %)`;
+  $('water_kwh').textContent = `${fmt(r.hot_water_kwh)} kWh`;
+  $('pv_kwh').textContent = `${fmt(r.pv_surplus_kwh)} kWh`;
+
+  const rows = $('rows'); rows.innerHTML = '';
+  r.strategies.forEach((s, i) => {
+    const tr = document.createElement('tr');
+    cell(tr, s.label); cell(tr, fmt(s.electricity_kwh)); cell(tr, fmt(s.pv_kwh)); cell(tr, fmt(s.grid_kwh));
+    cell(tr, fmt(s.standby_kwh)); cell(tr, fmt(s.cost));
+    cell(tr, i === 0 ? '—' : `${fmt(s.saving)} (${fmt(s.saving_pct, 1)} %)`);
+    cell(tr, s.hours_below_min); cell(tr, fmt(s.mean_tmp, 1));
+    rows.appendChild(tr);
+  });
+
+  const legend = $('legend'); legend.innerHTML = '';
+  r.strategies.forEach(s => {
+    const span = document.createElement('span');
+    span.style.setProperty('--c', COLORS[s.name]); span.textContent = s.label; legend.appendChild(span);
+  });
+  const max = Math.max(1, ...r.months.flatMap(m => Object.values(m.costs)));
+  const bars = $('bars'); bars.innerHTML = '';
+  r.months.forEach(m => {
+    const wrap = document.createElement('div'); wrap.className = 'month';
+    const cols = document.createElement('div'); cols.className = 'cols';
+    r.strategies.forEach(s => {
+      const c = document.createElement('div'); c.className = 'col';
+      c.style.height = `${(m.costs[s.name] / max) * 100}%`; c.style.background = COLORS[s.name];
+      c.title = `${m.month} · ${s.label}: ${fmt(m.costs[s.name])}`;
+      cols.appendChild(c);
+    });
+    const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = m.month.slice(2);
+    wrap.appendChild(cols); wrap.appendChild(lbl); bars.appendChild(wrap);
+  });
+  $('results').classList.remove('hidden');
+}
+
+$('run').addEventListener('click', run);
+$('download').addEventListener('click', () => {
+  if (!lastResult) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([lastResult.report_md], {type: 'text/markdown'}));
+  a.download = 'smartboiler-savings.md'; a.click();
+});
+loadSensors().then(poll);
+</script>
+</body>
+</html>

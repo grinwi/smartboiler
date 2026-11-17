@@ -250,6 +250,7 @@ Each phase is shippable alone and useful alone.
   self-calibration of the PV forecast, learned base load, Energy-dashboard discovery.
 - **Phase 6, part**: `savings.py` replays real history (water, PV, prices) through thermostat /
   smart-ideal / smart-realistic strategies and reports the saving — see `docs/SAVINGS.md`.
+  Available in the add-on as the **Savings** page, reading HA long-term statistics over WebSocket.
 - **Phase 2**: `surplus_dispatcher.py` runs the boiler on measured export with hysteresis (2 readings,
   start ≥ 80 % covered, stop < 50 %). Uses the existing 60 s control loop; a faster loop is open.
 
